@@ -1,0 +1,215 @@
+{
+  "identifier" : "DB22B5B1-914C-4FDB-A8CE-9D0AC821AF7B",
+  "nonConsumableIAPProducts" : [],
+  "nonRenewingSubscriptionIAPProducts" : [],
+  "consumableIAPProducts" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "6F673B78-A2A0-472A-8681-BC198024B84B",
+      "localizations" : [
+        {
+          "description" : "60 Kibble to fuel your next rescues.",
+          "displayName" : "Small Kibble Bag",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.kibble.small",
+      "referenceName" : "Kibble Small",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "1.99",
+      "familyShareable" : false,
+      "internalID" : "E089857E-6E55-4431-BAED-596D968DA690",
+      "localizations" : [
+        {
+          "description" : "180 Kibble — great value for active rescuers.",
+          "displayName" : "Medium Kibble Bag",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.kibble.medium",
+      "referenceName" : "Kibble Medium",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "57B3D5D0-2077-4558-A604-A93E49EAC9DC",
+      "localizations" : [
+        {
+          "description" : "600 Kibble — the ultimate rescue fuel supply.",
+          "displayName" : "Large Kibble Bag",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.kibble.large",
+      "referenceName" : "Kibble Large",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "EEEE66E5-BC18-4707-AB5D-F2A569868393",
+      "localizations" : [
+        {
+          "description" : "15 Dog Tags to unlock board cells and shop upgrades.",
+          "displayName" : "Dog Tag Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.dogtags.small",
+      "referenceName" : "Dog Tags Small",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "FB32AE6E-7479-47C4-81D4-15C30A975E66",
+      "localizations" : [
+        {
+          "description" : "60 Dog Tags — a solid boost for your sanctuary.",
+          "displayName" : "Dog Tag Bundle",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.dogtags.medium",
+      "referenceName" : "Dog Tags Medium",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "6.99",
+      "familyShareable" : false,
+      "internalID" : "ADF34490-FB83-49A2-BE9E-FE60C0098804",
+      "localizations" : [
+        {
+          "description" : "175 Dog Tags — the biggest tag haul in the shop.",
+          "displayName" : "Dog Tag Jackpot",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.dogtags.large",
+      "referenceName" : "Dog Tags Large",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "1.99",
+      "familyShareable" : false,
+      "internalID" : "E5C49066-1D80-4F26-AD69-30E2F27CA8B9",
+      "localizations" : [
+        {
+          "description" : "100 Kibble + 20 Dog Tags — perfect for new rescuers.",
+          "displayName" : "Sanctuary Starter Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.bundle.starter",
+      "referenceName" : "Starter Bundle",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "2D31FEF1-2E77-43CF-B0F1-B0BB7DBB1426",
+      "localizations" : [
+        {
+          "description" : "25 Kibble + 8 Dog Tags + Rescue Crate spawner + ★★ card pack.",
+          "displayName" : "Small Energy Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.energy.small",
+      "referenceName" : "Energy Pack Small",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "2168B0D8-785C-42BD-A21C-A878FAD2A5EB",
+      "localizations" : [
+        {
+          "description" : "60 Kibble + 20 Dog Tags + Shelter Pod spawner + ★★★★ card pack.",
+          "displayName" : "Medium Energy Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.energy.medium",
+      "referenceName" : "Energy Pack Medium",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "9E0DF166-475C-4A53-AB48-FB3D55D8D24E",
+      "localizations" : [
+        {
+          "description" : "120 Kibble + 40 Dog Tags + Foster Home spawner + ★★★★★ card pack.",
+          "displayName" : "Large Energy Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.energy.large",
+      "referenceName" : "Energy Pack Large",
+      "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "9CAE854C-4479-4FE2-A94B-ED414C3B7C2A",
+      "localizations" : [
+        {
+          "description" : "250 Kibble + 80 Dog Tags + 2× Foster Home spawners + ★★★★★★ card pack.",
+          "displayName" : "XL Energy Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.energy.xl",
+      "referenceName" : "Energy Pack XL",
+      "type" : "ConsumableIAP"
+    }
+  ],
+  "subscriptionGroups" : [
+    {
+      "id" : "950FDCA2-DAFD-4EBB-A4E6-CE584E05D55B",
+      "localizations" : [
+        {
+          "locale" : "en_US",
+          "name" : "Sanctuary Pass"
+        }
+      ],
+      "name" : "Sanctuary Pass",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupLevel" : 1,
+          "internalID" : "735EEA5E-C1E1-4767-8874-05572ECFC391",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "+30 Kibble daily, 1.5× quest kibble rewards, 2× ad kibble, and priority support.",
+              "displayName" : "Sanctuary Pass",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.pawsanctuary.pass.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Sanctuary Pass Monthly",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0,
+    "patch" : 0
+  },
+  "settings" : {
+    "askToBuyEnabled" : false,
+    "transactionResolutionEnabled" : false
+  }
+}
