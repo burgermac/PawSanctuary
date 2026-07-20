@@ -2,10 +2,9 @@
 //  InventoryStore.swift
 //  PawSanctuary
 //
-//  Owns all inventory storage state: animal slots, tool/material slots, producer
-//  designated slots, and overflow slots. Methods that require placing items onto
-//  the board or checking board fullness remain in MergeBoardViewModel, which calls
-//  into this store to consume or add items on the storage side.
+//  Owns all inventory storage state: animal slots, material accumulator, and producer
+//  slots. Methods that require placing items onto the board or checking board fullness
+//  remain in MergeBoardViewModel, which calls into this store to consume or add items.
 //
 
 import SwiftUI
@@ -21,7 +20,20 @@ class InventoryStore {
     var inventoryRow1Unlocked: Bool = false
     var inventoryRow2Unlocked: Bool = false
 
-    var toolInventory: [BoardItem?] = Array(repeating: nil, count: totalToolInventorySlots)
+    /// Power-up consumable storage (Phase 2, data layer).
+    /// UI and persistence wired in Phase 4. Items here are dragged onto spawners to activate.
+    var powerUpInventory: [BoardItem?] = Array(repeating: nil, count: 6)
+
+    /// Limitless accumulator for build materials.
+    /// Keys are chain IDs; values are per-tier counts (index == tier, 0…5).
+    /// The cascade runs automatically after every add, so tier 5 always holds completed materials.
+    var materialCounts: [ChainID: [Int]] = InventoryStore.emptyMaterialCounts()
+
+    static func emptyMaterialCounts() -> [ChainID: [Int]] {
+        [ContentRegistry.woodChainID:   Array(repeating: 0, count: 6),
+         ContentRegistry.metalChainID:  Array(repeating: 0, count: 6),
+         ContentRegistry.cementChainID: Array(repeating: 0, count: 6)]
+    }
 
     /// Designated producer storage: one slot per ProducerLevel, keyed by rawValue.
     var producerStorage: [Int: ProducerTile] = [:]
@@ -33,13 +45,11 @@ class InventoryStore {
 
     // Selection state
     var selectedInventorySlot: Int? = nil
-    var selectedToolSlot: Int? = nil
     var selectedProducerLevel: ProducerLevel? = nil
     var selectedOverflowProducerSlot: Int? = nil
 
     // Cached counts (private setter; only updated by recalc helpers)
     private(set) var inventoryOccupied: Int = 0
-    private(set) var toolInventoryOccupied: Int = 0
     private(set) var producerStorageOccupied: Int = 0
 
     // MARK: Computed capacity
@@ -49,7 +59,6 @@ class InventoryStore {
             + (inventoryRow1Unlocked ? 6 : 0)
             + (inventoryRow2Unlocked ? 6 : 0)
     }
-    var toolInventoryCapacity: Int { totalToolInventorySlots }
     var producerOverflowCapacity: Int { totalProducerOverflowSlots }
 
     // MARK: Cached recalc
@@ -58,25 +67,61 @@ class InventoryStore {
         inventoryOccupied = (0..<inventoryCapacity).compactMap { inventory[$0] }.count
     }
 
-    func recalcToolInventoryOccupied() {
-        toolInventoryOccupied = toolInventory.compactMap { $0 }.count
-    }
-
     func recalcProducerStorageOccupied() {
         producerStorageOccupied = producerStorage.count
             + overflowProducerStorage.compactMap { $0 }.count
     }
 
+    // MARK: Material accumulator
+
+    /// Absorbs a batch of material items into the accumulator, then cascades all chains.
+    func absorbMaterialItems(_ items: [BoardItem]) {
+        for item in items {
+            guard ContentRegistry.shared.chain(item.chainID)?.category == .material,
+                  materialCounts[item.chainID] != nil else { continue }
+            let tier = max(0, min(item.tier, 5))
+            materialCounts[item.chainID]![tier] += 1
+        }
+        for chainID in materialCounts.keys { cascadeMaterial(chainID: chainID) }
+    }
+
+    private func cascadeMaterial(chainID: ChainID) {
+        guard materialCounts[chainID] != nil else { return }
+        for tier in 0..<5 {
+            while materialCounts[chainID]![tier] >= 2 {
+                materialCounts[chainID]![tier] -= 2
+                materialCounts[chainID]![tier + 1] += 1
+            }
+        }
+    }
+
+    /// Completed (top-tier) count for a material chain.
+    func completedCount(chainID: ChainID) -> Int { materialCounts[chainID]?[5] ?? 0 }
+
+    /// All six tier counts for a chain — used by the inventory display.
+    func tierCounts(chainID: ChainID) -> [Int] {
+        materialCounts[chainID] ?? Array(repeating: 0, count: 6)
+    }
+
     // MARK: Adding items
 
-    /// Routes the item to the correct storage tab based on its chain category.
-    /// Returns `true` on success.
+    /// Routes an item to the correct store. Material items go to the accumulator (always
+    /// succeeds). Tool items (toolboxes) are absorbed on the board — discard here safely.
+    /// Sub-objects and power-ups go to powerUpInventory (6 slots); falls back to animal
+    /// inventory if full. Returns `true` on success.
     @discardableResult
     func addItem(_ item: BoardItem) -> Bool {
         let category = ContentRegistry.shared.chain(item.chainID)?.category
         switch category {
-        case .tool, .material:
-            return addToToolInventory(item)
+        case .material:
+            absorbMaterialItems([item])
+            return true   // limitless — always succeeds
+        case .tool:
+            return true   // toolboxes are consumed on the board tap; discard if they reach here
+        case .subObject:
+            return addToPowerUpInventory(item) || addToAnimalInventory(item)
+        case .powerUp:
+            return addToPowerUpInventory(item)
         default:
             return addToAnimalInventory(item)
         }
@@ -93,10 +138,9 @@ class InventoryStore {
     }
 
     @discardableResult
-    func addToToolInventory(_ item: BoardItem) -> Bool {
-        for i in 0..<toolInventoryCapacity where toolInventory[i] == nil {
-            toolInventory[i] = item
-            recalcToolInventoryOccupied()
+    private func addToPowerUpInventory(_ item: BoardItem) -> Bool {
+        for i in 0..<powerUpInventory.count where powerUpInventory[i] == nil {
+            powerUpInventory[i] = item
             return true
         }
         return false
@@ -139,41 +183,20 @@ class InventoryStore {
         recalcInventoryOccupied()
     }
 
-    // MARK: Tool inventory interaction
+    // MARK: Material consumption (area building)
 
-    func toolSlotTapped(_ slot: Int) {
-        guard slot < toolInventoryCapacity else { return }
-        if let sel = selectedToolSlot {
-            if sel == slot { selectedToolSlot = nil }
-            else { toolInventory.swapAt(sel, slot); selectedToolSlot = nil }
-        } else if toolInventory[slot] != nil {
-            selectedToolSlot = slot
-        }
-    }
-
-    /// Removes and returns the item in the selected tool slot, clearing selection.
-    func consumeSelectedToolItem() -> BoardItem? {
-        guard let slot = selectedToolSlot, let item = toolInventory[slot] else { return nil }
-        toolInventory[slot] = nil
-        selectedToolSlot = nil
-        recalcToolInventoryOccupied()
-        return item
-    }
-
-    /// Consumes one item of a given chain+tier from tool storage (Phase 4 area hook).
+    /// Consumes one completed (top-tier) material of the given chain. Used by area building.
     @discardableResult
     func consumeFromToolInventory(chainID: ChainID, tier: Int) -> Bool {
-        guard let slot = toolInventory.indices.first(where: {
-            toolInventory[$0]?.chainID == chainID && toolInventory[$0]?.tier == tier
-        }) else { return false }
-        toolInventory[slot] = nil
-        recalcToolInventoryOccupied()
+        guard tier >= 0 && tier <= 5,
+              (materialCounts[chainID]?[tier] ?? 0) > 0 else { return false }
+        materialCounts[chainID]![tier] -= 1
         return true
     }
 
     func countMaterial(chainID: ChainID, tier: Int) -> Int {
-        toolInventory.compactMap { $0 }
-            .filter { $0.chainID == chainID && $0.tier == tier }.count
+        guard tier >= 0 && tier <= 5 else { return 0 }
+        return materialCounts[chainID]?[tier] ?? 0
     }
 
     // MARK: Producer storage interaction
@@ -250,11 +273,14 @@ class InventoryStore {
         inventory               = s.inventory
         inventoryRow1Unlocked   = s.inventoryRow1Unlocked
         inventoryRow2Unlocked   = s.inventoryRow2Unlocked
-        toolInventory           = s.toolInventory
+        materialCounts          = s.materialCounts
+        // Ensure all three chains are present even when loading an older migrated save
+        for chainID in [ContentRegistry.woodChainID, ContentRegistry.metalChainID, ContentRegistry.cementChainID] {
+            if materialCounts[chainID] == nil { materialCounts[chainID] = Array(repeating: 0, count: 6) }
+        }
         producerStorage         = s.producerStorage
         overflowProducerStorage = s.overflowProducerStorage
         recalcInventoryOccupied()
-        recalcToolInventoryOccupied()
         recalcProducerStorageOccupied()
     }
 
@@ -262,7 +288,7 @@ class InventoryStore {
         s.inventory               = inventory
         s.inventoryRow1Unlocked   = inventoryRow1Unlocked
         s.inventoryRow2Unlocked   = inventoryRow2Unlocked
-        s.toolInventory           = toolInventory
+        s.materialCounts          = materialCounts
         s.producerStorage         = producerStorage
         s.overflowProducerStorage = overflowProducerStorage
     }

@@ -40,6 +40,16 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "A75F69EB2FCB512800A27436"
+            BuildableName = "PawSanctuary.app"
+            BlueprintName = "PawSanctuary"
+            ReferencedContainer = "container:PawSanctuary.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
          includedInScheme = "YES"
          identifier = "../../PawSanctuary/PawSanctuary.storekit">

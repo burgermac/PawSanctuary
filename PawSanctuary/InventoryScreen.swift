@@ -27,6 +27,7 @@ struct InventoryScreenView: View {
                 Text("Animals").tag(0)
                 Text("Producers").tag(1)
                 Text("Materials").tag(2)
+                Text("Supplies").tag(3)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.bottom, 8)
@@ -37,7 +38,8 @@ struct InventoryScreenView: View {
                     switch selectedTab {
                     case 0: animalsTab
                     case 1: producersTab
-                    default: materialsTab
+                    case 2: materialsTab
+                    default: suppliesTab
                     }
                     Spacer(minLength: 20)
                 }
@@ -60,15 +62,13 @@ struct InventoryScreenView: View {
             } else if viewModel.selectedOverflowProducerSlot != nil {
                 placeButton(label: "Return to Board") { viewModel.placeOverflowProducerOnBoard() }
             }
-        default:
-            if let slot = viewModel.selectedToolSlot,
-               viewModel.toolInventory[slot]?.chainID == ContentRegistry.toolboxChainID {
-                placeButton(label: "Open Toolbox", color: Color(red: 0.72, green: 0.45, blue: 0.12)) {
-                    viewModel.openToolboxFromInventory(slot: slot)
-                }
-            } else if viewModel.selectedToolSlot != nil {
-                placeButton(label: "Place on Board") { viewModel.placeSelectedToolItemOnBoard() }
+        case 3:
+            if viewModel.selectedPowerUpSlot != nil {
+                placeButton(label: "Apply to Spawner",
+                            color: Color(red: 0.50, green: 0.22, blue: 0.72)) {}
             }
+        default:
+            EmptyView()
         }
     }
 
@@ -300,60 +300,213 @@ struct InventoryScreenView: View {
     // MARK: Materials tab
 
     private var materialsTab: some View {
-        VStack(spacing: 12) {
-            Text("Merge materials on the board to reach higher tiers, then store them here. Higher-tier materials unlock map areas and facilities.")
+        VStack(spacing: 16) {
+            Text("Tap a toolbox on the board to collect its materials. Merging is handled automatically — completed materials appear here ready to spend on map areas.")
                 .font(.system(size: 11)).foregroundColor(.secondary)
                 .multilineTextAlignment(.center).padding(.horizontal)
 
-            // Material storage grid (18 slots, 3 rows × 6)
-            VStack(spacing: 8) {
-                HStack {
-                    Text("Material Storage")
-                        .font(.subheadline.bold())
-                        .foregroundColor(Color(red: 0.45, green: 0.3, blue: 0.15))
-                    Spacer()
-                    Text("\(viewModel.toolInventoryOccupied)/\(viewModel.toolInventoryCapacity)")
-                        .font(.caption).foregroundColor(.secondary)
-                }
-                .padding(.horizontal)
+            // Completed materials — one card per chain
+            HStack(spacing: 10) {
+                materialCard(chainID: ContentRegistry.woodChainID,
+                             icon: "house.fill",
+                             label: "Hardwood\nKit",
+                             cardColor: Color(red: 0.62, green: 0.48, blue: 0.28))
+                materialCard(chainID: ContentRegistry.metalChainID,
+                             icon: "gearshape.fill",
+                             label: "Steel\nGirder",
+                             cardColor: Color(red: 0.34, green: 0.40, blue: 0.54))
+                materialCard(chainID: ContentRegistry.cementChainID,
+                             icon: "hammer.fill",
+                             label: "Foundation\nKit",
+                             cardColor: Color(red: 0.44, green: 0.42, blue: 0.38))
+            }
+            .padding(.horizontal)
 
-                ForEach(0..<3, id: \.self) { row in
-                    HStack(spacing: 4) {
-                        ForEach(0..<6, id: \.self) { col in
-                            let slot = row * 6 + col
-                            materialSlotView(slot: slot)
-                                .frame(width: slotSize, height: slotSize)
-                                .onTapGesture { viewModel.toolSlotTapped(slot) }
+            // In-progress components (sub-tier accumulation)
+            let inProgress = inProgressRows()
+            if !inProgress.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("In Progress")
+                        .font(.caption.bold())
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                    ForEach(inProgress, id: \.label) { row in
+                        HStack {
+                            Image(systemName: row.icon)
+                                .font(.system(size: 12))
+                                .foregroundColor(row.color)
+                                .frame(width: 20)
+                            Text(row.label)
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(red: 0.25, green: 0.22, blue: 0.18))
+                            Spacer()
+                            Text("×\(row.count)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(row.color)
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(red: 0.94, green: 0.90, blue: 0.80).opacity(0.7)))
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    private func materialCard(chainID: ChainID, icon: String, label: String, cardColor: Color) -> some View {
+        let count = viewModel.completedMaterialCount(chainID: chainID)
+        return VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    Circle()
+                        .fill(cardColor.opacity(0.15))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: icon)
+                        .font(.system(size: 24))
+                        .foregroundColor(cardColor)
+                }
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(cardColor))
+                        .offset(x: 6, y: -4)
+                }
+            }
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .multilineTextAlignment(.center)
+                .foregroundColor(cardColor.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(count > 0
+                  ? cardColor.opacity(0.10)
+                  : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.6)))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .strokeBorder(count > 0 ? cardColor.opacity(0.35) : Color.clear, lineWidth: 1.5))
+    }
+
+    // MARK: Supplies tab
+
+    private var suppliesTab: some View {
+        VStack(spacing: 16) {
+            Text("Consumables earned by merging sub-objects on the board. Select one here, then close this screen and tap a Family Spawner to apply it.")
+                .font(.system(size: 11)).foregroundColor(.secondary)
+                .multilineTextAlignment(.center).padding(.horizontal)
+
+            // 6-slot power-up grid (2 rows × 3)
+            VStack(spacing: 8) {
+                ForEach(0..<2, id: \.self) { row in
+                    HStack(spacing: 8) {
+                        ForEach(0..<3, id: \.self) { col in
+                            let slot = row * 3 + col
+                            powerUpSlotView(slot: slot)
+                                .frame(maxWidth: .infinity)
+                                .onTapGesture { viewModel.powerUpSlotTapped(slot) }
                         }
                     }
                     .padding(.horizontal)
                 }
             }
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .background(RoundedRectangle(cornerRadius: 16)
-                .fill(Color(red: 0.94, green: 0.90, blue: 0.80).opacity(0.8))
-                .shadow(color: .black.opacity(0.05), radius: 4))
+                .fill(Color(red: 0.94, green: 0.88, blue: 0.98).opacity(0.7)))
             .padding(.horizontal)
+
+            if viewModel.selectedPowerUpSlot != nil {
+                Text("Consumable selected ✓  —  close this screen and tap a Family Spawner.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(red: 0.50, green: 0.22, blue: 0.72))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
         }
     }
 
     @ViewBuilder
-    private func materialSlotView(slot: Int) -> some View {
-        let item = viewModel.toolInventory[slot]
-        let isToolbox = item?.chainID == ContentRegistry.toolboxChainID
-        let isSelected = viewModel.selectedToolSlot == slot
-
-        ZStack {
-            InventorySlotView(item: item, isSelected: isSelected)
-            // Toolbox gets a golden ring to signal it's openable
-            if isToolbox {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(
-                        LinearGradient(colors: [.yellow, .orange, .yellow],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-                        lineWidth: 2)
+    private func powerUpSlotView(slot: Int) -> some View {
+        let item = viewModel.inventoryStore.powerUpInventory[slot]
+        let isSelected = viewModel.selectedPowerUpSlot == slot
+        let (icon, label, tint) = powerUpAppearance(for: item)
+        VStack(spacing: 5) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(item != nil
+                          ? tint.opacity(isSelected ? 0.22 : 0.10)
+                          : Color(red: 0.90, green: 0.88, blue: 0.94).opacity(0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(isSelected
+                                      ? tint
+                                      : (item != nil ? tint.opacity(0.35) : Color.clear),
+                                      lineWidth: isSelected ? 2 : 1))
+                    .frame(height: 62)
+                if let _ = item {
+                    VStack(spacing: 3) {
+                        Image(systemName: icon)
+                            .font(.system(size: 22))
+                            .foregroundColor(tint)
+                        Text(label)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(tint)
+                            .multilineTextAlignment(.center)
+                    }
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary.opacity(0.4))
+                }
             }
         }
+    }
+
+    private func powerUpAppearance(for item: BoardItem?) -> (icon: String, label: String, tint: Color) {
+        guard let item else { return ("", "", .clear) }
+        switch item.tier {
+        case 0: return ("bolt.circle.fill",          "Speed Burst",       Color(red: 0.90, green: 0.72, blue: 0.05))
+        case 1: return ("map.fill",                  "Map Supplies",      Color(red: 0.20, green: 0.65, blue: 0.35))
+        case 2: return ("arrow.clockwise.circle.fill","Spawner Refill",   Color(red: 0.25, green: 0.50, blue: 0.88))
+        default: return ("star.circle.fill",         "High-Tier Drop",   Color(red: 0.60, green: 0.20, blue: 0.88))
+        }
+    }
+
+    private struct InProgressRow { let label: String; let icon: String; let color: Color; let count: Int }
+    private func inProgressRows() -> [InProgressRow] {
+        // Chain definitions: (chainID, tier-name array, icon array, color array)
+        typealias ChainInfo = (id: ChainID, names: [String], icons: [String], colors: [Color])
+        let chains: [ChainInfo] = [
+            (ContentRegistry.woodChainID,
+             ["Log","Plank","Lumber","Timber","Framework"],
+             ["leaf.fill","rectangle.fill","square.stack.fill","archivebox.fill","building.2.fill"],
+             Array(repeating: Color(red: 0.58, green: 0.44, blue: 0.20), count: 5)),
+            (ContentRegistry.metalChainID,
+             ["Nail","Bolt","Rod","Pipe","I-Beam"],
+             ["oval.fill","bolt.fill","minus.square.fill","capsule.fill","building.columns.fill"],
+             Array(repeating: Color(red: 0.40, green: 0.45, blue: 0.58), count: 5)),
+            (ContentRegistry.cementChainID,
+             ["Pebble","Gravel","Stone","Mortar","Concrete Block"],
+             ["circle.fill","seal.fill","hexagon.fill","drop.fill","square.fill"],
+             Array(repeating: Color(red: 0.50, green: 0.48, blue: 0.44), count: 5))
+        ]
+        var rows: [InProgressRow] = []
+        for chain in chains {
+            let counts = viewModel.materialTierCounts(chainID: chain.id)
+            for tier in 0..<5 {
+                let n = tier < counts.count ? counts[tier] : 0
+                if n > 0 {
+                    rows.append(InProgressRow(label: chain.names[tier],
+                                              icon: chain.icons[tier],
+                                              color: chain.colors[tier],
+                                              count: n))
+                }
+            }
+        }
+        return rows
     }
 }
 

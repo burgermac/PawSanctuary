@@ -19,6 +19,8 @@ struct CellView: View {
     let isNewlyUnlocked: Bool
     let isSpotlight: Bool
     var cellSize: CGFloat = 62  // default keeps non-board usages (inventory preview etc.) unchanged
+    var unlockedSuperpowerSpecies: [String] = []
+    var isLeapSource: Bool = false
 
     var body: some View {
         ZStack {
@@ -41,6 +43,10 @@ struct CellView: View {
                         LinearGradient(colors: [.yellow, Color(red: 1, green: 0.75, blue: 0.1), .yellow],
                                        startPoint: .topLeading, endPoint: .bottomTrailing),
                         lineWidth: (cell.item?.isTopTier ?? false) ? 2.5 : 0))
+                // Leap-mode source selection pulse
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.cyan.opacity(isLeapSource ? 0.9 : 0), lineWidth: 3)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isLeapSource))
 
             // ── Content ──────────────────────────────────────────────
             if let producer = cell.producer {
@@ -62,30 +68,46 @@ struct CellView: View {
     @ViewBuilder
     private func itemContent(_ item: BoardItem) -> some View {
         let def = item.def
-        VStack(spacing: 2) {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: def?.symbol ?? "questionmark")
-                    .font(.system(size: 24))
-                    .foregroundColor(item.isTopTier ? .yellow : (def?.tint ?? def?.color ?? .gray))
-                if let badge = def?.badge {
-                    Image(systemName: badge)
-                        .font(.system(size: 9))
-                        .foregroundColor(Color(red: 0.95, green: 0.80, blue: 0.10))
-                        .offset(x: 4, y: -4)
+        let isAnimal = item.chain?.category == .animal
+        let itemSpecies = isAnimal
+            ? AnimalSpecies(rawValue: item.chainID.replacingOccurrences(of: "animal.", with: ""))
+            : nil
+        let hasUnlockedSuperpower = itemSpecies.map { unlockedSuperpowerSpecies.contains($0.rawValue) } ?? false
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 2) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: def?.symbol ?? "questionmark")
+                        .font(.system(size: 24))
+                        .foregroundColor(item.isTopTier ? .yellow : (def?.tint ?? def?.color ?? .gray))
+                    if let badge = def?.badge {
+                        Image(systemName: badge)
+                            .font(.system(size: 9))
+                            .foregroundColor(Color(red: 0.95, green: 0.80, blue: 0.10))
+                            .offset(x: 4, y: -4)
+                    }
                 }
-            }
-            .scaleEffect(isAnimating ? 1.5 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.4), value: isAnimating)
+                .scaleEffect(isAnimating ? 1.5 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.4), value: isAnimating)
 
-            let isAnimal = item.chain?.category == .animal
-            Text(isAnimal ? (item.chain?.displayName ?? "") : (def?.shortLabel ?? ""))
-                .font(.system(size: 7, weight: .bold)).foregroundColor(def?.color ?? .gray)
-                .lineLimit(1).minimumScaleFactor(0.5)
-            Text(isAnimal ? (def?.shortLabel ?? "") : (item.chain?.displayName ?? ""))
-                .font(.system(size: 7)).foregroundColor(.secondary)
-                .lineLimit(1).minimumScaleFactor(0.5)
+                Text(isAnimal ? (item.chain?.displayName ?? "") : (def?.shortLabel ?? ""))
+                    .font(.system(size: 7, weight: .bold)).foregroundColor(def?.color ?? .gray)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                Text(isAnimal ? (def?.shortLabel ?? "") : (item.chain?.displayName ?? ""))
+                    .font(.system(size: 7)).foregroundColor(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+            .padding(3)
+
+            // Superpower badge — shown when this family has unlocked its superpower.
+            if hasUnlockedSuperpower, let sp = itemSpecies {
+                Image(systemName: sp.superpower.sfSymbol)
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(2)
+                    .background(Circle().fill(Color.purple.opacity(0.85)))
+                    .offset(x: 2, y: 2)
+            }
         }
-        .padding(3)
     }
 
     private var lockedContent: some View {
@@ -168,22 +190,47 @@ struct ProducerTileContent: View {
         let symbol = sp?.spawnerSFSymbol ?? producer.level.sfSymbol
         let label  = sp.map { $0.spawnerName } ?? producer.level.displayName
         let tint   = sp?.tintColor ?? producer.level.tintColor
-        return VStack(spacing: 1) {
-            Image(systemName: symbol)
-                .font(.system(size: iconPts))
-                .foregroundColor(tint)
-                .symbolEffect(.pulse, options: .repeating, isActive: true)
+        return ZStack(alignment: .topTrailing) {
+            VStack(spacing: 1) {
+                Image(systemName: symbol)
+                    .font(.system(size: iconPts))
+                    .foregroundColor(tint)
+                    .symbolEffect(.pulse, options: .repeating, isActive: true)
+                    // Golden glow ring when speed burst is active
+                    .shadow(color: producer.speedBurstActive ? Color.yellow.opacity(0.9) : .clear,
+                            radius: producer.speedBurstActive ? 6 : 0)
 
-            Text(label)
-                .font(.system(size: labelPts, weight: .bold))
-                .foregroundColor(tint)
-                .lineLimit(1).minimumScaleFactor(0.5)
+                Text(label)
+                    .font(.system(size: labelPts, weight: .bold))
+                    .foregroundColor(tint)
+                    .lineLimit(1).minimumScaleFactor(0.5)
 
-            Text("Tap!")
-                .font(.system(size: labelPts, weight: .heavy))
-                .foregroundColor(.green)
+                Text("Tap!")
+                    .font(.system(size: labelPts, weight: .heavy))
+                    .foregroundColor(.green)
+            }
+            .padding(pad)
+
+            // Buff badges — stacked in the top-trailing corner
+            VStack(spacing: 2) {
+                if producer.speedBurstActive {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(3)
+                        .background(Circle().fill(Color.yellow))
+                        .offset(x: 3, y: -3)
+                }
+                if producer.nextDropGuaranteedHighTier {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(3)
+                        .background(Circle().fill(Color.purple))
+                        .offset(x: 3, y: producer.speedBurstActive ? 2 : -3)
+                }
+            }
         }
-        .padding(pad)
     }
 
     // MARK: Supply producer — charge/cooldown display

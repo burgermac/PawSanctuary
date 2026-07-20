@@ -87,7 +87,9 @@ final class PersistenceTests: XCTestCase {
                               rewardCoins: 10),
             ],
             spotlightMergesThisWeek: 7,
-            toolInventory: [BoardItem(chainID: ContentRegistry.woodChainID, tier: 2), nil],
+            materialCounts: [ContentRegistry.woodChainID: [0, 0, 1, 0, 0, 0],
+                             ContentRegistry.metalChainID:  [0, 0, 0, 0, 0, 0],
+                             ContentRegistry.cementChainID: [0, 0, 0, 0, 0, 0]],
             producerStorage: [ProducerLevel.groomingBox.rawValue:
                                   ProducerTile(level: .groomingBox, cooldownRemaining: 10)],
             overflowProducerStorage: [ProducerTile(level: .fosterHome, cooldownRemaining: 5), nil],
@@ -672,10 +674,9 @@ final class PersistenceTests: XCTestCase {
     func testDesignatedProducerStorageRoundTrips() throws {
         let state   = makeSampleState()
         let decoded = try decoder.decode(GameState.self, from: encoder.encode(state))
-        // toolInventory
-        XCTAssertEqual(decoded.toolInventory[0]?.chainID, ContentRegistry.woodChainID)
-        XCTAssertEqual(decoded.toolInventory[0]?.tier, 2)
-        XCTAssertNil(decoded.toolInventory[1] ?? nil)
+        // materialCounts accumulator
+        XCTAssertEqual(decoded.materialCounts[ContentRegistry.woodChainID]?[2], 1)
+        XCTAssertEqual(decoded.materialCounts[ContentRegistry.metalChainID]?.reduce(0, +), 0)
         // producerStorage dictionary — keyed by rawValue
         let key = ProducerLevel.groomingBox.rawValue
         XCTAssertNotNil(decoded.producerStorage[key])

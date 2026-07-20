@@ -5,10 +5,11 @@
 //  Tracks Sanctuary Star milestone progress and queues the celebratory overlay.
 //  Earned titles and rewards are defined by the GDD (section 6):
 //
-//    5 Stars  → "Junior Rescuer"   + 10 Kibble
-//    15 Stars → "Animal Friend"    + 5 Dog Tags
-//    30 Stars → "Sanctuary Guardian" + free inventory row
-//    50 Stars → "Legendary Rescuer"  + Aquatics family spawner (rare species unlock)
+//    5 Stars  → "Junior Rescuer"      + 10 Kibble
+//    15 Stars → "Animal Friend"       + 5 Dog Tags
+//    30 Stars → "Sanctuary Guardian"  + free inventory row
+//    50 Stars → "Legendary Rescuer"   + 50 Dog Tags + 100 Kibble
+//              (Aquatics unlocks via the Coral Reef map area — Phase 5 Q4 decision)
 //
 
 import SwiftUI
@@ -55,8 +56,8 @@ final class MilestoneManager {
                       rewardDescription: "Free Inventory Row",
                       icon: "tray.full.fill"),
         StarMilestone(threshold: 50, title: "Legendary Rescuer",
-                      rewardDescription: "Aquatics Family Unlocked",
-                      icon: "fish.fill"),
+                      rewardDescription: "+100 Kibble  ·  +50 Dog Tags",
+                      icon: "star.circle.fill"),
     ]
 
     // MARK: - Persistence
@@ -137,9 +138,10 @@ final class MilestoneManager {
             HapticManager.shared.successPattern()
 
         case 50:
-            // Delegate board mutation to the ViewModel so it can call its private
-            // recalcBoardIsFull() and stay internally consistent.
-            viewModel.placeRareSpeciesSpawnerForMilestone()
+            // Aquatics now unlocks via the Coral Reef map area (Phase 5, Q4 decision).
+            // The 50-star milestone instead awards a large kibble + dog tag bonus.
+            viewModel.kibbleEngine.kibble   += 100
+            viewModel.kibbleEngine.dogTags  += 50
             SoundManager.shared.playQuestClaim()
             HapticManager.shared.successPattern()
 

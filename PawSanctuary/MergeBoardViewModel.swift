@@ -82,6 +82,12 @@ struct ExchangeableTrio: Identifiable {
     var id: String { species.rawValue }
 }
 
+// Board state snapshot for Nine Lives undo (session-only, not persisted).
+struct BoardSnapshot {
+    let board: [[BoardCell]]
+    let inventory: [BoardItem?]
+}
+
 // ============================================================
 // MARK: - VIEW MODEL
 // ============================================================
@@ -116,6 +122,9 @@ class MergeBoardViewModel {
     var showUnlockBanner = false
     var draggingFrom: GridPosition? = nil
     var selectedCell: GridPosition? = nil
+    /// Index into `inventoryStore.powerUpInventory` of the power-up the player has selected
+    /// to apply to the next tapped family spawner. Nil when no power-up is selected.
+    var selectedPowerUpSlot: Int? = nil
 
     // Ambassador celebration banner
     var showAmbassadorBanner  = false
@@ -195,6 +204,27 @@ class MergeBoardViewModel {
     // Cached derived state
     private(set) var boardIsFull: Bool = false
 
+    // Pity tracking — keyed by AnimalSpecies.rawValue; persisted via GameState.pityStates.
+    var pityStates: [String: PityState] = [:]
+
+    // Superpower system (v24) — persisted fields mirror GameState.
+    var unlockedSuperpowerSpecies: [String] = []
+    var superpowerCooldownEnds: [String: Double] = [:]
+    var lagomorphMergeCount: Int = 0
+    var lastMergeTimestamp: Double = 0
+    var lastMergedSpeciesRaw: String? = nil
+    var equineSprintRemaining: Double = 0
+    var pouchItems: [BoardItem?] = [nil, nil]
+    var pouchExpiryTimestamp: Double = 0
+
+    // Superpower session-only state (not persisted).
+    var preMoveSnapshot: BoardSnapshot? = nil
+    var leapMode: Bool = false
+    var leapSourceCell: GridPosition? = nil
+    var showPouchPanel: Bool = false
+    var showSuperpowerUnlockBanner: Bool = false
+    var superpowerUnlockBannerSpecies: AnimalSpecies? = nil
+
     @ObservationIgnored nonisolated(unsafe) private var regenTimer: Timer?
     @ObservationIgnored nonisolated(unsafe) private var saveTickCounter: Int = 0
     @ObservationIgnored nonisolated(unsafe) private var cachedActiveBonuses: UpgradeBonus = UpgradeBonus()
@@ -252,10 +282,6 @@ class MergeBoardViewModel {
         get { inventoryStore.inventoryRow2Unlocked }
         set { inventoryStore.inventoryRow2Unlocked = newValue }
     }
-    var toolInventory: [BoardItem?] {
-        get { inventoryStore.toolInventory }
-        set { inventoryStore.toolInventory = newValue }
-    }
     var producerStorage: [Int: ProducerTile] {
         get { inventoryStore.producerStorage }
         set { inventoryStore.producerStorage = newValue }
@@ -272,10 +298,6 @@ class MergeBoardViewModel {
         get { inventoryStore.selectedInventorySlot }
         set { inventoryStore.selectedInventorySlot = newValue }
     }
-    var selectedToolSlot: Int? {
-        get { inventoryStore.selectedToolSlot }
-        set { inventoryStore.selectedToolSlot = newValue }
-    }
     var selectedProducerLevel: ProducerLevel? {
         get { inventoryStore.selectedProducerLevel }
         set { inventoryStore.selectedProducerLevel = newValue }
@@ -284,12 +306,14 @@ class MergeBoardViewModel {
         get { inventoryStore.selectedOverflowProducerSlot }
         set { inventoryStore.selectedOverflowProducerSlot = newValue }
     }
-    var inventoryOccupied: Int    { inventoryStore.inventoryOccupied }
-    var toolInventoryOccupied: Int { inventoryStore.toolInventoryOccupied }
-    var producerStorageOccupied: Int { inventoryStore.producerStorageOccupied }
-    var inventoryCapacity: Int    { inventoryStore.inventoryCapacity }
-    var toolInventoryCapacity: Int { inventoryStore.toolInventoryCapacity }
+    var inventoryOccupied: Int        { inventoryStore.inventoryOccupied }
+    var producerStorageOccupied: Int  { inventoryStore.producerStorageOccupied }
+    var inventoryCapacity: Int        { inventoryStore.inventoryCapacity }
     var producerOverflowCapacity: Int { inventoryStore.producerOverflowCapacity }
+
+    // Material accumulator passthroughs
+    func completedMaterialCount(chainID: ChainID) -> Int { inventoryStore.completedCount(chainID: chainID) }
+    func materialTierCounts(chainID: ChainID) -> [Int]   { inventoryStore.tierCounts(chainID: chainID) }
 
     // QuestCoordinator forwards
     var activeQuests: [Quest] {
@@ -396,6 +420,23 @@ class MergeBoardViewModel {
         return board[pos.row][pos.col].producer != nil
     }
 
+    /// True when the selected cell holds a mergeable animal item (not a producer, not a toolbox).
+    var selectedCellHasAnimalItem: Bool {
+        guard let pos = selectedCell,
+              pos.row < board.count,
+              pos.col < (board.first?.count ?? 0) else { return false }
+        let cell = board[pos.row][pos.col]
+        guard cell.producer == nil, let item = cell.item else { return false }
+        return item.chain?.category == .animal
+    }
+
+    /// Coin reward for selling an animal at the given tier index (0 = base, 14 = top tier).
+    func sellValue(forTier tier: Int) -> Int {
+        let scale = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 25000, 100000]
+        guard tier >= 0 && tier < scale.count else { return tier < 0 ? 1 : scale.last! }
+        return scale[tier]
+    }
+
     var selectedItemInfo: (text: String, chainID: ChainID?)? {
         if draggingFrom != nil {
             return ("Drag off-board to move to storage", nil)
@@ -406,12 +447,13 @@ class MergeBoardViewModel {
         let cell = board[pos.row][pos.col]
         if let producer = cell.producer {
             if producer.level == .familySpawner, let sp = producer.species {
-                return ("\(sp.spawnerName) · Tap to rescue \(sp.name) · costs \(spawnMultiplier) kibble", nil)
+                return ("\(sp.spawnerName) · Tap to rescue \(sp.name) · costs \(spawnMultiplier) kibble · 20% sub-object drop chance", nil)
             }
             return ("\(producer.level.displayName) · Tap to spawn · costs \(spawnMultiplier) kibble", nil)
         }
         if let item = cell.item, let def = item.def, let chain = item.chain {
-            let label = def.name + " " + chain.displayName
+            let levelPrefix = chain.category == .animal ? "Level \(item.tier + 1) · " : ""
+            let label = levelPrefix + def.name + " " + chain.displayName
             if item.isTopTier {
                 return (label + " · Ambassador — top tier", item.chainID)
             }
@@ -585,10 +627,10 @@ class MergeBoardViewModel {
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
         startTimer()
-        authenticateGameCenter { [self] playerID, alias in
-            self.gcIsAuthenticated  = true
-            self.gcLocalPlayerID    = playerID
-            self.gcLocalPlayerAlias = alias
+        authenticateGameCenter { [weak self] playerID, alias in
+            self?.gcIsAuthenticated  = true
+            self?.gcLocalPlayerID    = playerID
+            self?.gcLocalPlayerAlias = alias
         }
     }
 
@@ -634,7 +676,8 @@ class MergeBoardViewModel {
     }
 
     func setupQuests() {
-        quests.setupQuests(unlockedChainIDs: progression.unlockedChainIDs)
+        quests.setupQuests(unlockedChainIDs: progression.unlockedChainIDs,
+                           playerLevel: playerLevel)
     }
 
     func setupAdoptionOrders() {
@@ -645,14 +688,25 @@ class MergeBoardViewModel {
     }
 
     func startTimer() {
-        regenTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.timerTick() }
         }
+        RunLoop.main.add(t, forMode: .common)
+        regenTimer = t
     }
 
     @MainActor
     private func timerTick() {
         kibbleEngine.tick(bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
+        // Equines Sprint: second kibble tick and countdown.
+        if equineSprintRemaining > 0 {
+            kibbleEngine.tick(bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
+            equineSprintRemaining = max(0, equineSprintRemaining - 1)
+        }
+        // Marsupials Pouch: return stored items when timer fires.
+        if pouchExpiryTimestamp > 0 && Date().timeIntervalSince1970 >= pouchExpiryTimestamp {
+            returnPouchItems()
+        }
         adoptionBoardCoordinator.tick(unlockedChainIDs: progression.unlockedAnimalChainIDs,
                                       playerLevel: progression.playerLevel)
         tickProducers()
@@ -674,7 +728,7 @@ class MergeBoardViewModel {
             activeQuests: [], dailyChallenges: [], dailyChallengeStreak: 0,
             dailyChallengeBonusClaimed: false, adoptionOrders: [],
             spotlightMergesThisWeek: 0,
-            toolInventory: [], producerStorage: [:], overflowProducerStorage: [],
+            materialCounts: InventoryStore.emptyMaterialCounts(), producerStorage: [:], overflowProducerStorage: [],
             completedAreaIDs: completedAreaIDs, areaUpgradeLevels: areaUpgradeLevels,
             spawnMultiplier: 0,
             cardInventory: cardInventory, starCount: starCount,
@@ -705,6 +759,15 @@ class MergeBoardViewModel {
             pendingMaterialLots: pendingMaterialLots,
             lastActiveDate: Date()
         )
+        s.pityStates = pityStates
+        s.unlockedSuperpowerSpecies = unlockedSuperpowerSpecies
+        s.superpowerCooldownEnds    = superpowerCooldownEnds
+        s.lagomorphMergeCount       = lagomorphMergeCount
+        s.lastMergeTimestamp        = lastMergeTimestamp
+        s.lastMergedSpeciesRaw      = lastMergedSpeciesRaw
+        s.equineSprintRemaining     = equineSprintRemaining
+        s.pouchItems                = pouchItems
+        s.pouchExpiryTimestamp      = pouchExpiryTimestamp
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -769,6 +832,15 @@ class MergeBoardViewModel {
         weeklyGoldCompletions    = s.weeklyGoldCompletions
         monthlyGoalClaimed       = s.monthlyGoalClaimed
         lastMonthlyGoalReset     = s.lastMonthlyGoalReset
+        pityStates                = s.pityStates
+        unlockedSuperpowerSpecies = s.unlockedSuperpowerSpecies
+        superpowerCooldownEnds    = s.superpowerCooldownEnds
+        lagomorphMergeCount       = s.lagomorphMergeCount
+        lastMergeTimestamp        = s.lastMergeTimestamp
+        lastMergedSpeciesRaw      = s.lastMergedSpeciesRaw
+        equineSprintRemaining     = s.equineSprintRemaining
+        pouchItems                = s.pouchItems
+        pouchExpiryTimestamp      = s.pouchExpiryTimestamp
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -822,7 +894,7 @@ class MergeBoardViewModel {
         inventoryStore.inventory = Array(repeating: nil, count: totalInventorySlots)
         inventoryStore.inventoryRow1Unlocked = false
         inventoryStore.inventoryRow2Unlocked = false
-        inventoryStore.toolInventory = Array(repeating: nil, count: totalToolInventorySlots)
+        inventoryStore.materialCounts = InventoryStore.emptyMaterialCounts()
         inventoryStore.producerStorage = [:]
         inventoryStore.overflowProducerStorage = Array(repeating: nil, count: totalProducerOverflowSlots)
         completedAreaIDs = []; areaUpgradeLevels = [:]
@@ -839,6 +911,11 @@ class MergeBoardViewModel {
         passLastClaimDate = nil
         loyaltyClubDayIndex = 0; loyaltyClubLastClaimDate = nil; loyaltyClubStreak = 0
         eventProgress = EventProgress(); inviteProgress = InviteProgress()
+        unlockedSuperpowerSpecies = []; superpowerCooldownEnds = [:]
+        lagomorphMergeCount = 0; lastMergeTimestamp = 0; lastMergedSpeciesRaw = nil
+        equineSprintRemaining = 0; pouchItems = [nil, nil]; pouchExpiryTimestamp = 0
+        preMoveSnapshot = nil; leapMode = false; leapSourceCell = nil
+        showSuperpowerUnlockBanner = false; superpowerUnlockBannerSpecies = nil; showPouchPanel = false
         inventoryStore.showInventory = false
         showLoginReward = false
         progression.showLevelUpBanner = false
@@ -867,7 +944,10 @@ class MergeBoardViewModel {
 
         if producer.level == .familySpawner, let species = producer.species {
             // Family spawner — kibble-based, unlimited, species-specific animal chain
-            let cost = progression.spawnMultiplier
+            // Bask (Reptiles .turtle): half kibble cost.
+            let baseCost = progression.spawnMultiplier
+            let baskActive = species == .turtle && unlockedSuperpowerSpecies.contains(AnimalSpecies.turtle.rawValue)
+            let cost = baskActive ? max(1, baseCost / 2) : baseCost
             guard kibbleEngine.kibble >= cost else {
                 triggerToast(.noKibble); selectedCell = pos; return
             }
@@ -877,8 +957,58 @@ class MergeBoardViewModel {
             }
             let chainID = ContentRegistry.animalChainID(species)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
-            let spawnTier = min(progression.spawnMultiplier - 1, maxTier)
-            board[target.position.row][target.position.col].item = BoardItem(chainID: chainID, tier: spawnTier)
+            var spawnTier = min(progression.spawnMultiplier - 1, maxTier)
+
+            // High-Tier Drop guarantee: force tier ≥ 2 and consume the buff.
+            if producer.nextDropGuaranteedHighTier {
+                spawnTier = min(2, maxTier)
+                producer.nextDropGuaranteedHighTier = false
+                board[pos.row][pos.col].producer = producer
+            }
+            // Hibernate Bonus (Ursids .owl): after 5 idle minutes, force Stage 3 (tier 2).
+            let hibernateActive = unlockedSuperpowerSpecies.contains(AnimalSpecies.owl.rawValue)
+            if hibernateActive && lastMergeTimestamp > 0
+                && Date().timeIntervalSince1970 - lastMergeTimestamp >= 300 {
+                spawnTier = min(2, maxTier)
+                lastMergeTimestamp = Date().timeIntervalSince1970  // reset idle clock
+            }
+
+            var pityState = pityStates[species.rawValue] ?? PityState()
+            let dropResult = SubObjectSystem.resolveSpawnerDrop(
+                species: species,
+                pityState: &pityState,
+                spawnTier: spawnTier,
+                dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus,
+                pityTimerReduction: cachedActiveBonuses.pityTimerReduction
+            )
+            pityStates[species.rawValue] = pityState
+            let spawnedItem: BoardItem
+            switch dropResult {
+            case .animal(let tier):
+                spawnedItem = BoardItem(chainID: chainID, tier: tier)
+            case .subObject(let subChainID, _):
+                // Hoard (Rodents .hamster): sub-objects spawn at tier 1 (Stage 2) instead of tier 0.
+                let hoardActive = species == .hamster && unlockedSuperpowerSpecies.contains(AnimalSpecies.hamster.rawValue)
+                let subTier = hoardActive ? min(1, ContentRegistry.shared.chain(subChainID)?.maxTier ?? 0) : 0
+                spawnedItem = BoardItem(chainID: subChainID, tier: subTier)
+            }
+            board[target.position.row][target.position.col].item = spawnedItem
+            // Scout (Avians .bird): after spawning, pre-roll next drop and cache it.
+            if unlockedSuperpowerSpecies.contains(AnimalSpecies.bird.rawValue) {
+                var pityForPreview = pityStates[species.rawValue] ?? PityState()
+                let preview = SubObjectSystem.resolveSpawnerDrop(
+                    species: species,
+                    pityState: &pityForPreview,
+                    spawnTier: spawnTier,
+                    dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus,
+                    pityTimerReduction: cachedActiveBonuses.pityTimerReduction
+                )
+                if var p = board[pos.row][pos.col].producer {
+                    if case .subObject = preview { p.scoutPreviewIsSubObject = true }
+                    else { p.scoutPreviewIsSubObject = false }
+                    board[pos.row][pos.col].producer = p
+                }
+            }
             kibbleEngine.kibble -= cost
             if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
                 NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
@@ -951,9 +1081,28 @@ class MergeBoardViewModel {
     private func tickProducers() {
         for row in 0..<rows {
             for col in 0..<cols {
-                guard var p = board[row][col].producer, !p.isReady else { continue }
-                p.cooldownRemaining = max(0, p.cooldownRemaining - 1)
-                board[row][col].producer = p
+                guard var p = board[row][col].producer else { continue }
+
+                let snapshot = p
+
+                // Tick down speed-burst timer (applies to all producer types).
+                if p.speedBurstActive {
+                    p.speedBurstRemaining -= 1
+                    if p.speedBurstRemaining <= 0 {
+                        p.speedBurstActive = false
+                        p.speedBurstRemaining = 0
+                    }
+                }
+
+                // Advance cooldown for supply producers.
+                // Family spawners are always ready — skip the cooldown math entirely.
+                if p.level != .familySpawner && !p.isReady {
+                    let increment: Double = p.speedBurstActive ? 2.0 : 1.0
+                    p.cooldownRemaining = max(0, p.cooldownRemaining - increment)
+                }
+
+                // Only write back when something actually changed.
+                if p != snapshot { board[row][col].producer = p }
             }
         }
     }
@@ -1001,8 +1150,33 @@ class MergeBoardViewModel {
 
     func boardCellTapped(at pos: GridPosition) {
         HapticManager.shared.lightTap()
+
+        // Leap mode: two-step teleport interaction takes priority over everything else.
+        if leapMode { handleLeapTap(at: pos); return }
+
+        // Pouch mode: tap an animal to store it in the Pouch.
+        if showPouchPanel {
+            if !pouchStore(from: pos) {
+                if pouchItems[0] != nil && pouchItems[1] != nil {
+                    enqueueToast(Toast(kind: .info("Pouch is full (2 slots).")))
+                }
+            }
+            return
+        }
+
+        // Power-up apply: if a power-up is selected, try to apply it to a family spawner.
+        if selectedPowerUpSlot != nil {
+            if board[pos.row][pos.col].producer?.level == .familySpawner {
+                applyPowerUpToSpawner(at: pos)
+                return
+            } else {
+                // Tapped elsewhere — deselect power-up without applying.
+                selectedPowerUpSlot = nil
+            }
+        }
+
         if board[pos.row][pos.col].item?.chainID == ContentRegistry.toolboxChainID {
-            dispenseMaterialFromToolbox(at: pos)
+            absorbToolbox(at: pos)
             return
         }
         if board[pos.row][pos.col].producer != nil {
@@ -1021,6 +1195,59 @@ class MergeBoardViewModel {
             inventoryStore.selectedInventorySlot = nil
             selectedCell = pos
         }
+    }
+
+    // MARK: Power-up selection and application
+
+    /// Selects or deselects a power-up slot in `powerUpInventory`.
+    /// Also clears `selectedCell` so the board selection and power-up selection don't fight.
+    func powerUpSlotTapped(_ slot: Int) {
+        guard slot < inventoryStore.powerUpInventory.count,
+              inventoryStore.powerUpInventory[slot] != nil else {
+            selectedPowerUpSlot = nil
+            return
+        }
+        if selectedPowerUpSlot == slot {
+            selectedPowerUpSlot = nil
+        } else {
+            selectedPowerUpSlot = slot
+            selectedCell = nil
+        }
+    }
+
+    /// Applies the currently selected power-up to the family spawner at `pos`.
+    /// Consumes the power-up from inventory and shows a toast.
+    func applyPowerUpToSpawner(at pos: GridPosition) {
+        guard let slot = selectedPowerUpSlot,
+              let powerUpItem = inventoryStore.powerUpInventory[slot],
+              var producer = board[pos.row][pos.col].producer,
+              producer.level == .familySpawner else {
+            selectedPowerUpSlot = nil
+            return
+        }
+        guard let effect = SubObjectSystem.powerUpEffect(for: powerUpItem) else {
+            selectedPowerUpSlot = nil
+            return
+        }
+
+        SubObjectSystem.applyPowerUp(effect: effect, to: &producer, viewModel: self,
+                                     powerUpDurationBonus: cachedActiveBonuses.powerUpDurationBonus)
+        board[pos.row][pos.col].producer = producer
+
+        inventoryStore.powerUpInventory[slot] = nil
+        selectedPowerUpSlot = nil
+
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+
+        let message: String
+        switch effect {
+        case .speedBurst:     message = "⚡ Speed Burst activated!"
+        case .spawnerRefill:  message = "🐾 Bonus kibble added!"
+        case .highTierDrop:   message = "⭐ High-Tier Drop guaranteed!"
+        case .mapSupplies:    message = "🪵 Map Supplies added!"
+        }
+        enqueueToast(Toast(kind: .info(message)))
     }
 
     func attemptMergeOrMove(from: GridPosition, to: GridPosition) {
@@ -1059,6 +1286,8 @@ class MergeBoardViewModel {
             if srcItem.chainID == dstItem.chainID,
                srcItem.tier == dstItem.tier,
                let next = ContentRegistry.shared.nextTier(srcItem.chainID, after: srcItem.tier) {
+                // Nine Lives snapshot — taken before the board state changes.
+                preMoveSnapshot = BoardSnapshot(board: board, inventory: inventoryStore.inventory)
                 board[to.row][to.col].item   = BoardItem(chainID: srcItem.chainID, tier: next)
                 board[from.row][from.col].item = nil
                 SoundManager.shared.playMerge()
@@ -1072,8 +1301,31 @@ class MergeBoardViewModel {
                     triggerTopTierCelebration(chainID: srcItem.chainID)
                 }
                 mergeCount += 1
+                lastMergeTimestamp = Date().timeIntervalSince1970
+                let mergedSpecies = AnimalSpecies(rawValue: srcItem.chainID.replacingOccurrences(of: "animal.", with: ""))
+                if let sp = mergedSpecies { lastMergedSpeciesRaw = sp.rawValue }
                 recalcBoardIsFull()
                 updateAllAfterMerge(chainID: srcItem.chainID, tier: next)
+                if let sp = mergedSpecies { checkSuperpowerUnlock(species: sp, tier: next) }
+                applyPassivePowers(mergedSpecies: mergedSpecies, mergePos: to, emptyPos: from)
+                // Power-up routing: power-up chain items and completed sub-objects (tier 3)
+                // are auto-moved to power-up inventory rather than left on the board.
+                let mergedChain = ContentRegistry.shared.chain(srcItem.chainID)
+                let isCompletedSubObject = mergedChain?.category == .subObject
+                    && next == mergedChain?.maxTier
+                if mergedChain?.category == .powerUp || isCompletedSubObject {
+                    if let powerUpItem = board[to.row][to.col].item {
+                        board[to.row][to.col].item = nil
+                        inventoryStore.addItem(powerUpItem)
+                        recalcBoardIsFull()
+                        SoundManager.shared.playQuestClaim()
+                        HapticManager.shared.successPattern()
+                        let msg = isCompletedSubObject
+                            ? "Consumable ready! Check your Supplies."
+                            : "Power-up earned! Check your Supplies."
+                        enqueueToast(Toast(kind: .info(msg)))
+                    }
+                }
                 animatingCell = to
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(600))
@@ -1096,7 +1348,6 @@ class MergeBoardViewModel {
         if inventoryStore.addItem(item) {
             board[pos.row][pos.col].item = nil
             recalcBoardIsFull()
-            maybeFlushPendingToolboxes()
         } else {
             triggerToast(.inventoryFull)
         }
@@ -1111,6 +1362,24 @@ class MergeBoardViewModel {
         } else {
             triggerToast(.inventoryFull)
         }
+    }
+
+    /// Sells the animal on the currently selected cell for coins.
+    func sellSelectedAnimal() {
+        guard let pos = selectedCell,
+              pos.row < board.count,
+              pos.col < (board.first?.count ?? 0),
+              board[pos.row][pos.col].producer == nil,
+              let item = board[pos.row][pos.col].item,
+              item.chain?.category == .animal else { return }
+        let value = sellValue(forTier: item.tier)
+        board[pos.row][pos.col].item = nil
+        earnCoins(value)
+        selectedCell = nil
+        recalcBoardIsFull()
+        SoundManager.shared.playButtonTap()
+        HapticManager.shared.lightTap()
+        enqueueToast(Toast(kind: .info("+\(value) Coins")))
     }
 
     /// Called after every level-up. Unlocks any rows whose required level has been reached.
@@ -1163,27 +1432,6 @@ class MergeBoardViewModel {
 
     func dismissAmbassadorBanner() {
         withAnimation(.easeOut(duration: 0.3)) { showAmbassadorBanner = false }
-    }
-
-    // MARK: Sanctuary Star milestone — rare species unlock (50 stars)
-
-    /// Unlocks the Aquatics (fish) family chain and places a family spawner on the board.
-    /// Called by MilestoneManager to keep board mutation (incl. recalcBoardIsFull) internal.
-    func placeRareSpeciesSpawnerForMilestone() {
-        let species  = AnimalSpecies.fish
-        let chainID  = ContentRegistry.animalChainID(species)
-        if !progression.unlockedChainIDs.contains(chainID) {
-            progression.unlockedChainIDs.append(chainID)
-        }
-        let spawner = ProducerTile(level: .familySpawner, species: species)
-        let empty   = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
-        if let target = empty.randomElement() {
-            board[target.position.row][target.position.col].producer = spawner
-            recalcBoardIsFull()
-        } else {
-            // Board full — queue in overflow so player can retrieve from inventory.
-            inventoryStore.overflowProducerStorage.append(spawner)
-        }
     }
 
     // MARK: Ambassador Collection Quest
@@ -1254,19 +1502,6 @@ class MergeBoardViewModel {
 
     func unlockInventoryRow2() {
         inventoryStore.unlockRow2(deductingFrom: &kibbleEngine.dogTags)
-    }
-
-    func toolSlotTapped(_ slot: Int) {
-        inventoryStore.toolSlotTapped(slot)
-    }
-
-    func placeSelectedToolItemOnBoard() {
-        guard inventoryStore.selectedToolSlot != nil else { return }
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
-        guard let target = empty.first else { triggerToast(.boardFull); return }
-        guard let item = inventoryStore.consumeSelectedToolItem() else { return }
-        board[target.position.row][target.position.col].item = item
-        recalcBoardIsFull()
     }
 
     @discardableResult
@@ -1512,6 +1747,12 @@ class MergeBoardViewModel {
     func updateAllAfterMerge(chainID: ChainID, tier: Int) {
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
         quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)
+        // Memory (Pachyderms .hedgehog): quest/challenge progress counts double.
+        let hedgehogChain = ContentRegistry.animalChainID(.hedgehog)
+        if chainID == hedgehogChain && unlockedSuperpowerSpecies.contains(AnimalSpecies.hedgehog.rawValue) {
+            quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
+            quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)
+        }
         if let rewards = quests.checkAllDailyChallengesComplete(
             coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
             applyQuestRewards(rewards)
@@ -1521,7 +1762,6 @@ class MergeBoardViewModel {
             kibbleEngine.kibble  += rewards.kibble
             kibbleEngine.dogTags += rewards.dogTags
         }
-        maybeFlushPendingToolboxes()
     }
 
     func updateAllAfterRescue() {
@@ -1531,6 +1771,235 @@ class MergeBoardViewModel {
             coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
             applyQuestRewards(rewards)
         }
+    }
+
+    // MARK: Superpower System
+
+    /// Check whether the just-merged family should unlock its superpower now.
+    private func checkSuperpowerUnlock(species: AnimalSpecies, tier: Int) {
+        guard tier == Superpower.unlockTier else { return }
+        guard !unlockedSuperpowerSpecies.contains(species.rawValue) else { return }
+        unlockedSuperpowerSpecies.append(species.rawValue)
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        showSuperpowerUnlockBanner = true
+        superpowerUnlockBannerSpecies = species
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            self.showSuperpowerUnlockBanner = false
+        }
+    }
+
+    /// Place a free tile at a random empty cell. Returns false if the board is full.
+    @discardableResult
+    private func placeFreeTile(chainID: ChainID, tier: Int) -> Bool {
+        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        guard let target = empty.randomElement() else { return false }
+        board[target.position.row][target.position.col].item = BoardItem(chainID: chainID, tier: tier)
+        recalcBoardIsFull()
+        animatingCell = target.position
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            self.animatingCell = nil
+        }
+        return true
+    }
+
+    /// Fire all passive superpowers that trigger on a successful merge.
+    private func applyPassivePowers(mergedSpecies: AnimalSpecies?, mergePos: GridPosition, emptyPos: GridPosition) {
+        guard let species = mergedSpecies else { return }
+        let unlocked = unlockedSuperpowerSpecies
+
+        // Fetch! (Canines .dog): every 5th merge spawns a free Stage-1 Canine.
+        if unlocked.contains(AnimalSpecies.dog.rawValue) && mergeCount % 5 == 0 {
+            placeFreeTile(chainID: ContentRegistry.animalChainID(.dog), tier: 0)
+        }
+
+        // Multiply (Lagomorphs .rabbit): every 4th Lagomorph merge spawns 2 Stage-1 Lagomorphs.
+        if species == .rabbit && unlocked.contains(AnimalSpecies.rabbit.rawValue) {
+            lagomorphMergeCount += 1
+            if lagomorphMergeCount % 4 == 0 {
+                let rabbitChain = ContentRegistry.animalChainID(.rabbit)
+                placeFreeTile(chainID: rabbitChain, tier: 0)
+                placeFreeTile(chainID: rabbitChain, tier: 0)
+            }
+        }
+
+        // Antler Drop (Cervids .fox): 25% chance to drop a bonus Stage-2 sub-object.
+        if species == .fox && unlocked.contains(AnimalSpecies.fox.rawValue) {
+            if Int.random(in: 0..<4) == 0 {
+                let subChain = "subobject.\(AnimalSpecies.fox.rawValue)"
+                let maxSub = ContentRegistry.shared.chain(subChain)?.maxTier ?? 3
+                placeFreeTile(chainID: subChain, tier: min(1, maxSub))
+            }
+        }
+
+        // Current (Aquatics .fish): adjacent sub-objects slide toward the newly empty cell.
+        if unlocked.contains(AnimalSpecies.fish.rawValue) {
+            applyAquaticsCurrent(emptyPos: emptyPos)
+        }
+    }
+
+    /// Slide any adjacent sub-object items into `emptyPos` (first one found wins).
+    private func applyAquaticsCurrent(emptyPos: GridPosition) {
+        let neighbors = [
+            GridPosition(row: emptyPos.row - 1, col: emptyPos.col),
+            GridPosition(row: emptyPos.row + 1, col: emptyPos.col),
+            GridPosition(row: emptyPos.row,     col: emptyPos.col - 1),
+            GridPosition(row: emptyPos.row,     col: emptyPos.col + 1),
+        ]
+        for neighbor in neighbors {
+            guard neighbor.row >= 0, neighbor.row < rows,
+                  neighbor.col >= 0, neighbor.col < cols else { continue }
+            guard let item = board[neighbor.row][neighbor.col].item else { continue }
+            guard ContentRegistry.shared.chain(item.chainID)?.category == .subObject else { continue }
+            board[emptyPos.row][emptyPos.col].item = item
+            board[neighbor.row][neighbor.col].item = nil
+            return
+        }
+    }
+
+    // MARK: Active superpower dispatch
+
+    /// Called by the UI button strip. Checks cooldown and dispatches to the specific handler.
+    func activateSuperpower(for species: AnimalSpecies) {
+        guard case .active(let cooldown) = species.superpower.kind else { return }
+        guard unlockedSuperpowerSpecies.contains(species.rawValue) else { return }
+        let now = Date().timeIntervalSince1970
+        if let expiry = superpowerCooldownEnds[species.rawValue], now < expiry { return }
+        switch species {
+        case .cat:       activateNineLives()
+        case .guineaPig: activateStampede()
+        case .pony:      activateSprint()
+        case .lizard:    initiateLeap()
+        case .parrot:    activateMimic()
+        case .ferret:    activatePouch()
+        default: return
+        }
+        superpowerCooldownEnds[species.rawValue] = now + cooldown
+        HapticManager.shared.mediumImpact()
+    }
+
+    // Nine Lives (Felines .cat): undo last merge.
+    private func activateNineLives() {
+        guard let snap = preMoveSnapshot else {
+            enqueueToast(Toast(kind: .info("No merge to undo yet."))); return
+        }
+        board = snap.board
+        inventoryStore.inventory = snap.inventory
+        rows = board.count
+        recalcBoardIsFull()
+        preMoveSnapshot = nil
+        SoundManager.shared.playQuestClaim()
+    }
+
+    // Stampede (Ungulates .guineaPig): merge all same-family same-stage pairs.
+    private func activateStampede() {
+        var changed = true
+        while changed {
+            changed = false
+            let cells = board.flatMap { $0 }.filter { $0.item != nil }
+            // Build a frequency map: chainID+tier → [positions]
+            var groups: [String: [GridPosition]] = [:]
+            for cell in cells {
+                guard let item = cell.item else { continue }
+                let key = "\(item.chainID)|\(item.tier)"
+                groups[key, default: []].append(cell.position)
+            }
+            for (_, positions) in groups where positions.count >= 2 {
+                let a = positions[0]; let b = positions[1]
+                guard let itemA = board[a.row][a.col].item else { continue }
+                guard let next = ContentRegistry.shared.nextTier(itemA.chainID, after: itemA.tier) else { continue }
+                board[b.row][b.col].item = BoardItem(chainID: itemA.chainID, tier: next)
+                board[a.row][a.col].item = nil
+                mergeCount += 1
+                lastMergeTimestamp = Date().timeIntervalSince1970
+                updateAllAfterMerge(chainID: itemA.chainID, tier: next)
+                changed = true
+            }
+        }
+        recalcBoardIsFull()
+        SoundManager.shared.playMerge()
+    }
+
+    // Sprint (Equines .pony): double kibble regen for 60 seconds.
+    private func activateSprint() {
+        equineSprintRemaining = 60.0
+        enqueueToast(Toast(kind: .info("Kibble regen doubled for 60 s!")))
+    }
+
+    // Leap (Amphibians .lizard): enter two-step teleport mode.
+    private func initiateLeap() {
+        leapMode = true
+        leapSourceCell = nil
+        enqueueToast(Toast(kind: .info("Leap: tap an Amphibian, then an empty cell.")))
+    }
+
+    /// Call from the UI when Leap mode is active and the player taps a cell.
+    func handleLeapTap(at pos: GridPosition) {
+        guard leapMode else { return }
+        if leapSourceCell == nil {
+            // First tap — select the animal to teleport.
+            guard let item = board[pos.row][pos.col].item else { return }
+            guard let species = AnimalSpecies(rawValue: item.chainID.replacingOccurrences(of: "animal.", with: "")),
+                  species == .lizard else {
+                enqueueToast(Toast(kind: .info("Tap an Amphibian tile."))); return
+            }
+            leapSourceCell = pos
+        } else {
+            // Second tap — move to empty destination.
+            guard let src = leapSourceCell else { return }
+            guard board[pos.row][pos.col].isEmpty, board[pos.row][pos.col].isUnlocked else {
+                enqueueToast(Toast(kind: .info("Tap an empty cell for the destination."))); return
+            }
+            board[pos.row][pos.col].item = board[src.row][src.col].item
+            board[src.row][src.col].item = nil
+            leapMode = false; leapSourceCell = nil
+            recalcBoardIsFull()
+            SoundManager.shared.playMerge()
+        }
+    }
+
+    // Mimic (Primates .parrot): spawn a Stage-1 of the last merged family.
+    private func activateMimic() {
+        guard let rawValue = lastMergedSpeciesRaw,
+              let species = AnimalSpecies(rawValue: rawValue) else {
+            enqueueToast(Toast(kind: .info("Merge something first!"))); return
+        }
+        let chainID = ContentRegistry.animalChainID(species)
+        if !placeFreeTile(chainID: chainID, tier: 0) {
+            enqueueToast(Toast(kind: .info("Board is full!")))
+        }
+    }
+
+    // Pouch (Marsupials .ferret): store up to 2 animals off-board for 30 s.
+    private func activatePouch() {
+        pouchItems = [nil, nil]
+        pouchExpiryTimestamp = Date().timeIntervalSince1970 + 30
+        showPouchPanel = true
+    }
+
+    /// Move an item from the board into the Pouch. Returns true on success.
+    func pouchStore(from pos: GridPosition) -> Bool {
+        guard let item = board[pos.row][pos.col].item else { return false }
+        if pouchItems[0] == nil { pouchItems[0] = item }
+        else if pouchItems[1] == nil { pouchItems[1] = item }
+        else { return false }
+        board[pos.row][pos.col].item = nil
+        recalcBoardIsFull()
+        return true
+    }
+
+    /// Auto-return Pouch items to the board (or inventory) when the timer expires.
+    func returnPouchItems() {
+        pouchExpiryTimestamp = 0
+        showPouchPanel = false
+        for item in pouchItems.compactMap({ $0 }) {
+            if !placeFreeTile(chainID: item.chainID, tier: item.tier) {
+                inventoryStore.addItem(item)
+            }
+        }
+        pouchItems = [nil, nil]
     }
 
     private func applyQuestRewards(_ r: QuestRewards) {
@@ -1548,14 +2017,16 @@ class MergeBoardViewModel {
     // MARK: Quest logic
 
     func generateQuest() -> Quest {
-        quests.generateQuest(unlockedChainIDs: progression.unlockedChainIDs)
+        quests.generateQuest(unlockedChainIDs: progression.unlockedChainIDs,
+                             playerLevel: playerLevel)
     }
 
     func setupQuestsPublic() { setupQuests() }
 
     func claimQuest(id: UUID) {
         guard let quest = quests.claimAndReplace(questID: id,
-                                                 unlockedChainIDs: progression.unlockedChainIDs)
+                                                 unlockedChainIDs: progression.unlockedChainIDs,
+                                                 playerLevel: playerLevel)
         else { return }
         kibbleEngine.kibble  += withPassBonus(quest.kibbleReward)
         kibbleEngine.dogTags += quest.dogTagReward + cachedActiveBonuses.questDogTagBonus
@@ -1573,68 +2044,47 @@ class MergeBoardViewModel {
         default: break
         }
         switch quest.difficulty {
-        case .medium    where Int.random(in: 1...4) == 1: placeToolbox()
-        case .hard:      placeToolbox()
-        case .legendary: placeToolbox(); placeToolbox()
+        case .easy      where Int.random(in: 1...4) == 1: placeToolbox()
+        case .medium:    placeToolbox()
+        case .hard:      placeToolbox(); placeToolbox()
+        case .legendary: placeToolbox(); placeToolbox(); placeToolbox()
         default: break
         }
     }
 
     private func placeToolbox() {
-        pendingMaterialLots.append(buildToolboxLot())
+        let lot = buildToolboxLot()
         let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
         if let target = empty.randomElement() {
+            pendingMaterialLots.append(lot)
             board[target.position.row][target.position.col].item =
                 BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
             recalcBoardIsFull()
+        } else {
+            // Board full — absorb materials immediately; no tile placed.
+            inventoryStore.absorbMaterialItems(lot)
+            enqueueToast(Toast(kind: .info("Materials collected! (\(lot.count) items)")))
         }
-        // Board-full case: lot is queued; maybeFlushPendingToolboxes places the tile when space opens.
     }
 
-    /// Tap a toolbox tile to dispense one material item onto the board.
-    /// The tile stays until all items in its lot have been collected.
-    func dispenseMaterialFromToolbox(at pos: GridPosition) {
+    /// Tap a toolbox tile to instantly absorb all materials from its lot into the accumulator.
+    func absorbToolbox(at pos: GridPosition) {
         guard board[pos.row][pos.col].item?.chainID == ContentRegistry.toolboxChainID else { return }
-        guard !pendingMaterialLots.isEmpty else {
-            board[pos.row][pos.col].item = nil
-            selectedCell = nil
-            recalcBoardIsFull()
-            persist()
-            return
+        let lot = pendingMaterialLots.isEmpty ? [] : pendingMaterialLots.removeFirst()
+        inventoryStore.absorbMaterialItems(lot)
+        board[pos.row][pos.col].item = nil
+        selectedCell = nil
+        if !lot.isEmpty {
+            let woodCount   = lot.filter { $0.chainID == ContentRegistry.woodChainID }.count
+            let metalCount  = lot.filter { $0.chainID == ContentRegistry.metalChainID }.count
+            let cementCount = lot.filter { $0.chainID == ContentRegistry.cementChainID }.count
+            var parts: [String] = []
+            if woodCount   > 0 { parts.append("Wood ×\(woodCount)") }
+            if metalCount  > 0 { parts.append("Metal ×\(metalCount)") }
+            if cementCount > 0 { parts.append("Cement ×\(cementCount)") }
+            enqueueToast(Toast(kind: .info("Toolbox collected! \(parts.joined(separator: ", "))")))
         }
-        let emptyCells = board.flatMap { $0 }.filter {
-            $0.isUnlocked && $0.isEmpty && $0.position != pos && $0.producer == nil
-        }
-        guard let target = emptyCells.randomElement() else {
-            enqueueToast(Toast(kind: .info("Board is full! Clear some space to collect materials.")))
-            return
-        }
-        let item = pendingMaterialLots[0].removeFirst()
-        board[target.position.row][target.position.col].item = item
-        if pendingMaterialLots[0].isEmpty {
-            pendingMaterialLots.removeFirst()
-            board[pos.row][pos.col].item = nil
-            selectedCell = nil
-            enqueueToast(Toast(kind: .info("Toolbox emptied!")))
-        }
-        recalcBoardIsFull()
-        persist()
-    }
-
-    func openToolboxFromInventory(slot: Int) {
-        guard let item = inventoryStore.toolInventory[slot],
-              item.chainID == ContentRegistry.toolboxChainID else { return }
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
-        guard let target = empty.randomElement() else {
-            enqueueToast(Toast(kind: .info("Board is full! Make space to place the toolbox.")))
-            return
-        }
-        inventoryStore.toolInventory[slot] = nil
-        inventoryStore.selectedToolSlot = nil
-        inventoryStore.recalcToolInventoryOccupied()
-        pendingMaterialLots.append(buildToolboxLot())
-        board[target.position.row][target.position.col].item =
-            BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
+        SoundManager.shared.playButtonTap()
         recalcBoardIsFull()
         persist()
     }
@@ -1656,16 +2106,6 @@ class MergeBoardViewModel {
 
     private var boardToolboxCount: Int {
         board.flatMap { $0 }.filter { $0.item?.chainID == ContentRegistry.toolboxChainID }.count
-    }
-
-    private func maybeFlushPendingToolboxes() {
-        while pendingMaterialLots.count > boardToolboxCount {
-            let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
-            guard let target = empty.randomElement() else { break }
-            board[target.position.row][target.position.col].item =
-                BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
-            recalcBoardIsFull()
-        }
     }
 
     private func weightedToolboxTier(max maxTier: Int) -> Int {
@@ -1711,6 +2151,7 @@ class MergeBoardViewModel {
         kibbleEngine.kibble  += reward.kibble
         kibbleEngine.dogTags += reward.dogTags
         showLoginReward = false
+        persist()
     }
 
     // MARK: Adoption Order Board
@@ -1822,6 +2263,7 @@ class MergeBoardViewModel {
         passLastClaimDate = Date()
         kibbleEngine.kibble += passDailyKibble
         enqueueToast(Toast(kind: .info("Sanctuary Pass: +\(passDailyKibble) Kibble")))
+        persist()
     }
 
     // MARK: Loyalty Club
@@ -1855,7 +2297,22 @@ class MergeBoardViewModel {
         guard let idx = sanctuaryAreas.firstIndex(where: { $0.id == area.id }), idx > 0 else {
             return false
         }
+        let prev = sanctuaryAreas[idx - 1]
+        guard completedAreaIDs.contains(prev.id) else { return false }
+        return (areaUpgradeLevels[prev.id] ?? 0) >= prev.upgrades.count
+    }
+
+    func isAreaPreviousBuilt(_ area: SanctuaryArea) -> Bool {
+        guard area.requiresPrevious else { return true }
+        guard let idx = sanctuaryAreas.firstIndex(where: { $0.id == area.id }), idx > 0 else { return false }
         return completedAreaIDs.contains(sanctuaryAreas[idx - 1].id)
+    }
+
+    func isPreviousFullyUpgraded(_ area: SanctuaryArea) -> Bool {
+        guard area.requiresPrevious else { return true }
+        guard let idx = sanctuaryAreas.firstIndex(where: { $0.id == area.id }), idx > 0 else { return false }
+        let prev = sanctuaryAreas[idx - 1]
+        return (areaUpgradeLevels[prev.id] ?? 0) >= prev.upgrades.count
     }
 
     func canAffordArea(_ area: SanctuaryArea) -> Bool {

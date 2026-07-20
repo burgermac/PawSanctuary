@@ -51,8 +51,10 @@ struct GameState: Codable {
     // Spotlight
     var spotlightMergesThisWeek: Int
 
-    // Material storage & producer storage (Phase 3)
-    var toolInventory: [BoardItem?]                // .tool and .material items stashed here
+    // Material accumulator & producer storage (Phase 3)
+    /// Per-tier counts for each material chain. Keys are ChainIDs; values are [Int] of length 6.
+    /// Replaces the old slot-based toolInventory (v20 → v21 migration).
+    var materialCounts: [ChainID: [Int]]
     /// Designated storage: one slot per ProducerLevel, keyed by rawValue.
     /// Slots are shown as grayed-out until playerLevel >= level.storageUnlockLevel.
     var producerStorage: [Int: ProducerTile]
@@ -127,6 +129,20 @@ struct GameState: Codable {
     // Material dispensing queue (v20) — one lot per pending toolbox; player taps tile to collect one item at a time
     var pendingMaterialLots: [[BoardItem]] = []
 
+    // Pity tracking (v22/v23) — per-family spawner pity state (spawnsSinceLastRare/Epic).
+    // Keys are ChainIDs; values are PityState structs. Reset to [:] on migration from v22.
+    var pityStates: [String: PityState] = [:]
+
+    // Superpower system (v24) — per-family unlock + active-ability runtime state.
+    var unlockedSuperpowerSpecies: [String] = []       // AnimalSpecies.rawValue of unlocked families
+    var superpowerCooldownEnds: [String: Double] = [:] // species.rawValue → Unix timestamp (when cooldown expires)
+    var lagomorphMergeCount: Int = 0                   // Lagomorphs Multiply: every 4th merge spawns 2 Stage-1s
+    var lastMergeTimestamp: Double = 0                 // Unix timestamp of last successful merge (Ursids Hibernate)
+    var lastMergedSpeciesRaw: String? = nil            // Primates Mimic: family of the last successful merge
+    var equineSprintRemaining: Double = 0              // seconds of Sprint (Equines) currently active
+    var pouchItems: [BoardItem?] = [nil, nil]          // Marsupials Pouch: 2 off-board storage slots
+    var pouchExpiryTimestamp: Double = 0               // Unix timestamp when Pouch expires (0 = inactive)
+
     /// Wall-clock time the snapshot was taken, used to advance timers for the
     /// span the app was closed. Optional so pre-existing saves still decode.
     var lastActiveDate: Date?
@@ -177,7 +193,10 @@ enum GameStore {
     ///      reachTier(.animal) goals down by 1 (clamped at 0).
     /// v19: ambassador collection quest — ambassadorQuestProgress.
     /// v20: material dispensing queue — pendingMaterialLots (toolbox tap-to-collect).
-    static let currentVersion = 20
+    /// v21: limitless material accumulator — toolInventory replaced by materialCounts dict.
+    /// v22: pity tracking — pityStates dict added (additive; empty default for old saves).
+    /// v23: pityStates type changed [String:Int]→[String:PityState]; sub-object chains registered.
+    static let currentVersion = 24
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -210,18 +229,23 @@ enum GameStore {
     // MARK: Public API
 
     /// Fast local save — used by the per-second autosave. Writes the main file only.
+    /// State is captured on the caller's actor; encoding and disk I/O run on a utility thread.
     static func save(_ state: GameState) {
-        guard let data = encode(state) else { return }
-        writeLocal(data)
+        Task.detached(priority: .utility) {
+            guard let data = encode(state) else { return }
+            writeLocal(data)
+        }
     }
 
     /// Local save **plus** an iCloud push. Call at meaningful moments (e.g. when the
     /// app backgrounds) so another device gets the latest state, without paying for
     /// cloud writes every single second.
     static func saveAndSync(_ state: GameState) {
-        guard let data = encode(state) else { return }
-        writeLocal(data)
-        writeCloud(data)
+        Task.detached(priority: .utility) {
+            guard let data = encode(state) else { return }
+            writeLocal(data)
+            writeCloud(data)
+        }
     }
 
     /// Loads the best available state: reconciles the local file and the iCloud copy
@@ -300,6 +324,10 @@ enum GameStore {
         if version == 17 { return migrateV17toV18(data) }
         if version == 18 { return migrateByInjecting(defaults: ["ambassadorQuestProgress": 0], into: data) }
         if version == 19 { return migrateByInjecting(defaults: ["pendingMaterialLots": []], into: data) }
+        if version == 20 { return migrateV20toV21(data) }
+        if version == 21 { return migrateV21toV22(data) }
+        if version == 22 { return migrateV22toV23(data) }
+        if version == 23 { return migrateV23toV24(data) }
         guard version == currentVersion else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: data) }
         catch { assertionFailure("GameStore: decode v\(version) failed — \(error)"); return nil }
@@ -412,6 +440,85 @@ enum GameStore {
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migrateV17 decode failed — \(error)"); return nil }
+    }
+
+    /// v20 → v21: replace slot-based toolInventory with materialCounts accumulator.
+    /// Salvages any .material BoardItems from the old toolInventory into per-tier counts.
+    /// Board-level material items and pending toolbox lots are cleared.
+    private static func migrateV20toV21(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        // Build materialCounts from any .material items in the old toolInventory.
+        var wood   = Array(repeating: 0, count: 6)
+        var metal  = Array(repeating: 0, count: 6)
+        var cement = Array(repeating: 0, count: 6)
+
+        if let old = json["toolInventory"] as? [Any] {
+            for entry in old {
+                guard let item = entry as? [String: Any],
+                      let chainID = item["chainID"] as? String,
+                      let tier = item["tier"] as? Int,
+                      tier >= 0 && tier <= 5 else { continue }
+                switch chainID {
+                case ContentRegistry.woodChainID:   wood[tier]   += 1
+                case ContentRegistry.metalChainID:  metal[tier]  += 1
+                case ContentRegistry.cementChainID: cement[tier] += 1
+                default: break
+                }
+            }
+        }
+
+        // Cascade each chain so tier-5 counts reflect completed materials.
+        func cascade(_ counts: inout [Int]) {
+            for t in 0..<5 { while counts[t] >= 2 { counts[t] -= 2; counts[t+1] += 1 } }
+        }
+        cascade(&wood); cascade(&metal); cascade(&cement)
+
+        json["materialCounts"] = [
+            ContentRegistry.woodChainID:   wood,
+            ContentRegistry.metalChainID:  metal,
+            ContentRegistry.cementChainID: cement
+        ]
+        json.removeValue(forKey: "toolInventory")
+        json["pendingMaterialLots"] = []          // clear mid-session queued lots
+
+        json["version"] = currentVersion
+        guard let reencoded = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        do { return try JSONDecoder().decode(GameState.self, from: reencoded) }
+        catch { assertionFailure("GameStore: migrateV20toV21 decode failed — \(error)"); return nil }
+    }
+
+    /// v21 → v22: additive migration — injects an empty pityStates dict so the field
+    /// decodes cleanly on saves that predate the 15-tier chain expansion.
+    private static func migrateV21toV22(_ data: Data) -> GameState? {
+        return migrateByInjecting(defaults: ["pityStates": [:]], into: data)
+    }
+
+    /// v22 → v23: pityStates type changed from [String:Int] to [String:PityState].
+    /// Any saved Int-valued pity counters are discarded; the field resets to [:].
+    /// (In practice pityStates was always empty in v22 — pity logic was not yet wired.)
+    private static func migrateV22toV23(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        // Overwrite (or inject) pityStates with an empty dict safe for [String: PityState].
+        json["pityStates"] = [String: Any]()
+        json["version"] = currentVersion
+        guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        do { return try JSONDecoder().decode(GameState.self, from: patched) }
+        catch { assertionFailure("GameStore: migrateV22toV23 decode failed — \(error)"); return nil }
+    }
+
+    /// v23 → v24: adds all Superpower System fields (purely additive — all have Swift defaults).
+    private static func migrateV23toV24(_ data: Data) -> GameState? {
+        return migrateByInjecting(defaults: [
+            "unlockedSuperpowerSpecies": [String](),
+            "superpowerCooldownEnds":    [String: Double](),
+            "lagomorphMergeCount":       0,
+            "lastMergeTimestamp":        0.0,
+            "lastMergedSpeciesRaw":      NSNull(),
+            "equineSprintRemaining":     0.0,
+            "pouchItems":               [NSNull(), NSNull()],
+            "pouchExpiryTimestamp":      0.0,
+        ], into: data)
     }
 
     /// Picks the snapshot with the later `lastActiveDate` (the device that played

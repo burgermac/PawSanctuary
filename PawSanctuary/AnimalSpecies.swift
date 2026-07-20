@@ -122,39 +122,84 @@ enum AnimalSpecies: String, CaseIterable, Codable {
         }
     }
 
-    /// The 9 unique tier names for this family, index 0 (smallest) through 8 (top tier).
+    /// The 15 unique tier names for this family, index 0 (smallest) through 14 (top tier).
     var tierNames: [String] {
         switch self {
-        case .dog:       return ["Pup", "Kit", "Terrier", "Spaniel", "Retriever",
-                                 "Shepherd", "Husky", "Wolf", "Dire Wolf"]
-        case .cat:       return ["Kitten", "Tabby", "Ocelot", "Bobcat", "Lynx",
-                                 "Puma", "Leopard", "Tiger", "Lion"]
-        case .rabbit:    return ["Bunny", "Cottontail", "Rex", "Angora", "Hare",
-                                 "Jackrabbit", "Flemish Giant", "Mara", "Giant Hare"]
-        case .bird:      return ["Chick", "Sparrow", "Finch", "Starling", "Pigeon",
-                                 "Magpie", "Falcon", "Eagle", "Condor"]
-        case .hamster:   return ["Mouse", "Hamster", "Gerbil", "Chipmunk", "Squirrel",
-                                 "Rat", "Chinchilla", "Beaver", "Capybara"]
-        case .turtle:    return ["Hatchling", "Gecko", "Anole", "Skink", "Iguana",
-                                 "Monitor", "Gila Monster", "Python", "Komodo Dragon"]
-        case .fox:       return ["Fawn", "Muntjac", "Roe Deer", "Fallow", "Chital",
-                                 "Caribou", "Red Deer", "Elk", "Moose"]
-        case .owl:       return ["Cub", "Sun Bear", "Sloth Bear", "Spectacled Bear",
-                                 "Black Bear", "Panda", "Brown Bear", "Grizzly", "Polar Bear"]
-        case .fish:      return ["Guppy", "Tetra", "Clownfish", "Perch", "Mackerel",
-                                 "Tuna", "Swordfish", "Shark", "Whale Shark"]
-        case .lizard:    return ["Tadpole", "Froglet", "Tree Frog", "Bullfrog", "Toad",
-                                 "Newt", "Salamander", "Axolotl", "Giant Salamander"]
-        case .ferret:    return ["Joey", "Quokka", "Potoroo", "Bandicoot", "Wallaby",
-                                 "Tree Kangaroo", "Tasmanian Devil", "Wombat", "Red Kangaroo"]
-        case .parrot:    return ["Marmoset", "Tamarin", "Squirrel Monkey", "Capuchin",
-                                 "Macaque", "Baboon", "Mandrill", "Chimpanzee", "Gorilla"]
-        case .pony:      return ["Foal", "Pony", "Shetland", "Mustang", "Arabian",
-                                 "Thoroughbred", "Clydesdale", "Zebra", "Giraffe"]
-        case .hedgehog:  return ["Piglet", "Warthog", "Peccary", "Tapir", "Hippo",
-                                 "Rhino", "Elephant Seal", "African Elephant", "Mammoth"]
-        case .guineaPig: return ["Calf", "Heifer", "Ox", "Bull", "Zebu",
-                                 "Bison", "Yak", "Water Buffalo", "Gaur"]
+        case .dog:       return ["Pup", "Kit", "Houndling",
+                                 "Terrier", "Spaniel", "Scout",
+                                 "Retriever", "Shepherd", "Husky",
+                                 "Alpha", "Guardian", "Sentinel",
+                                 "Dire Wolf", "Mythic", "Primordial"]
+        case .cat:       return ["Kitten", "Tabby", "Kit",
+                                 "Ocelot", "Bobcat", "Lynx",
+                                 "Puma", "Jaguar", "Leopard",
+                                 "Panther", "Tiger", "Lion",
+                                 "Sabertooth", "Sovereign", "Apex"]
+        case .rabbit:    return ["Bunny", "Cottontail", "Rex",
+                                 "Angora", "Lop", "Harlequin",
+                                 "Hare", "Jackrabbit", "Snow",
+                                 "Flemish", "Belgian", "Giant",
+                                 "Desert", "Patagonian", "Mara"]
+        case .bird:      return ["Hatchling", "Chick", "Fluff",
+                                 "Sparrow", "Finch", "Starling",
+                                 "Pigeon", "Magpie", "Jay",
+                                 "Falcon", "Hawk", "Owl",
+                                 "Eagle", "Vulture", "Condor"]
+        case .hamster:   return ["Mouse", "Hamster", "Gerbil",
+                                 "Chipmunk", "Squirrel", "Rat",
+                                 "Chinchilla", "Degu", "Beaver",
+                                 "Prairie Dog", "Marmot", "Nutria",
+                                 "Muskrat", "Porcupine", "Capybara"]
+        case .turtle:    return ["Hatch", "Gecko", "Anole",
+                                 "Skink", "Racer", "Whiptail",
+                                 "Iguana", "Monitor", "Tegu",
+                                 "Gila", "Spiny", "Python",
+                                 "Boa", "Caiman", "Komodo Dragon"]
+        case .fox:       return ["Fawn", "Muntjac", "Roe",
+                                 "Fallow", "Chital", "Sika",
+                                 "Caribou", "Reindeer", "Deer",
+                                 "Red", "Wapiti", "Elk",
+                                 "Sambar", "Pere David", "Moose"]
+        case .owl:       return ["Cub", "Sun", "Sloth",
+                                 "Spectacled", "Moon", "Black",
+                                 "Panda", "Cinnamon", "Glacier",
+                                 "Brown", "Kodiak", "Grizzly",
+                                 "Polar", "Ancient", "Behemoth"]
+        case .fish:      return ["Guppy", "Tetra", "Minnow",
+                                 "Clown", "Perch", "Bass",
+                                 "Mackerel", "Tuna", "Salmon",
+                                 "Sword", "Sail", "Marlin",
+                                 "Shark", "Hammerhead", "Whale Shark"]
+        case .lizard:    return ["Tadpole", "Froglet", "Newt",
+                                 "Tree Frog", "Poison", "Reed",
+                                 "Bullfrog", "Toad", "Horned",
+                                 "Salamander", "Axolotl", "Mud",
+                                 "Hellbender", "Giant", "Goliath"]
+        case .ferret:    return ["Joey", "Quokka", "Honey",
+                                 "Potoroo", "Bandicoot", "Bilby",
+                                 "Wallaby", "Pademelon", "Tree",
+                                 "Devil", "Quoll", "Wombat",
+                                 "Koala", "Macropod", "Red Kangaroo"]
+        case .parrot:    return ["Marmoset", "Tamarin", "Pygmy",
+                                 "Squirrel", "Capuchin", "Owl",
+                                 "Macaque", "Langur", "Guenon",
+                                 "Baboon", "Mandrill", "Gibbon",
+                                 "Chimpanzee", "Orangutan", "Gorilla"]
+        case .pony:      return ["Foal", "Pony", "Shetland",
+                                 "Donkey", "Mule", "Burro",
+                                 "Mustang", "Arabian", "Paint",
+                                 "Thoroughbred", "Shire", "Clydesdale",
+                                 "Zebra", "Quagga", "Giraffe"]
+        case .hedgehog:  return ["Piglet", "Warthog", "Peccary",
+                                 "Tapir", "Boar", "Babirusa",
+                                 "Hippo", "Pygmy", "Rhino",
+                                 "White Rhino", "Black", "Indian",
+                                 "Seal", "African", "Mammoth"]
+        case .guineaPig: return ["Calf", "Heifer", "Oxen",
+                                 "Steer", "Bull", "Zebu",
+                                 "Bison", "Yak", "Muskox",
+                                 "Highland", "Longhorn", "Gaur",
+                                 "Buffalo", "Aurochs", "Titan"]
         }
     }
 }
@@ -385,6 +430,15 @@ struct ProducerTile: Identifiable, Equatable, Codable {
     /// Non-nil for `.familySpawner` tiles; identifies which family's animal chain this spawner produces.
     var species: AnimalSpecies?
 
+    // Phase 4 buff state — persisted so buffs survive saves/restores.
+    var speedBurstActive: Bool = false
+    var speedBurstRemaining: Double = 0      // seconds remaining
+    var nextDropGuaranteedHighTier: Bool = false
+
+    // Phase 6 — Avians Scout preview: non-nil when Scout is unlocked and a spawn has just fired.
+    // true = next spawn from this tile will be a sub-object, false = animal.
+    var scoutPreviewIsSubObject: Bool? = nil
+
     init(level: ProducerLevel, cooldownRemaining: Double = 0,
          chargesRemaining: Int? = nil, species: AnimalSpecies? = nil) {
         self.id = UUID()
@@ -401,7 +455,11 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         level            = try c.decode(ProducerLevel.self, forKey: .level)
         cooldownRemaining = try c.decode(Double.self,       forKey: .cooldownRemaining)
         chargesRemaining = try c.decode(Int.self,           forKey: .chargesRemaining)
-        species          = try c.decodeIfPresent(AnimalSpecies.self, forKey: .species)
+        species              = try c.decodeIfPresent(AnimalSpecies.self, forKey: .species)
+        speedBurstActive     = try c.decodeIfPresent(Bool.self,         forKey: .speedBurstActive)     ?? false
+        speedBurstRemaining  = try c.decodeIfPresent(Double.self,       forKey: .speedBurstRemaining)  ?? 0
+        nextDropGuaranteedHighTier = try c.decodeIfPresent(Bool.self,   forKey: .nextDropGuaranteedHighTier) ?? false
+        scoutPreviewIsSubObject    = try c.decodeIfPresent(Bool.self,   forKey: .scoutPreviewIsSubObject)
     }
 
     var isReady: Bool { cooldownRemaining <= 0 }
@@ -495,7 +553,7 @@ enum QuestGoal: Codable {
         case .reachTier(_, let tier, let c):
             // Describe the progression step by its generic stage label plus tier number so it
             // stays readable even though board tile names are now family-specific.
-            let stageLabel = QuestGoal.animalTierLabel(tier)
+            let stageLabel = QuestGoal.animalTierAppearance(tier: tier).label
             return "Get \(c) animal\(c == 1 ? "" : "s") to \(stageLabel) (Tier \(tier + 1))"
         case .spawnBase(let c):
             return "Rescue \(c) animal\(c == 1 ? "" : "s")"
@@ -506,7 +564,7 @@ enum QuestGoal: Codable {
         switch self {
         case .mergeAny:                  return "shuffle"
         case .mergeInChain(let id, _):   return ContentRegistry.shared.chain(id)?.tiers.first?.symbol ?? "pawprint.fill"
-        case .reachTier(_, let tier, _): return QuestGoal.animalTierSymbol(tier)
+        case .reachTier(_, let tier, _): return QuestGoal.animalTierAppearance(tier: tier).symbol
         case .spawnBase:                 return "house.fill"
         }
     }
@@ -514,18 +572,49 @@ enum QuestGoal: Codable {
         switch self {
         case .mergeAny:                  return .blue
         case .mergeInChain(let id, _):   return ContentRegistry.shared.chain(id)?.tiers.first?.tint ?? .brown
-        case .reachTier(_, let tier, _): return QuestGoal.animalTierColor(tier)
+        case .reachTier(_, let tier, _): return QuestGoal.animalTierAppearance(tier: tier).color
         case .spawnBase:                 return .green
         }
     }
 
-    // MARK: Animal stage template (the .animal category shares a rung template).
-    // RescueStage remains the authoring source for animal-tier display; a 0-based
-    // tier maps to stage rawValue (tier + 1).
-    private static func animalStage(_ tier: Int) -> RescueStage? { RescueStage(rawValue: tier + 1) }
-    static func animalTierLabel(_ tier: Int) -> String  { animalStage(tier)?.label ?? "Tier \(tier)" }
-    static func animalTierSymbol(_ tier: Int) -> String { animalStage(tier)?.sfSymbol ?? "pawprint.fill" }
-    static func animalTierColor(_ tier: Int) -> Color   { animalStage(tier)?.color ?? .gray }
+    // Deduplication key — two goals with the same key are considered equivalent
+    // for the purpose of keeping standing quests varied.
+    var dedupeKey: String {
+        switch self {
+        case .mergeAny:                  return "mergeAny"
+        case .mergeInChain(let id, _):   return "mergeInChain:\(id)"
+        case .reachTier(_, let tier, _): return "reachTier:\(tier)"
+        case .spawnBase:                 return "spawnBase"
+        }
+    }
+
+    // MARK: Animal tier appearance — covers all 15 tiers (0–14).
+    // Tiers 0–8 preserve the original RescueStage colors/symbols; tiers 9–14 use
+    // higher-prestige purple/gold tones for the extended chain.
+    static func animalTierAppearance(tier: Int) -> (label: String, symbol: String, color: Color) {
+        switch tier {
+        case 0:  return ("Rescued",       "heart.fill",            .orange)
+        case 1:  return ("Groomed",       "scissors",              .blue)
+        case 2:  return ("Vaccinated",    "cross.circle.fill",     Color(red: 0.10, green: 0.70, blue: 0.70))
+        case 3:  return ("Trained",       "star.circle.fill",      Color(red: 0.60, green: 0.30, blue: 0.85))
+        case 4:  return ("Foster",        "house.fill",            Color(red: 0.80, green: 0.55, blue: 0.10))
+        case 5:  return ("Adopted",       "checkmark.circle.fill", .green)
+        case 6:  return ("Bonded",        "person.2.fill",         Color(red: 0.90, green: 0.35, blue: 0.60))
+        case 7:  return ("Community Fav", "crown.fill",            Color(red: 0.95, green: 0.50, blue: 0.10))
+        case 8:  return ("Ambassador",    "medal.fill",            Color(red: 0.95, green: 0.80, blue: 0.10))
+        case 9:  return ("Elite",         "bolt.circle.fill",      Color(red: 0.60, green: 0.20, blue: 0.90))
+        case 10: return ("Champion",      "sparkles",              Color(red: 0.50, green: 0.18, blue: 0.82))
+        case 11: return ("Legendary",     "seal.fill",             Color(red: 0.70, green: 0.50, blue: 0.90))
+        case 12: return ("Mythic",        "trophy.fill",           Color(red: 0.85, green: 0.68, blue: 0.10))
+        case 13: return ("Ancient",       "crown.circle.fill",     Color(red: 0.90, green: 0.75, blue: 0.08))
+        default: return ("Primordial",    "flame.fill",            Color(red: 0.95, green: 0.82, blue: 0.05))
+        }
+    }
+
+    // Convenience wrappers — kept for backwards-compatible call sites; delegate to animalTierAppearance.
+    static func animalTierLabel(_ tier: Int) -> String  { animalTierAppearance(tier: tier).label }
+    static func animalTierSymbol(_ tier: Int) -> String { animalTierAppearance(tier: tier).symbol }
+    static func animalTierColor(_ tier: Int) -> Color   { animalTierAppearance(tier: tier).color }
 }
 
 struct Quest: Identifiable, Codable {
@@ -849,12 +938,12 @@ func toolboxMaxTier(forPlayerLevel level: Int) -> Int {
 /// preventing the frustration of watching orders expire unfilled.
 func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
     switch level {
-    case 1...3:   return RescueStage.groomed.tierIndex       // tier 1
-    case 4...6:   return RescueStage.trained.tierIndex       // tier 3
-    case 7...9:   return RescueStage.adopted.tierIndex       // tier 5
-    case 10...12: return RescueStage.bondedPair.tierIndex    // tier 6
-    case 13...15: return RescueStage.communityFav.tierIndex  // tier 7
-    default:      return RescueStage.ambassador.tierIndex    // tier 8
+    case 1...3:   return 2
+    case 4...6:   return 5
+    case 7...9:   return 8
+    case 10...12: return 10
+    case 13...18: return 12
+    default:      return 14
     }
 }
 

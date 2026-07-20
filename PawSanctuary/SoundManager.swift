@@ -8,16 +8,16 @@
 
 import Foundation
 import AudioToolbox
-import Combine
 
+@Observable
 @MainActor
-final class SoundManager: ObservableObject {
+final class SoundManager {
 
     static let shared = SoundManager()
 
     private let mutedKey = "soundMuted"
 
-    @Published var isMuted: Bool {
+    var isMuted: Bool {
         didSet { UserDefaults.standard.set(isMuted, forKey: mutedKey) }
     }
 

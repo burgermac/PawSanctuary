@@ -66,11 +66,19 @@ class QuestCoordinator {
 
     // MARK: Quest generation
 
-    func setupQuests(unlockedChainIDs: [ChainID]) {
-        activeQuests = (0..<3).map { _ in generateQuest(unlockedChainIDs: unlockedChainIDs) }
+    func setupQuests(unlockedChainIDs: [ChainID], playerLevel: Int) {
+        var used = Set<String>()
+        activeQuests = (0..<3).map { _ in
+            let q = generateQuest(unlockedChainIDs: unlockedChainIDs,
+                                  playerLevel: playerLevel,
+                                  excluding: used)
+            used.insert(q.goal.dedupeKey)
+            return q
+        }
     }
 
-    func generateQuest(unlockedChainIDs: [ChainID]) -> Quest {
+    func generateQuest(unlockedChainIDs: [ChainID], playerLevel: Int = 1,
+                       excluding: Set<String> = []) -> Quest {
         let unlockedMergeable = unlockedChainIDs.filter {
             let cat = ContentRegistry.shared.chain($0)?.category
             return cat == .animal || cat == .supply
@@ -87,10 +95,21 @@ class QuestCoordinator {
         let hasSupply   = supplyID != nil
 
         let roll = Int.random(in: 1...20)
-        let diff: QuestDifficulty = roll <= 9 ? .easy
-                                  : roll <= 15 ? .medium
-                                  : roll <= 19 ? .hard
-                                  : .legendary
+        let rawDiff: QuestDifficulty = roll <= 9 ? .easy
+                                     : roll <= 15 ? .medium
+                                     : roll <= 19 ? .hard
+                                     : .legendary
+        // Cap difficulty to what's reachable at the player's current level.
+        let diff: QuestDifficulty
+        switch playerLevel {
+        case 1...2: diff = .easy
+        case 3...4: diff = (rawDiff == .hard || rawDiff == .legendary) ? .medium : rawDiff
+        case 5...7: diff = (rawDiff == .legendary) ? .hard : rawDiff
+        default:    diff = rawDiff
+        }
+
+        let maxTier = maxAchievableOrderTier(forPlayerLevel: playerLevel)
+
         let goal: QuestGoal
         switch diff {
         case .easy:
@@ -101,47 +120,51 @@ class QuestCoordinator {
                 .reachTier(.animal, tier: RescueStage.rescued.tierIndex, count: 3),
             ]
             if hasSupply { pool.append(.reachTier(.supply, tier: 1, count: 2)) }
-            goal = pool.randomElement()!
+            pool = pool.filter { !excluding.contains($0.dedupeKey) }
+            goal = pool.randomElement() ?? .mergeAny(count: 3)
 
         case .medium:
             var pool: [QuestGoal] = [
                 .mergeAny(count: 6),
                 .mergeInChain(animalID, count: 4),
-                .reachTier(.animal, tier: RescueStage.groomed.tierIndex, count: 2),
-                .reachTier(.animal, tier: RescueStage.vaccinated.tierIndex, count: 2),
-                .reachTier(.animal, tier: RescueStage.trained.tierIndex, count: 1),
                 .spawnBase(count: 8),
             ]
+            if RescueStage.groomed.tierIndex     <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.groomed.tierIndex,     count: 2)) }
+            if RescueStage.vaccinated.tierIndex  <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.vaccinated.tierIndex,  count: 2)) }
+            if RescueStage.trained.tierIndex     <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.trained.tierIndex,     count: 1)) }
             if let sid = supplyID {
                 pool.append(.mergeInChain(sid, count: 3))
                 pool.append(.reachTier(.supply, tier: 2, count: 2))
             }
-            goal = pool.randomElement()!
+            pool = pool.filter { !excluding.contains($0.dedupeKey) }
+            goal = pool.randomElement() ?? .mergeAny(count: 6)
 
         case .hard:
             var pool: [QuestGoal] = [
                 .mergeAny(count: 10),
-                .reachTier(.animal, tier: RescueStage.foster.tierIndex, count: 2),
-                .reachTier(.animal, tier: RescueStage.adopted.tierIndex, count: 1),
-                .reachTier(.animal, tier: RescueStage.bondedPair.tierIndex, count: 1),
-                .reachTier(.animal, tier: RescueStage.communityFav.tierIndex, count: 1),
                 .spawnBase(count: 12),
             ]
+            if RescueStage.foster.tierIndex       <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.foster.tierIndex,       count: 2)) }
+            if RescueStage.adopted.tierIndex      <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.adopted.tierIndex,      count: 1)) }
+            if RescueStage.bondedPair.tierIndex   <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.bondedPair.tierIndex,   count: 1)) }
+            if RescueStage.communityFav.tierIndex <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.communityFav.tierIndex, count: 1)) }
             if supplyID != nil { pool.append(.reachTier(.supply, tier: 3, count: 2)) }
-            goal = pool.randomElement()!
+            pool = pool.filter { !excluding.contains($0.dedupeKey) }
+            goal = pool.randomElement() ?? .mergeAny(count: 10)
 
         case .legendary:
             var pool: [QuestGoal] = [
-                .reachTier(.animal, tier: RescueStage.ambassador.tierIndex, count: 1),
-                .reachTier(.animal, tier: RescueStage.communityFav.tierIndex, count: 2),
-                .reachTier(.animal, tier: RescueStage.bondedPair.tierIndex, count: 3),
                 .mergeInChain(animalID, count: 8),
             ]
+            if RescueStage.bondedPair.tierIndex   <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.bondedPair.tierIndex,   count: 3)) }
+            if RescueStage.communityFav.tierIndex  <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.communityFav.tierIndex, count: 2)) }
+            if RescueStage.ambassador.tierIndex    <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.ambassador.tierIndex,   count: 1)) }
             if let sid = supplyID {
                 pool.append(.reachTier(.supply, tier: 4, count: 1))
                 pool.append(.mergeInChain(sid, count: 6))
             }
-            goal = pool.randomElement()!
+            pool = pool.filter { !excluding.contains($0.dedupeKey) }
+            goal = pool.randomElement() ?? .mergeInChain(animalID, count: 8)
         }
 
         let tags: Int
@@ -185,11 +208,16 @@ class QuestCoordinator {
     // Caller (MergeBoardViewModel) distributes the rewards and handles side effects
     // like producer drops and toolbox drops.
 
-    func claimAndReplace(questID: UUID, unlockedChainIDs: [ChainID]) -> Quest? {
+    func claimAndReplace(questID: UUID, unlockedChainIDs: [ChainID], playerLevel: Int) -> Quest? {
         guard let idx = activeQuests.firstIndex(where: { $0.id == questID }),
               activeQuests[idx].isComplete else { return nil }
         let quest = activeQuests[idx]
-        activeQuests[idx] = generateQuest(unlockedChainIDs: unlockedChainIDs)
+        let used = Set(activeQuests.indices
+            .filter { $0 != idx }
+            .map { activeQuests[$0].goal.dedupeKey })
+        activeQuests[idx] = generateQuest(unlockedChainIDs: unlockedChainIDs,
+                                          playerLevel: playerLevel,
+                                          excluding: used)
         return quest
     }
 

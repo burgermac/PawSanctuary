@@ -25,6 +25,8 @@ enum ChainCategory: String, Codable, CaseIterable {
     case supply      // grooming / food / shelter supplies (Phase 2)
     case tool        // toolbox consumable (Phase 3)
     case material    // wood / metal / cement building supplies (Phase 3)
+    case subObject   // per-family 4-stage merge chain; top tier becomes a power-up consumable
+    case powerUp     // power-up consumable item (drag onto spawner to apply)
 }
 
 // ============================================================
@@ -95,6 +97,8 @@ struct ContentRegistry {
         for chain in [Self.makeGroomingChain(), Self.makeFoodChain(), Self.makeShelterChain()] { register(chain) }
         // Toolbox (consumable) is registered so BoardItem.def resolves correctly.
         for chain in [Self.makeWoodChain(), Self.makeMetalChain(), Self.makeCementChain(), Self.makeToolboxChain()] { register(chain) }
+        // Phase 2: per-family 4-stage sub-object chains (data layer only — no drops yet).
+        for species in AnimalSpecies.allCases { register(Self.makeSubObjectChain(species)) }
     }
 
     private mutating func register(_ chain: MergeChain) {
@@ -274,23 +278,86 @@ struct ContentRegistry {
                           displayName: "Tap to collect!", tiers: [tier])
     }
 
-    /// Builds a 10-tier animal chain from a species using the shared stage template.
-    /// Score/xp values preserve the pre-refactor numbers exactly:
-    ///   merging two stage-S items awarded `S.rawValue * 25` score and
-    ///   `S.rawValue * xpPerMergeBase` xp — i.e. tier index (0-based) + 1.
+    // MARK: Sub-object chain builders (Phase 2)
+
+    /// Builds a 4-tier sub-object chain for a species. The top tier (index 3) is a
+    /// power-up consumable (badged with "bolt.fill"). All tiers share the species tintColor.
+    private static func makeSubObjectChain(_ species: AnimalSpecies) -> MergeChain {
+        let stages: [(name: String, short: String)] = {
+            switch species {
+            case .dog:       return [("Biscuit", "Biscuit"), ("Bone", "Bone"),
+                                     ("Chew Toy", "Chew Toy"), ("Golden Ball", "G. Ball")]
+            case .cat:       return [("Bell", "Bell"), ("Feather Wand", "F. Wand"),
+                                     ("Yarn Ball", "Yarn Ball"), ("Laser Pointer", "Laser Ptr")]
+            case .rabbit:    return [("Lettuce", "Lettuce"), ("Carrot", "Carrot"),
+                                     ("Cabbage", "Cabbage"), ("Turnip", "Turnip")]
+            case .bird:      return [("Down", "Down"), ("Plume", "Plume"),
+                                     ("Quill", "Quill"), ("Iridescent Tail", "Irid. Tail")]
+            case .hamster:   return [("Seed", "Seed"), ("Nut", "Nut"),
+                                     ("Berry", "Berry"), ("Corn Cob", "Corn Cob")]
+            case .turtle:    return [("Pebble", "Pebble"), ("Sand", "Sand"),
+                                     ("Warm Moss", "Warm Moss"), ("Heat Lamp", "Heat Lamp")]
+            case .fox:       return [("Leaf", "Leaf"), ("Sprout", "Sprout"),
+                                     ("Twig", "Twig"), ("Antler", "Antler")]
+            case .owl:       return [("Honey Comb", "Honey Cmb"), ("Salmon", "Salmon"),
+                                     ("Wild Hive", "Wild Hive"), ("Berry Bush", "B. Bush")]
+            case .fish:      return [("Shell", "Shell"), ("Pearl", "Pearl"),
+                                     ("Starfish", "Starfish"), ("Treasure Chest", "T. Chest")]
+            case .lizard:    return [("Duckweed", "Duckweed"), ("Reeds", "Reeds"),
+                                     ("Lotus Flower", "Lotus Fl."), ("Algae Bloom", "Algae Bl.")]
+            case .ferret:    return [("Bud", "Bud"), ("Flower", "Flower"),
+                                     ("Leaf Bundle", "L. Bundle"), ("Bark", "Bark")]
+            case .parrot:    return [("Banana", "Banana"), ("Mango", "Mango"),
+                                     ("Papaya", "Papaya"), ("Jungle Vine", "J. Vine")]
+            case .pony:      return [("Curry Comb", "Curry Cmb"), ("Brush", "Brush"),
+                                     ("Sponge", "Sponge"), ("Trophy", "Trophy")]
+            case .hedgehog:  return [("Puddle", "Puddle"), ("Mud Clump", "Mud Clump"),
+                                     ("Clay Mound", "Clay Mnd"), ("Rainfall", "Rainfall")]
+            case .guineaPig: return [("Clover", "Clover"), ("Hay Bale", "Hay Bale"),
+                                     ("Salt Lick", "Salt Lick"), ("Water Trough", "W. Trough")]
+            }
+        }()
+
+        let scores  = [20, 45, 80, 130]
+        let symbols = ["circle.fill", "circle.hexagongrid.fill",
+                       "star.fill", "bolt.circle.fill"]
+        let tint    = species.tintColor
+
+        let tiers = stages.enumerated().map { (i, stage) in
+            ChainTier(
+                name:       stage.name,
+                shortLabel: stage.short,
+                symbol:     symbols[i],
+                color:      tint,
+                tint:       tint,
+                badge:      i == 3 ? "bolt.fill" : nil,
+                scoreValue: scores[i],
+                xpValue:    scores[i] / 5
+            )
+        }
+        return MergeChain(
+            id:          "subobject.\(species.rawValue)",
+            category:    .subObject,
+            displayName: "\(species.name) Token",
+            tiers:       tiers
+        )
+    }
+
+    /// Builds a 15-tier animal chain from a species.
+    /// scoreValue = (index + 1) * 25, xpValue = (index + 1) * xpPerMergeBase (1-based).
+    /// Badge ("medal.fill") is on the top tier (index 14). Colors come from
+    /// QuestGoal.animalTierAppearance so all 15 tiers have distinct hues.
     private static func makeAnimalChain(_ s: AnimalSpecies) -> MergeChain {
-        // Pair each RescueStage with the family-specific tier name from AnimalSpecies.tierNames.
-        // tierNames has exactly 9 entries — one per RescueStage case (rescued…ambassador).
-        let tiers = zip(RescueStage.allCases, s.tierNames).map { (stage, tierName) -> ChainTier in
+        let tiers = s.tierNames.enumerated().map { (index, tierName) -> ChainTier in
             ChainTier(
                 name: tierName,
                 shortLabel: tierName,
                 symbol: s.sfSymbol,
-                color: stage.color,
+                color: QuestGoal.animalTierAppearance(tier: index).color,
                 tint: s.tintColor,
-                badge: stage == .ambassador ? "medal.fill" : nil,
-                scoreValue: stage.rawValue * 25,
-                xpValue: stage.rawValue * xpPerMergeBase
+                badge: index == 14 ? "medal.fill" : nil,
+                scoreValue: (index + 1) * 25,
+                xpValue: (index + 1) * xpPerMergeBase
             )
         }
         return MergeChain(id: animalChainID(s),

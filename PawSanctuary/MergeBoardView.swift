@@ -31,7 +31,6 @@ struct MergeBoardView: View {
     /// @State instead of @StateObject — required with @Observable.
     @State private var viewModel    = MergeBoardViewModel()
     @State private var storeManager = StoreManager()
-    @State private var notifManager = NotificationManager()
     @State private var activeRoute: SheetRoute?
 
     /// Used to flush a final save when the app leaves the foreground.
@@ -207,6 +206,167 @@ struct MergeBoardView: View {
                 .zIndex(98)
             }
 
+            // Superpower unlock celebration banner
+            if viewModel.showSuperpowerUnlockBanner, let sp = viewModel.superpowerUnlockBannerSpecies {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.purple.opacity(0.25))
+                                .frame(width: 46, height: 46)
+                            Image(systemName: sp.superpower.sfSymbol)
+                                .font(.system(size: 22))
+                                .foregroundColor(.purple)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Superpower Unlocked!")
+                                .font(.headline).foregroundColor(.white)
+                            Text("\(sp.spawnerName): \(sp.superpower.name) — \(sp.superpower.description)")
+                                .font(.caption).foregroundColor(.white.opacity(0.85))
+                                .lineLimit(2)
+                        }
+                        Spacer()
+                    }
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 16)
+                        .fill(LinearGradient(
+                            colors: [Color(red: 0.35, green: 0.10, blue: 0.55),
+                                     Color(red: 0.55, green: 0.25, blue: 0.75)],
+                            startPoint: .leading, endPoint: .trailing))
+                        .shadow(color: .black.opacity(0.2), radius: 10))
+                    .padding(.horizontal, 20).padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .zIndex(97)
+            }
+
+            // Active superpower button strip — one button per family with an unlocked active power.
+            let activeSuperpowers = AnimalSpecies.allCases.filter {
+                $0.superpower.isActive && viewModel.unlockedSuperpowerSpecies.contains($0.rawValue)
+            }
+            if !activeSuperpowers.isEmpty {
+                VStack {
+                    Spacer()
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(activeSuperpowers, id: \.rawValue) { species in
+                                let sp = species.superpower
+                                let now = Date().timeIntervalSince1970
+                                let expiry = viewModel.superpowerCooldownEnds[species.rawValue] ?? 0
+                                let onCooldown = now < expiry
+                                let remaining = max(0, expiry - now)
+                                Button {
+                                    viewModel.activateSuperpower(for: species)
+                                } label: {
+                                    VStack(spacing: 3) {
+                                        ZStack {
+                                            Circle()
+                                                .stroke(onCooldown ? Color.gray.opacity(0.4) : Color.purple, lineWidth: 2)
+                                                .frame(width: 38, height: 38)
+                                            if onCooldown, let cd = sp.cooldownSeconds {
+                                                Circle()
+                                                    .trim(from: 0, to: CGFloat(remaining / cd))
+                                                    .stroke(Color.purple.opacity(0.6), lineWidth: 3)
+                                                    .rotationEffect(.degrees(-90))
+                                                    .frame(width: 38, height: 38)
+                                            }
+                                            Image(systemName: sp.sfSymbol)
+                                                .font(.system(size: 16))
+                                                .foregroundColor(onCooldown ? .gray : .purple)
+                                        }
+                                        Text(onCooldown ? sp.cooldownLabel ?? "" : sp.name)
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundColor(onCooldown ? .gray : .purple)
+                                    }
+                                }
+                                .disabled(onCooldown)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .padding(.bottom, 60)
+                }
+                .zIndex(96)
+            }
+
+            // Leap mode overlay hint
+            if viewModel.leapMode {
+                VStack {
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.up.right.circle.fill")
+                                .foregroundColor(.cyan)
+                            Text(viewModel.leapSourceCell == nil ? "Tap an Amphibian" : "Tap an empty cell")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                            Button("Cancel") {
+                                viewModel.leapMode = false
+                                viewModel.leapSourceCell = nil
+                            }
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.cyan)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 20).fill(Color.black.opacity(0.7)))
+                        .padding(.trailing, 16)
+                    }
+                    .padding(.top, 8)
+                    Spacer()
+                }
+                .zIndex(95)
+            }
+
+            // Pouch panel — 2 off-board storage slots with countdown
+            if viewModel.showPouchPanel {
+                VStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        HStack {
+                            Image(systemName: "bag.fill").foregroundColor(.orange)
+                            Text("Pouch — tap board animals to store them")
+                                .font(.system(size: 12, weight: .semibold))
+                            Spacer()
+                            let remaining = max(0, viewModel.pouchExpiryTimestamp - Date().timeIntervalSince1970)
+                            Text("\(Int(remaining))s")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(remaining < 10 ? .red : .orange)
+                        }
+                        HStack(spacing: 12) {
+                            ForEach(0..<2, id: \.self) { i in
+                                let item = viewModel.pouchItems[i]
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(item != nil ? Color.orange.opacity(0.2) : Color.gray.opacity(0.1))
+                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.5)))
+                                        .frame(width: 60, height: 60)
+                                    if let item, let def = item.def {
+                                        VStack(spacing: 1) {
+                                            Image(systemName: def.symbol).font(.system(size: 20))
+                                                .foregroundColor(def.tint ?? def.color)
+                                            Text(def.shortLabel).font(.system(size: 7, weight: .bold))
+                                                .foregroundColor(def.color).lineLimit(1)
+                                        }
+                                    } else {
+                                        Image(systemName: "tray").font(.system(size: 18))
+                                            .foregroundColor(.gray.opacity(0.4))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.15), radius: 8))
+                    .padding(.horizontal, 20).padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .zIndex(94)
+            }
+
             // Ambassador celebration — sits on top of everything
             if viewModel.showAmbassadorBanner {
                 AmbassadorBannerView(chainID: viewModel.ambassadorBannerChainID) {
@@ -236,6 +396,9 @@ struct MergeBoardView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.68), value: MilestoneManager.shared.pendingMilestone != nil)
         .animation(.spring(response: 0.5, dampingFraction: 0.65), value: viewModel.showAmbassadorBanner)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showLevelUpBanner)
+        .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showSuperpowerUnlockBanner)
+        .animation(.easeInOut(duration: 0.25), value: viewModel.leapMode)
+        .animation(.spring(response: 0.35, dampingFraction: 0.70), value: viewModel.showPouchPanel)
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .sheet(item: $activeRoute) { route in routeContent(route) }
@@ -246,10 +409,10 @@ struct MergeBoardView: View {
             storeManager.onPurchaseComplete = { viewModel.applyPurchase($0) }
             viewModel.isPassActive = storeManager.isPassActive
             // Cancel stale notifications whenever the app becomes visible
-            notifManager.cancelAll()
+            NotificationManager.shared.cancelAll()
             // Request permission once the player has made some progress
             if viewModel.playerLevel > 1 {
-                Task { await notifManager.requestPermission() }
+                Task { await NotificationManager.shared.requestPermission() }
             }
         }
         .onChange(of: storeManager.isPassActive) { _, active in
@@ -258,10 +421,10 @@ struct MergeBoardView: View {
         .onChange(of: viewModel.playerLevel) { _, level in
             // Ask for permission at the moment they first level up
             if level == 2 {
-                Task { await notifManager.requestPermission() }
+                Task { await NotificationManager.shared.requestPermission() }
             }
             // Schedule the daily rewards reminder once we have permission
-            if notifManager.isAuthorised { notifManager.scheduleDailyRewards() }
+            if NotificationManager.shared.isAuthorised { NotificationManager.shared.scheduleDailyRewards() }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -272,7 +435,7 @@ struct MergeBoardView: View {
                 scheduleAllNotifications()
             case .active:
                 // Cancel everything — the player is here now
-                notifManager.cancelAll()
+                NotificationManager.shared.cancelAll()
             default:
                 break
             }
@@ -290,11 +453,11 @@ struct MergeBoardView: View {
 
     /// Called whenever the app backgrounds. Schedules all contextually relevant notifications.
     private func scheduleAllNotifications() {
-        guard notifManager.isAuthorised else { return }
+        guard NotificationManager.shared.isAuthorised else { return }
 
         // 1. Kibble full
         let kibblePerTick = 1 + viewModel.activeBonuses.kibblePerRegen
-        notifManager.scheduleKibbleFull(
+        NotificationManager.shared.scheduleKibbleFull(
             currentKibble:  viewModel.kibble,
             regenCap:       kibbleRegenCap,
             secsUntilNext:  viewModel.secondsUntilNextKibble,
@@ -302,18 +465,18 @@ struct MergeBoardView: View {
             kibblePerTick:  kibblePerTick)
 
         // 2. Daily rewards (persistent daily — schedule once, keeps firing)
-        notifManager.scheduleDailyRewards()
+        NotificationManager.shared.scheduleDailyRewards()
 
         // 3. Adoption order expiry warnings
         for order in viewModel.adoptionOrders where !order.isComplete && !order.isClaimed {
-            notifManager.scheduleOrderExpiry(
+            NotificationManager.shared.scheduleOrderExpiry(
                 orderID:       order.id.uuidString,
                 timeRemaining: order.timeRemaining,
                 summary:       order.orderDescription)
         }
 
         // 4. Re-engagement nudge (48 hours)
-        notifManager.scheduleReengagement()
+        NotificationManager.shared.scheduleReengagement()
     }
 
     // MARK: Game scroll content
@@ -582,7 +745,9 @@ struct MergeBoardView: View {
                                 isDragging: isDragging,
                                 isNewlyUnlocked: viewModel.newlyUnlockedCell == pos,
                                 isSpotlight: isSpotlight,
-                                cellSize: cellSize
+                                cellSize: cellSize,
+                                unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
+                                isLeapSource: viewModel.leapSourceCell == pos
                             )
                             // Drag ghost — animal or producer icon follows the finger
                             if isDragging {
@@ -750,6 +915,9 @@ struct MergeBoardView: View {
             if viewModel.selectedCellHasProducer {
                 SpawnMultiplierButton(viewModel: viewModel)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else if viewModel.selectedCellHasAnimalItem {
+                SellAnimalButton(viewModel: viewModel)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
 
             // Map button — anchored right
@@ -791,6 +959,7 @@ struct MergeBoardView: View {
         }
         .padding(.vertical, 8)
         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: viewModel.selectedCellHasProducer)
+        .animation(.spring(response: 0.28, dampingFraction: 0.72), value: viewModel.selectedCellHasAnimalItem)
         .background(
             LinearGradient(
                 colors: [Color(red: 0.95, green: 0.88, blue: 0.75).opacity(0),
@@ -1177,6 +1346,50 @@ private struct SpawnMultiplierButton: View {
         case 4: return 10
         case 8: return 20
         default: return 0
+        }
+    }
+}
+
+// ============================================================
+// MARK: - SELL ANIMAL BUTTON
+// ============================================================
+
+/// Appears in the bottom bar when an animal cell is selected.
+/// Tapping sells the animal for coins scaled to its merge tier.
+private struct SellAnimalButton: View {
+    let viewModel: MergeBoardViewModel
+
+    private var selectedItem: BoardItem? {
+        guard let pos = viewModel.selectedCell,
+              pos.row < viewModel.board.count,
+              pos.col < (viewModel.board.first?.count ?? 0) else { return nil }
+        return viewModel.board[pos.row][pos.col].item
+    }
+
+    var body: some View {
+        if let item = selectedItem {
+            let value = viewModel.sellValue(forTier: item.tier)
+            Button(action: { viewModel.sellSelectedAnimal() }) {
+                VStack(spacing: 3) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.18))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "dollarsign.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
+                    }
+                    Text("Sell")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.8))
+                    Text("+\(value)")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
+                }
+                .frame(width: 70).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.10)))
+            }
         }
     }
 }

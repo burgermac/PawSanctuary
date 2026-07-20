@@ -61,8 +61,7 @@ struct MapView: View {
         ]
         return HStack(spacing: 0) {
             ForEach(chains, id: \.0) { (chainID, label, color) in
-                let count = viewModel.toolInventory.compactMap { $0 }
-                    .filter { $0.chainID == chainID }.count
+                let count = viewModel.completedMaterialCount(chainID: chainID)
                 VStack(spacing: 2) {
                     Text("\(count)").font(.system(size: 15, weight: .bold)).foregroundColor(color)
                     Text(label).font(.system(size: 9)).foregroundColor(.secondary)
@@ -156,7 +155,9 @@ struct AreaCardView: View {
                 Text(
                     isComplete  ? "Built" :
                     isAvailable ? "Ready to build" :
-                                  "Complete previous area first"
+                    !viewModel.isAreaPreviousBuilt(area) ? "Build the previous area first" :
+                    !viewModel.isPreviousFullyUpgraded(area) ? "Fully upgrade the previous area first" :
+                                  "Locked"
                 )
                 .font(.caption).foregroundColor(.secondary)
             }

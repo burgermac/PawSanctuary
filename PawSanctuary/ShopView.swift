@@ -5,13 +5,11 @@
 
 import SwiftUI
 import StoreKit
-import Combine
 
 struct ShopView: View {
     var storeManager: StoreManager
     var viewModel: MergeBoardViewModel
     @Environment(\.dismiss) var dismiss
-    @ObservedObject private var soundManager = SoundManager.shared
 
     var body: some View {
         NavigationView {
@@ -31,13 +29,13 @@ struct ShopView: View {
 
                         // Sound toggle
                         HStack {
-                            Label("Sound", systemImage: soundManager.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            Label("Sound", systemImage: SoundManager.shared.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                                 .font(.subheadline)
-                                .foregroundColor(soundManager.isMuted ? .secondary : .primary)
+                                .foregroundColor(SoundManager.shared.isMuted ? .secondary : .primary)
                             Spacer()
                             Toggle("", isOn: Binding(
-                                get: { !soundManager.isMuted },
-                                set: { soundManager.isMuted = !$0 }
+                                get: { !SoundManager.shared.isMuted },
+                                set: { SoundManager.shared.isMuted = !$0 }
                             ))
                             .labelsHidden()
                         }
