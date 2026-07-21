@@ -1,9 +1,9 @@
 # Paw Sanctuary — Game Design Document
-**Version 2.1 | June 2026**
+**Version 3.0 | July 2026**
 
-> **What changed in v2.1:** Added per-family **Superpowers** — unique passive or active abilities that unlock when a family first reaches Era 3 (Stage 7). Each of the 15 families has a thematically distinct ability that adds strategic differentiation to family choice.
+> **This is a full refresh, not an incremental edit.** Versions up to 2.1 had drifted far from the actual implementation — most of the "Not built" items in the old Feature Status Tracker were in fact shipped, the board dimensions were wrong throughout, and several systems that exist in the live game (Coins, the card collection/trading layer, the Sanctuary Map, the Loyalty Club, weekly/monthly goals) weren't documented at all. This version was written by reading the current codebase directly, not by extending the previous draft. Section 15 (Technical Architecture) and Section 16 (Status & Remaining Work) are the ones most worth re-reading if you only skim one thing.
 >
-> **What changed in v2.0:** Expanded from 8 species × 5 stages to **15 animal families × 15 stages**. Added a five-era progression structure (Infant → Legendary), per-family sub-object spawning chains (4-stage merge), a reward consumable system, and a 3-tab inventory replacing the 3-row layout.
+> **Prior history:** v2.1 added per-family Superpowers. v2.0 expanded from 8 species × 5 stages to 15 animal families × 15 stages, introduced sub-object spawning and a reward-consumable system. Both are now implemented; see Section 16 for what v2.0/2.1 still got wrong about *how* they were implemented.
 
 ---
 
@@ -12,37 +12,38 @@
 2. [Core Loop](#2-core-loop)
 3. [Board & Merge System](#3-board--merge-system)
 4. [Animal System](#4-animal-system)
-5. [Sub-Object Spawning](#5-sub-object-spawning)
+5. [Sub-Object Spawning & Power-Ups](#5-sub-object-spawning--power-ups)
 6. [Family Superpowers](#6-family-superpowers)
 7. [Economy & Currencies](#7-economy--currencies)
 8. [Progression Systems](#8-progression-systems)
 9. [Engagement Systems](#9-engagement-systems)
-10. [Inventory System](#10-inventory-system)
-11. [Monetization](#11-monetization)
-12. [Content Roadmap](#12-content-roadmap)
-13. [Technical Architecture](#13-technical-architecture)
-14. [Missing Features (Build Priority)](#14-missing-features-build-priority)
-15. [Feature Status Tracker](#15-feature-status-tracker)
+10. [Inventory & Storage](#10-inventory--storage)
+11. [Sanctuary Map & Building](#11-sanctuary-map--building)
+12. [Card Collection & Trading](#12-card-collection--trading)
+13. [Monetization](#13-monetization)
+14. [Social Systems](#14-social-systems)
+15. [Technical Architecture](#15-technical-architecture)
+16. [Status & Remaining Work](#16-status--remaining-work)
 
 ---
 
 ## 1. Game Overview
 
-**Genre:** Merge puzzle / idle casual  
-**Platform:** iOS (iPhone primary, iPad secondary)  
-**Audience:** Casual mobile gamers, animal lovers, ages 18–45  
-**Monetization model:** Free-to-play with IAP and optional subscription  
-**Comparable titles:** Travel Town, Tasty Travels, Merge Mansion  
-**Differentiator:** Better value per dollar than competitors; pet rescue theme with emotional resonance; 15-stage depth per family gives long-term progression rivals can't match
+**Genre:** Merge puzzle / idle casual
+**Platform:** iOS (iPhone primary, iPad secondary)
+**Audience:** Casual mobile gamers, animal lovers, ages 18–45
+**Monetization model:** Free-to-play with IAP and an optional subscription
+**Comparable titles:** Travel Town, Tasty Travels, Merge Mansion
+**Differentiator:** 15 named animal families, each with a 15-stage evolutionary arc (Pup → Primordial) instead of generic objects; a per-family Superpower system that rewards developing every family rather than specializing in two or three efficient ones; a card-collection/trading meta-layer running alongside the merge board.
 
 ### Elevator Pitch
-Players run an animal sanctuary, rescuing animals across 15 families and merging them through 15 evolutionary stages — from Infant to Legendary. Each family also produces themed sub-objects that merge into powerful consumables. The board fills up, strategy matters, and a rich set of daily and weekly systems keep players coming back.
+Players run an animal sanctuary: rescue animals across 15 families, merge them through 15 stages from Infant to Legendary, and build out a Sanctuary Map with materials earned along the way. Each family also spawns themed sub-objects that merge into power-ups, and unlocks a unique Superpower once it matures. A card-collection meta-game, adoption orders from named families, and a full daily/weekly engagement loop round out the retention layer.
 
 ### Design Pillars
 1. **Warmth** — every interaction feels like caring for animals, not grinding
 2. **Value** — players always feel the game is generous compared to competitors
 3. **Momentum** — there is always a next thing to do; dead ends are eliminated by design
-4. **Clarity** — new players understand what to do within 60 seconds
+4. **Clarity** — new players understand what to do within 60 seconds (see the 3-step tutorial in Section 9.7)
 
 ---
 
@@ -51,34 +52,35 @@ Players run an animal sanctuary, rescuing animals across 15 families and merging
 ### Session Loop (5–15 minutes)
 ```
 Open app
-  → Claim daily login reward
-  → Check timed rescue requests (urgent)
-  → Rescue animals (spend Kibble)
-  → Merge matching animals → advance through 15-stage chain
-  → Merge sub-objects → earn consumable rewards
+  → Claim daily login reward (if first open today)
+  → Check adoption orders from named families (timed, 15 min each)
+  → Rescue animals (spend Kibble at family spawners)
+  → Merge matching animals → advance through the 15-stage chain
+  → Merge sub-objects → earn power-ups (Speed Burst, Map Supplies, Spawner Refill, High-Tier Drop)
   → Complete daily challenges / active quests
-  → Claim rewards (Kibble + Dog Tags)
-  → Store excess animals in inventory (Merge tab)
-  → Exit when Kibble runs low
+  → Claim rewards (Kibble, Dog Tags, Coins, XP, occasional card packs)
+  → Spend Coins + materials building/upgrading Sanctuary Map areas
+  → Store excess animals or materials, exit when Kibble runs low
 ```
 
 ### Retention Loop (daily)
 ```
-Daily login streak → escalating rewards
-Daily challenges reset at midnight → reason to return
-Timed rescue requests cycle every 10 min → urgency
-Weekly spotlight changes Monday → fresh goal
-Push notification: "Your Kibble is full!" → re-engagement
+Daily login streak (7-day cycle) → escalating Kibble/Dog Tag rewards
+Daily challenges reset at midnight → 3 challenges, streak bonus every 7 days
+Adoption orders replace themselves automatically every 15 min → steady goal churn
+Weekly spotlight family (2× score) → resets Monday
+Weekly/monthly Coin goals (Bronze/Silver/Gold) → resets weekly/monthly
+Loyalty Club (unlocks at player level 20) → 7-day reward cycle, separate from login streak
 ```
 
 ### Progression Loop (weeks → months)
 ```
-Unlock board cells (every 3 merges)
-Progress through 15 stages × 15 families (225 unique items)
-Unlock higher-era families at milestone stages
-Complete harder quest tiers
-Reach Legendary milestones → exclusive rewards
-Seasonal events (future)
+Level up via XP → unlocks supply producers, card packs, higher spawn multipliers
+Build Sanctuary Map areas with materials → unlocks new families + board rows
+Progress through 15 stages × 15 families (225 unique named items)
+Reach Stage 7 (Era 3) with a family → unlock its Superpower
+Reach top tier (Stage 15) → Ambassador celebration, Sanctuary Star milestones
+Collect cards across 6 albums → album-completion rewards; trade duplicates via Game Center
 ```
 
 ---
@@ -86,526 +88,283 @@ Seasonal events (future)
 ## 3. Board & Merge System
 
 ### Board Configuration
-- **Grid:** 6 rows × 5 columns = 30 total cells
-- **Starting unlocked:** rows 2–5 (20 cells)
-- **Locked:** rows 0–1 (10 cells), unlocked via merges
-- **Unlock rate:** 1 cell per 3 merges, left-to-right, row 1 before row 0
+- **Grid:** 9 rows × 7 columns = **63 total cells**. (Earlier GDD drafts said 6×5 = 30 — that was always wrong; the implementation has been 9×7 since the generalized chain model shipped.)
+- **Starting unlocked:** rows 0–6 (49 cells)
+- **Locked:** rows 7 and 8 (14 cells) — row 7 unlocks at **player level 3**, row 8 at **player level 8**. Unlocking is level-gated, not merge-count-gated.
 
 ### Merge Rules
 | Scenario | Result |
 |---|---|
-| Same family + same stage | Merge → next stage |
-| Different family OR different stage | Swap positions |
+| Same chain + same tier | Merge → next tier |
+| Different chain OR different tier | Swap positions |
 | Source → empty cell | Move |
-| Drag off bottom of board | Send to inventory (Merge tab) |
+| Drag off bottom of board | Send to inventory / material accumulator, by item category |
 
 ### Spawn Rules
-- **Player-triggered rescue:** costs 1 Kibble, spawns a random Infant (Stage 1) in any empty unlocked cell
-- **Auto-spawn after merge:** free, spawns immediately after every successful merge
-- **Sub-object spawn:** each family's Primary Spawner drops Stage-1 sub-objects periodically (see Section 5)
-- **Board full:** rescue button disabled; hint encourages storing items in inventory
-- **Species distribution:** fully random; no weighting toward needed species (future: weighted spawns)
+- **Family spawner tap:** costs Kibble (`spawnMultiplier` — 1/2/4/8, unlocked at levels 1/5/10/20), spawns at a tier proportional to the multiplier, or a sub-object per the drop table in Section 5
+- **Legacy rescue-tier producers** (Rescue Crate / Shelter Pod / Foster Home): finite-charge producers bought from the shop with Dog Tags; spawn a random *unlocked* animal chain. Superseded in practice by family spawners, which are earned via the Sanctuary Map, but the legacy path still exists in code for the shop.
+- **Supply producers** (Grooming Box / Feed Station / Supply Crate): unlock automatically at levels 15/20/25, produce Grooming/Food/Shelter supply-chain items on a cooldown, no charges consumed by kibble
+- **Board full:** rescue/spawn actions show a "Board Full" toast instead of spawning
 
-### Future Board Features (planned)
-- Special cells: golden cells that give 2× score on any merge performed there
-- Obstacle cells: locked debris that must be cleared by merging adjacent animals
-- Sanctuary zones: dedicated display area for Legendary animals (removed from play board)
+### Future Board Features (still just ideas, not committed)
+- Golden cells giving bonus score
+- Obstacle/debris cells cleared by merging
+- A dedicated Sanctuary display area for Legendary animals, separate from the play board
 
 ---
 
 ## 4. Animal System
 
 ### Overview
-There are **15 animal families**. Each family has **15 merge stages** arranged into 5 Eras. Players unlock families progressively; not all 15 are available from the start.
+**15 animal families**, each with **15 merge tiers** (indices 0–14) arranged into 5 conceptual eras of 3 tiers each. All 15 families and all 225 tier names are fully authored in `AnimalSpecies.tierNames` — this is done, not aspirational.
 
-### Era Structure (5 Eras × 3 Stages)
+### Family List (internal case → display family)
+| Case | Family | | Case | Family |
+|---|---|---|---|---|
+| `.dog` | Canines | | `.fish` | Aquatics |
+| `.cat` | Felines | | `.lizard` | Amphibians |
+| `.rabbit` | Lagomorphs | | `.ferret` | Marsupials |
+| `.bird` | Avians | | `.parrot` | Primates |
+| `.hamster` | Rodents | | `.pony` | Equines |
+| `.turtle` | Reptiles | | `.hedgehog` | Pachyderms |
+| `.fox` | Cervids | | `.guineaPig` | Bovines |
+| `.owl` | Ursids | | | |
 
-| Era | Stages | Theme | Visual Treatment |
-|---|---|---|---|
-| **Era 1 — Infant / Juvenile** | 1–3 | Baby animals, just arrived | Desaturated, small silhouette |
-| **Era 2 — Adolescent** | 4–6 | Young but growing | Partial color, medium size |
-| **Era 3 — Young Adult** | 7–9 | Full-grown species variants | Full color |
-| **Era 4 — Adult** | 10–12 | Powerful, distinguished | Golden border accent |
-| **Era 5 — Peak / Legendary** | 13–15 | Mythic / ultimate forms | Animated glow, ⭐ badge |
+### Starter Family
+Only **Canines** are available on day one (`startingChainIDs`). Every other family is unlocked by building its Sanctuary Map area — see Section 11. This replaces the old "5 starter families + stage-milestone unlocks" design; it never shipped that way. There is no dual unlock path anymore: the one early plan to also unlock Aquatics via a 50-Ambassador milestone was retired in favor of the map-area path (see Section 8).
 
-Stage 15 (Legendary) is removed to the Sanctuary Collection on merge completion and awards a milestone bonus.
+### Animal Tier Progression (15 tiers per family, index 0→14)
+All 15×15 = 225 stage names are defined verbatim in `AnimalSpecies.tierNames`, matching the reference table from earlier design drafts (e.g. Canines: Pup, Kit, Houndling, Terrier, Spaniel, Scout, Retriever, Shepherd, Husky, Alpha, Guardian, Sentinel, Dire Wolf, Mythic, Primordial). Tier 14 (top tier) triggers the Ambassador celebration.
 
-### Starter Families (unlocked from the beginning)
-Canines, Felines, Avians, Rodents, Aquatics
+### Tier Score & XP Values
+`scoreValue = (index + 1) × 25`, `xpValue = (index + 1) × 5`, so tier 0 = 25 score / 5 XP and tier 14 = 375 score / 75 XP. Weekly spotlight gives **2× score** on the featured family's merges.
 
-### Progression-Unlocked Families
-The remaining 10 families are unlocked as the player reaches stage milestones in starter families:
-- Stage 6 clears (any starter) → Unlock Ursids, Cervids
-- Stage 9 clears (any family) → Unlock Equines, Bovines, Reptiles
-- Stage 12 clears → Unlock Amphibians, Primates, Lagomorphs
-- Stage 14 clears → Unlock Pachyderms, Marsupials
-
-### Animal Merge Progression (15 Stages per Family)
-
-| Family | 1–3 (Infant/Juv) | 4–6 (Adolescent) | 7–9 (Young Adult) | 10–12 (Adult) | 13–15 (Legendary) |
-|---|---|---|---|---|---|
-| **Canines** | Pup, Kit, Houndling | Terrier, Spaniel, Scout | Retriever, Shepherd, Husky | Alpha, Guardian, Sentinel | Dire Wolf, Mythic, Primordial |
-| **Felines** | Kitten, Tabby, Kit | Ocelot, Bobcat, Lynx | Puma, Jaguar, Leopard | Panther, Tiger, Lion | Sabertooth, Sovereign, Apex |
-| **Rodents** | Mouse, Hamster, Gerbil | Chipmunk, Squirrel, Rat | Chinchilla, Degu, Beaver | Prairie Dog, Marmot, Nutria | Muskrat, Porcupine, Capybara |
-| **Avians** | Hatchling, Chick, Fluff | Sparrow, Finch, Starling | Pigeon, Magpie, Jay | Falcon, Hawk, Owl | Eagle, Vulture, Condor |
-| **Bovines** | Calf, Heifer, Oxen | Steer, Bull, Zebu | Bison, Yak, Muskox | Highland, Longhorn, Gaur | Buffalo, Aurochs, Titan |
-| **Equines** | Foal, Pony, Shetland | Donkey, Mule, Burro | Mustang, Arabian, Paint | Thoroughbred, Shire, Clydesdale | Zebra, Quagga, Giraffe |
-| **Ursids** | Cub, Sun, Sloth | Spectacled, Moon, Black | Panda, Cinnamon, Glacier | Brown, Kodiak, Grizzly | Polar, Ancient, Behemoth |
-| **Cervids** | Fawn, Muntjac, Roe | Fallow, Chital, Sika | Caribou, Reindeer, Deer | Red, Wapiti, Elk | Sambar, Pere David, Moose |
-| **Aquatics** | Guppy, Tetra, Minnow | Clown, Perch, Bass | Mackerel, Tuna, Salmon | Sword, Sail, Marlin | Shark, Hammerhead, Whale Shark |
-| **Reptiles** | Hatch, Gecko, Anole | Skink, Racer, Whiptail | Iguana, Monitor, Tegu | Gila, Spiny, Python | Boa, Caiman, Komodo Dragon |
-| **Amphibians** | Tadpole, Froglet, Newt | Tree Frog, Poison, Reed | Bullfrog, Toad, Horned | Salamander, Axolotl, Mud | Hellbender, Giant, Goliath |
-| **Primates** | Marmoset, Tamarin, Pygmy | Squirrel, Capuchin, Owl | Macaque, Langur, Guenon | Baboon, Mandrill, Gibbon | Chimpanzee, Orangutan, Gorilla |
-| **Pachyderms** | Piglet, Warthog, Peccary | Tapir, Boar, Babirusa | Hippo, Pygmy, Rhino | White Rhino, Black, Indian | Seal, African, Mammoth |
-| **Lagomorphs** | Bunny, Cottontail, Rex | Angora, Lop, Harlequin | Hare, Jackrabbit, Snow | Flemish, Belgian, Giant | Desert, Patagonian, Mara |
-| **Marsupials** | Joey, Quokka, Honey | Potoroo, Bandicoot, Bilby | Wallaby, Pademelon, Tree | Devil, Quoll, Wombat | Koala, Macropod, Red Kangaroo |
-
-### Stage Score Values
-
-| Era | Stage | Score | Notes |
-|---|---|---|---|
-| Infant | 1 | 25 | |
-| Infant | 2 | 50 | |
-| Infant | 3 | 75 | |
-| Adolescent | 4 | 125 | |
-| Adolescent | 5 | 175 | |
-| Adolescent | 6 | 250 | |
-| Young Adult | 7 | 375 | |
-| Young Adult | 8 | 550 | |
-| Young Adult | 9 | 800 | |
-| Adult | 10 | 1,200 | |
-| Adult | 11 | 1,750 | |
-| Adult | 12 | 2,500 | |
-| Legendary | 13 | 4,000 | |
-| Legendary | 14 | 6,000 | |
-| Legendary | 15 | 10,000 | Removed to Sanctuary Collection |
-
-Weekly spotlight species gives **2× score** on all merges.
-
-### Future Animal Features (planned)
-- **Rare/event species:** unlockable via Dog Tags or seasonal events
-- **Special abilities:** certain families trigger bonus events (Canines occasionally bring a free rescue)
-- **Animal encyclopedia:** collectibles screen showing all families/stages discovered
-- **Sanctuary display:** gallery of all Legendary animals earned
+### Sell Values
+`sellValue(forTier:)` is a 15-entry table in `MergeBoardViewModel`, geometric from tier 0 up through 100,000 coins at the top tier.
 
 ---
 
-## 5. Sub-Object Spawning
+## 5. Sub-Object Spawning & Power-Ups
 
 ### Overview
-Each animal family has a **Primary Spawner** that periodically drops Stage-1 sub-objects onto the board. Sub-objects form independent 4-stage merge chains. Merging to Stage 4 (the consumable) rewards one of four consumable types and clears the board space.
+Each family spawner has a **20% base chance** per activation of producing a sub-object instead of an animal (`SubObjectDropConfig.baseSubObjectChance`). Sub-objects form independent 4-tier merge chains (`chainID` prefix `"subobject."`), never merge with animal pieces, and reaching tier 3 (the top tier) yields a **power-up** consumable.
 
-Sub-objects are stored in the **Spawner tab** of the inventory (see Section 9) and never merge with animal pieces.
+### Sub-Object Chains
+All 15 families have a named 4-stage chain (e.g. Canines: Biscuit → Bone → Chew Toy → Golden Ball), fully authored in `ItemChain.makeSubObjectChain`.
 
-### Sub-Object Chains (4-Stage Merge per Family)
+### Power-Up Rarity & Drop Rates
+When a sub-object drops, its rarity is resolved by `SubObjectSystem.resolveSpawnerDrop`:
 
-| Family | Stage 1 | Stage 2 | Stage 3 | Stage 4 (Consumable) |
-|---|---|---|---|---|
-| **Canines** | Biscuit | Bone | Chew Toy | Golden Ball |
-| **Felines** | Bell | Feather Wand | Yarn Ball | Laser Pointer |
-| **Rodents** | Seed | Nut | Berry | Corn Cob |
-| **Avians** | Down | Plume | Quill | Iridescent Tail |
-| **Bovines** | Clover | Hay Bale | Salt Lick | Water Trough |
-| **Equines** | Curry Comb | Brush | Sponge | Trophy |
-| **Ursids** | Honey Comb | Salmon | Wild Hive | Berry Bush |
-| **Cervids** | Leaf | Sprout | Twig | Antler |
-| **Aquatics** | Shell | Pearl | Starfish | Treasure Chest |
-| **Reptiles** | Pebble | Sand | Warm Moss | Heat Lamp |
-| **Amphibians** | Duckweed | Reeds | Lotus Flower | Algae Bloom |
-| **Primates** | Banana | Mango | Papaya | Jungle Vine |
-| **Pachyderms** | Puddle | Mud Clump | Clay Mound | Rainfall |
-| **Lagomorphs** | Lettuce | Carrot | Cabbage | Turnip |
-| **Marsupials** | Bud | Flower | Leaf Bundle | Bark |
-
-### Consumable Reward Types (Stage 4 drop)
-
-When a sub-object chain reaches Stage 4 and is merged, it yields one randomized consumable:
-
-| Reward | Effect | Drop Rate |
+| Rarity | Effect | Weight |
 |---|---|---|
-| **Speed Burst** | 2× spawner production speed for 30 seconds | 60% (Common) |
-| **Map Supplies** | Rare resource used for area/map expansion | 25% (Uncommon) |
-| **Spawner Refill** | Instantly restores all production charges | 10% (Rare) |
-| **Drop Guarantee** | Forces the next spawner drop to be Stage 2 or 3 animal | 5% (Epic) |
+| Speed Burst | 2× spawner speed for 30s (+ any `powerUpDurationBonus` from area upgrades) | 60% |
+| Map Supplies | 4 random wood/metal/cement items (tier 0–2), direct to material storage | 25% |
+| Spawner Refill | +20 Kibble (family spawners have unlimited charges, so this substitutes) | 10% |
+| High-Tier Drop Guarantee | Forces the *next* spawn to tier ≥ 2 | 5% |
 
-Consumables are stored in the **Supplies tab** of the inventory (see Section 9) and activated by tapping.
+### Pity Timers
+Per-family `PityState` tracks spawns since the last Rare/Epic drop. **30 spawns** guarantees a Spawner Refill; **60 spawns** guarantees a High-Tier Drop Guarantee. Both thresholds can be reduced by an area-upgrade bonus (`pityTimerReduction`).
 
-### Spawner Production Rules
-- Each family's spawner has a **charge pool** (starts at 5 charges; replenished by Spawner Refill consumable or Dog Tags)
-- Drops one Stage-1 sub-object per charge, on a cooldown timer
-- Spawner charges are visible as a pip indicator on the spawner tile
-- When charges reach 0 the spawner idles until refilled
+### Power-Up Inventory
+6 dedicated slots (`InventoryStore.powerUpInventory`), separate from the animal inventory. Players drag a power-up onto any spawner to apply it.
 
 ---
 
 ## 6. Family Superpowers
 
 ### Overview
-Each animal family has one unique **Superpower** — a passive or active ability that unlocks the first time that family reaches **Era 3 (Stage 7)**. Superpowers add strategic differentiation: players who invest deeply in a family gain a tangible board advantage, making family choice meaningful beyond just aesthetic preference.
-
-- **Passive** abilities trigger automatically under a defined condition
-- **Active** abilities are triggered by a tap and operate on a cooldown
-- All Superpowers are visible (greyed out) before unlock so players can plan ahead
+Each family has one Superpower, unlocking the first time that family reaches **tier index 6** (the 7th stage). This is fully implemented — passives fire automatically from hooks in `MergeBoardViewModel`, and actives are dispatched via `activateSuperpower(for:)` with per-species cooldown tracking.
 
 ### Superpower Reference
-
 | Family | Type | Name | Ability |
 |---|---|---|---|
-| **Canines** | Passive | Fetch! | Every 5th merge anywhere on the board, a free Stage-1 Canine appears in a random empty cell |
-| **Felines** | Active (90s cooldown) | Nine Lives | Undo the last move — swap two pieces back to their positions before the action |
-| **Rodents** | Passive | Hoard | Rodent Spawner drops Stage-2 sub-objects instead of Stage-1 |
-| **Avians** | Passive | Scout | Before each rescue, a small preview shows the species of the next 2 incoming rescues |
-| **Bovines** | Active (3-min cooldown) | Stampede | Instantly merge all same-family same-stage pairs currently on the board simultaneously |
-| **Equines** | Active (60s cooldown) | Sprint | Doubles Kibble regen rate for 60 seconds |
-| **Ursids** | Passive | Hibernate Bonus | If no merges are made for 5+ minutes, the next rescue spawns at Stage 3 |
-| **Cervids** | Passive | Antler Drop | Every Cervid merge has a 25% chance to drop a bonus Stage-2 sub-object |
-| **Aquatics** | Passive | Current | After any merge, sub-object pieces on the board auto-slide to fill the nearest gap |
-| **Reptiles** | Passive | Bask | Reptile Spawner charges regenerate at 2× the normal rate |
-| **Amphibians** | Active (2-min cooldown) | Leap | Tap any Amphibian to teleport it to any empty board cell |
-| **Primates** | Active (90s cooldown) | Mimic | Spawns a free Stage-1 animal matching the family of the last successful merge |
-| **Pachyderms** | Passive | Memory | Quest and challenge progress for Pachyderm goals counts double |
-| **Lagomorphs** | Passive | Multiply | Every 4th Lagomorph merge spawns two Stage-1 Lagomorphs as the auto-spawn instead of one |
-| **Marsupials** | Active (30s hold, 3-min cooldown) | Pouch | Temporarily store up to 2 extra animals outside the inventory for 30 seconds; they return to the board when the timer expires |
+| Canines | Passive | Fetch! | Every 5th merge anywhere spawns a free Stage-1 Canine |
+| Felines | Active (90s) | Nine Lives | Undo the last merge |
+| Lagomorphs | Passive | Multiply | Every 4th Lagomorph merge spawns two free Stage-1s |
+| Avians | Passive | Scout | Spawner tiles preview whether the next rescue is an animal or sub-object |
+| Rodents | Passive | Hoard | Rodent Spawner drops Stage-2 sub-objects instead of Stage-1 |
+| Reptiles | Passive | Bask | Reptile family spawner costs half Kibble |
+| Cervids | Passive | Antler Drop | 25% chance of a bonus Stage-2 sub-object on any Cervid merge |
+| Ursids | Passive | Hibernate Bonus | After 5 idle minutes, the next rescue anywhere spawns at Stage 3 |
+| Aquatics | Passive | Current | After any merge, adjacent sub-objects auto-slide toward the nearest gap |
+| Amphibians | Active (120s) | Leap | Teleport any Amphibian to any empty board cell |
+| Marsupials | Active (180s) | Pouch | Store up to 2 animals off-board for 30s, then they return |
+| Primates | Active (90s) | Mimic | Spawn a free Stage-1 animal of the last-merged family |
+| Equines | Active (60s) | Sprint | Doubles Kibble regen rate for 60 seconds |
+| Pachyderms | Passive | Memory | Pachyderm quest/challenge progress counts double |
+| Bovines | Active (180s) | Stampede | Instantly merges all same-family same-tier pairs on the board |
 
-### Balance Notes
-- **Canines / Lagomorphs** increase board density — useful for players who want to merge faster, but can fill the board if unmanaged
-- **Felines** is the only undo mechanic in the game — strategically high value, long cooldown intentional
-- **Bovines (Stampede)** requires setup (pairs on board) but can chain-clear a cluttered board
-- **Avians (Scout)** reduces randomness — valuable for quest targeting without breaking core random-spawn feel
-- **Pachyderms (Memory)** is a pure progression accelerator — no board effect, so it doesn't disrupt balance
-
-### Superpower UI
-- A small family-specific icon appears in the corner of every board cell containing that family
-- Active ability button appears in a side strip when a family with an unlocked Active power is present on the board
-- Greyed-out lock icon shows on the button before Era 3 unlock with "Reach Stage 7 to unlock"
-- A brief celebration animation plays on first unlock ("🐾 [Family] Superpower Unlocked!")
+### UI
+A collapsible button strip shows one button per family with an unlocked *active* ability; a cooldown ring and countdown label render while on cooldown. A celebration banner plays on first unlock per family.
 
 ---
 
-## 7. Economy & Currencies  
+## 7. Economy & Currencies
 
-### 🦴 Kibble (Energy Currency)
+Four currencies exist, not two.
+
+### 🦴 Kibble (energy)
 | Property | Value |
 |---|---|
 | Starting amount | 20 |
-| Regen rate | 1 per minute |
-| Regen cap | 100 |
-| Max (with purchases) | Unlimited |
-| Cost per rescue | 1 |
-| Auto-spawn after merge | Free |
+| Regen rate | 1 per 120 seconds |
+| Regen cap | 100 (rises to **150 at player level 10**) |
+| Cost per rescue | `spawnMultiplier` (1/2/4/8) |
 
-**Kibble sources:**
-- Timer regen (primary, capped at 100)
-- Quest rewards (2–8 per quest)
-- Daily challenge bonus (+10 standard, +30 on 7-day streak)
-- Daily login reward (5–20 per day)
-- IAP purchases (60 / 180 / 600)
-- Sanctuary Pass daily bonus (+30/day, subscription)
-- Timed rescue request completion bonus (5–10)
+Sources: timer regen, quests, daily challenges, daily login, adoption order rewards, rewarded ads (+25, up to 4/day, resets 09:00 UTC), Sanctuary Pass (+20/day × 1.5 multiplier on all claimed kibble), IAP.
 
-### 🪪 Dog Tags (Premium Currency)
-| Property | Value |
-|---|---|
-| Starting amount | 0 |
-| Earned via | Quests, challenges, milestones |
-| Cannot be earned via | Timer |
+### 🪪 Dog Tags (premium, earned not bought-to-progress)
+Sources: quests (1–15 depending on difficulty), daily challenge streak bonus (+2, or +8 every 7th day), weekly spotlight milestone (+5), daily login, adoption order rewards, IAP.
+Spend on: inventory row unlocks (10 / 25 tags), the Dog-Tag→Kibble exchange (40→100, 80→240, 120→480), the shop's legacy producer tier (Rescue Crate/Shelter Pod/Foster Home).
 
-**Dog Tag sources:**
-- Active quest rewards (1–6 per quest by difficulty)
-- Daily challenge bonus (+2 standard, +8 on 7-day streak)
-- Weekly spotlight milestone (+5 at 10 merges)
-- Daily login rewards (Day 3: +2, Day 5: +3, Day 7: +5)
-- IAP purchases (15 / 60 / 175)
+### 🪙 Coins
+Introduced for the map-building and card-album economy — **not in earlier GDD drafts at all**. Earned from Ambassador merges (+10, more with area upgrades), adoption order fulfillment, album completion, weekly/monthly goal chests, and quest claims. Spent on Sanctuary Map area builds/upgrades alongside materials.
 
-**Dog Tag spending:**
-- Inventory Supplies tab unlock: 10 tags
-- Inventory Spawner tab unlock: 25 tags
-- Instant Kibble refill (future): 5 tags → full refill
-- Skip rescue request timer (future): 3 tags
-- Unlock specific family spawn (future): 8 tags
-- Spawner refill (alternative to consumable drop): 3 tags per spawner
-
-### Economy Balance Principles
-- A free player should never feel stuck — daily login + quest rewards provide steady Kibble
-- Dog Tags should feel earned, not required — core gameplay never requires spending them
-- IAP should feel like a genuine value upgrade, not a paywall
-- Per-unit Kibble cost should be 30–40% cheaper than Travel Town equivalent
+### ⭐ Stars
+Earned from duplicate cards (1 for a common dupe, 5 for a rare dupe) or by converting all duplicates at once. Spent in the Star Shop on 1★–3★ card packs and joker cards (see Section 12).
 
 ---
 
 ## 8. Progression Systems
 
-### Cell Unlock Progression
-```
-Merges 1–3:   Unlock cell (row 1, col 0)
-Merges 4–6:   Unlock cell (row 1, col 1)
-...
-Merges 13–15: Unlock cell (row 0, col 4)
-Total: 30 merges to unlock all 10 locked cells
-```
-Progress bar with "X more merges" hint keeps player informed.
+### Player Level & XP
+Fully implemented (earlier drafts said "not yet built"). `xpRequired(forLevel:) = level × 150`. XP sources: merges (`(tier+1) × 5`), rescues (+2), order fulfillment (+15), all-dailies-complete (+30), quest claims (10/25/50/150 by difficulty).
 
-### Family Unlock Progression
-```
-Start:             Canines, Felines, Avians, Rodents, Aquatics (5 families)
-Stage 6 clear:     +Ursids, Cervids
-Stage 9 clear:     +Equines, Bovines, Reptiles
-Stage 12 clear:    +Amphibians, Primates, Lagomorphs
-Stage 14 clear:    +Pachyderms, Marsupials (all 15 unlocked)
-```
-Unlocking a new family triggers a short celebration animation and introduces the family's first Infant pair and its Primary Spawner.
+Level-up rewards: supply producers at 15/20/25; card packs at levels 3, 6, 9, 12, 15, 18, 20, 22, 25, 30 (escalating pack tier); higher spawn multipliers at 5/10/20; board rows at 3/8; Invite system unlocks at level 5; Loyalty Club unlocks at level 20.
 
-### Score Progression
-- Score = stage score value (see Section 4 table) × spotlight_multiplier
-- Weekly spotlight gives 2× score on featured family
-- Score displayed in bottom bar; no leaderboard yet (future feature)
-- Score resets per session (future: persistent lifetime score / leaderboard)
-
-### Player Level (not yet built — planned)
-- XP earned from merges, quest completion, and login streaks
-- Level ups unlock cosmetic rewards: board themes, animal name tags, emojis
-- No hard gating behind levels — purely cosmetic progression
-
-### Legendary Milestones (replacing Sanctuary Star Milestones)
+### Ambassador Milestones (Sanctuary Stars)
+`ambassadors` counts chains that have reached top tier. `MilestoneManager` fires at 5 / 15 / 30 / 50:
 ```
-5 Legendaries:   Title "Junior Rescuer" + 10 Kibble bonus
-15 Legendaries:  Title "Animal Friend" + 5 Dog Tags
-30 Legendaries:  Title "Sanctuary Guardian" + free inventory tab
-50 Legendaries:  Title "Legendary Rescuer" + exclusive rare family unlock
+5:  "Junior Rescuer"     + 10 Kibble
+15: "Animal Friend"      + 5 Dog Tags
+30: "Sanctuary Guardian" + a free inventory row
+50: "Legendary Rescuer"  + 100 Kibble + 50 Dog Tags
 ```
+The 50-star milestone previously also unlocked Aquatics; that path was retired once Aquatics got its own Sanctuary Map area, so the milestone now just pays out currency instead.
+
+### Weekly & Monthly Coin Goals
+`WeeklyGoalTier`: Bronze (50 coins), Silver (120), Gold (250) — each with escalating Kibble/Dog Tag/Toolbox/XP rewards. Monthly goal requires 3 Gold weeks in a calendar month (reducible by an area upgrade).
+
+### Loyalty Club
+Unlocks at player level 20. A 7-day reward cycle (separate from the daily login streak) paying Kibble, Dog Tags, and occasional card packs, topping out at a 6★-adjacent reward on Day 7.
 
 ---
 
 ## 9. Engagement Systems
 
-### 8.1 Daily Login Reward ("Morning Feeding")
-| Day | Kibble | Dog Tags |
-|---|---|---|
-| Day 1 | +5 | — |
-| Day 2 | +10 | — |
-| Day 3 | +5 | +2 |
-| Day 4 | +15 | — |
-| Day 5 | +10 | +3 |
-| Day 6 | +20 | — |
-| Day 7 | +15 | +5 |
+### 9.1 Daily Login Reward
+7-day cycle, Kibble + Dog Tags escalating, Day 3/5/7 also grant Dog Tags. Missing a day resets the streak. Shown as a full-screen modal on first daily open.
 
-- Cycle repeats after Day 7
-- Missing a day resets streak to Day 1
-- Shown as full-screen modal on first daily open
-- Persisted via UserDefaults
+### 9.2 Daily Challenges
+3 per day (Easy/Medium/Hard), reset at local midnight. Completing all 3 grants +15 Coins (plus any area-upgrade bonus), +2 Dog Tags, +30 XP; the streak bonus rises to +8 Dog Tags every 7th consecutive day.
 
-### 8.2 Daily Challenges ("Daily Shelter Tasks")
-- 3 challenges per day: 1 Easy, 1 Medium, 1 Hard
-- Reset at midnight (local time)
-- Completing all 3 awards: +10 Kibble, +2 Dog Tags
-- 7-day completion streak: +30 Kibble, +8 Dog Tags
-- Streak resets if all 3 not completed in a day
+### 9.3 Active Quests
+3 active at all times, replaced immediately on claim. Difficulty roll: 45% Easy / 30% Medium / 20% Hard / 5% Legendary, capped by player level so early players never see unreachable goals. Goal types: merge any N, merge N of a specific chain, reach a specific tier N times, rescue N animals — the same four `QuestGoal` cases cover both animal and supply-chain progress.
 
-**Challenge pool by difficulty:**
-| Difficulty | Example Goals |
-|---|---|
-| Easy | Merge 3 animals; Rescue 4 strays; Merge 2 [family] |
-| Medium | Merge 6 animals; Get 1 animal to Era 3; Rescue 8 strays |
-| Hard | Get 1 animal to Era 4; Merge 10 animals; Reach Stage 10 with any family |
+### 9.4 Adoption Orders (formerly "Timed Rescue Requests")
+Requests come from a fixed roster of 12 named adopting families/individuals (e.g. "The Chen Family", "Dr. Sarah Park"), not anonymous rescue slots. At least 2 orders active at all times (extendable via area upgrades). Each order wants a specific chain + tier (tier-weighted by player level), 15-minute countdown, auto-replaces on expiry or claim. Rewards: Dog Tags + Coins, and sometimes a card pack (guaranteed above certain Dog Tag thresholds). Skippable for 2 Kibble.
 
-### 8.3 Active Quests
-- 3 active at all times; manually claimed
-- Replaced immediately on claim
-- Difficulty weighted: 50% Easy, 30% Medium, 20% Hard
-- Rewards scale with difficulty (Kibble + Dog Tags)
+### 9.5 Weekly Family Spotlight
+Rotates by calendar week across unlocked families. 2× score on the spotlighted family's merges; hitting 10 spotlight merges in the week grants +5 Dog Tags.
 
-**Quest goal types:**
-- Merge any X animals
-- Merge X of a specific family
-- Get X animals to a specific era/stage
-- Rescue X strays
-- Collect X sub-object consumables
+### 9.6 Seasonal Events
+Infrastructure (`EventSystem.swift`, `EventRegistry`) is complete: time-boxed events with coin milestones and a themed UI. **Only one event is defined** (`rescue_rush_jun2026`, June 1–15 2026) and it has already expired — there is currently no active event. New `EventDefinition` entries need to be authored before this system does anything visible to players.
 
-### 8.4 Timed Rescue Requests ("Urgent Requests")
-- 2 active at all times
-- 10-minute countdown per request
-- Auto-claimed on completion (bonus awarded immediately)
-- Replaced automatically on expiry
-- Timer bar turns red in final 2 minutes
-- Bonus: 5–10 Kibble + 1–3 Dog Tags on completion
+### 9.7 Onboarding
+A functional, skippable 3-step tutorial (rescue → merge → claim a quest reward) with a pulsing highlight ring and speech-bubble callouts. Shown once, tracked via UserDefaults.
 
-### 8.5 Weekly Family Spotlight
-- Featured family rotates by calendar week
-- 2× score for all merges of that family
-- Weekly milestone: merge 10 spotlight animals → +20 Kibble, +5 Dog Tags
-- Golden border shown on board cells containing spotlight family
-- Compact banner displayed below currency bar
-- Progress resets Monday midnight
+### 9.8 Push Notifications
+Scheduling logic is fully implemented in `NotificationManager` (Kibble-full, daily-challenge-reset, order-expiring, re-engagement). **The Push Notifications capability is not yet enabled in the Xcode project**, so permission prompts and delivery won't function on-device until that's toggled in Signing & Capabilities.
 
-### 8.6 Push Notifications (not yet built — planned)
-| Trigger | Message |
-|---|---|
-| Kibble full | "Your Kibble bag is full! Come rescue some animals." |
-| Daily challenge reset | "New daily challenges are ready at the sanctuary!" |
-| Rescue request expiring | "Your rescue request expires in 2 minutes!" |
-| Login streak at risk | "Don't break your streak! Log in before midnight." |
-| Weekly spotlight change | "New spotlight family this week: [emoji] [Name]!" |
-| Spawner idle | "Your [Family] Spawner has run out of charges!" |
-
-### 8.7 Seasonal Events (not yet built — planned)
-- 4 events per year (Spring Rescue, Summer Safari, Autumn Harvest, Winter Warmth)
-- Duration: 7 days
-- Exclusive rare families/stages available only during event
-- Event currency earned through special merges; spent on exclusive rewards
-- Leaderboard showing top rescuers during event window
+### 9.9 Rewarded Ads
+The interface (`RewardedAdProvider`) and reward logic (up to 4/day, +25 Kibble, resets 09:00 UTC) are wired, but `StubAdProvider` just waits 1.5 seconds and always succeeds — no real ad SDK (AdMob/AppLovin/etc.) is integrated yet.
 
 ---
 
-## 10. Inventory System
+## 10. Inventory & Storage
+
+The old GDD's "3-tab Merge/Spawner/Supplies inventory" concept was never built as described. What actually shipped is architecturally different and, in practice, better suited to the material-heavy building economy that emerged in later phases:
+
+| Store | Contents | Capacity |
+|---|---|---|
+| **Animal inventory** | Board items dragged off-board (animals, sub-objects as fallback) | 18 slots: 6 free + 2 unlockable rows of 6 (10 / 25 Dog Tags) |
+| **Power-up inventory** | Sub-object top-tier consumables | 6 fixed slots |
+| **Material accumulator** | Wood / Metal / Cement, 6 tiers each | **Limitless** — tracked as per-tier counts, not individual slots; two of the same tier auto-cascade into the next tier |
+| **Producer storage** | Retired producers, keyed by `ProducerLevel` | 1 designated slot per producer level (level-gated) + 4 overflow slots |
+
+The limitless material accumulator (decided during the Sanctuary Map build-out) intentionally avoids the board-clutter problem individual material items would otherwise cause.
+
+---
+
+## 11. Sanctuary Map & Building
 
 ### Overview
-The inventory is a **3-tab panel** replacing the previous 3-row layout. Each tab holds a different category of item to reduce clutter and create deliberate "grid pressure."
+Not present at all in earlier GDD drafts. Players spend Coins + tiered materials (wood/metal/cement) to build **15 Sanctuary Areas** in a fixed unlock order, starting with the tutorial-only "Antique Dog House" (Canines, day one) through 14 further areas that each unlock one new family's spawner (and, for the first four, a new board row).
 
-| Tab | Contents | Default Slots | Unlock Cost |
-|---|---|---|---|
-| **Merge** | Animal board items | 6 | Free (always open) |
-| **Spawner** | Sub-object chain items | 6 | 10 Dog Tags |
-| **Supplies** | Consumable rewards | 6 | 25 Dog Tags (requires Spawner tab first) |
-| **Total** | All item types | 18 | |
+### Per-Area Structure
+Each area has:
+- A one-time build cost (materials + implicitly gated by `requiresPrevious`)
+- An `AreaReward` — new family spawner, sometimes a new board row, plus bonus Kibble/Dog Tags/XP
+- **4 upgrade tiers**, each costing Coins + higher-tier materials, granting a permanent `UpgradeBonus` (12 distinct bonus fields: coin multipliers, extra adoption-order slots, weekly-goal discounts, spotlight multiplier bonus, sub-object drop-rate bonus, pity-timer reduction, power-up duration bonus, and more). All active bonuses are summed by `recalcActiveBonuses()`.
 
-The 3-tab constraint forces players to make choices about what to keep, creating the natural "grid pressure" that drives shop conversions without ever feeling punitive.
-
-### Interaction Model
-- **Store from board:** tap animal → tap "Store Selected" button → routes to Merge tab
-- **Store via drag:** drag animal off bottom of board → auto-routes to first empty Merge slot
-- **Store sub-object:** sub-object pieces dragged off board → route to Spawner tab
-- **Retrieve to board:** open inventory → tap item → "Place on Board" → placed in first empty cell
-- **Rearrange inventory:** tap slot → tap another slot → swap (within same tab)
-- **Inventory tab full:** "[Tab] Full" toast for 3 seconds
-
-### Future Inventory Features (planned)
-- Drag-and-drop directly from inventory to board cell
-- Sort tab by family or stage
-- Favorite/pin slots to prevent accidental overwriting
-- Inventory expansion via IAP (additional slots per tab)
+Later areas scale materials to higher tiers and larger quantities, so late-game building feels like a genuine investment rather than a passive unlock.
 
 ---
 
-## 11. Monetization
+## 12. Card Collection & Trading
+
+Entirely new since the last GDD draft.
+
+### Cards & Albums
+**54 cards** across **6 albums** (Rescue Profiles, Sanctuary Friends, Animal Kingdom, Vet Records, Adventures Abroad, Hall of Fame), each card Common or Rare. Completing an album pays out Kibble/Dog Tags/Coins (scaling from the first album's modest reward up to Hall of Fame's 100 Kibble / 25 Dog Tags / 250 Coins).
+
+### Packs
+6 pack tiers (1★–6★), each with a fixed card count (2 up to 6) and escalating rare odds/guarantees — 1★ has a 5% rare chance and no guarantee; 6★ guarantees 3 rares out of 6 cards. 1★–3★ packs and joker cards (fill any missing common/rare) are buyable in the Star Shop with Stars earned from duplicates; 4★–6★ packs come only from gameplay milestones or IAP.
+
+### Trading
+Duplicate cards can be sent to Game Center friends (up to a daily send cap), routed through **CloudKit's public database** — this was the one part of the system that was fully stubbed out until this refresh cycle; it's now wired end-to-end (upload/fetch/claim, plus a fix so the sender's UI actually reflects a claimed trade instead of showing "Pending" forever). It still needs the Game Center and CloudKit capabilities toggled on in Xcode, and the CloudKit schema deployed, before it's live — see Section 16.
+
+---
+
+## 13. Monetization
 
 ### IAP Products
-| Product ID | Name | Contents | Suggested Price |
-|---|---|---|---|
-| kibble.small | Small Kibble Bag | 60 Kibble | $0.99 |
-| kibble.medium | Medium Kibble Bag | 180 Kibble | $1.99 |
-| kibble.large | Large Kibble Bag | 600 Kibble | $4.99 |
-| dogtags.small | Dog Tag Pack | 15 Tags | $0.99 |
-| dogtags.medium | Dog Tag Bundle | 60 Tags | $2.99 |
-| dogtags.large | Dog Tag Jackpot | 175 Tags | $6.99 |
-| bundle.starter | Sanctuary Starter Pack | 100 Kibble + 20 Tags | $1.99 |
-| pass.monthly | Sanctuary Pass | +30 Kibble/day + perks | $4.99/mo |
+12 products configured in a local `.storekit` file (Simulator-testable) and wired to StoreKit 2:
 
-### Value Positioning vs. Competitors
-- Travel Town equivalent: ~$1.99 for ~20 minutes of energy
-- Paw Sanctuary target: $1.99 for ~60 minutes of energy (3× better value)
-- Large bundle per-unit cost always 40%+ cheaper than small bundle
-- Sanctuary Pass daily bonus recoverable in ~3.3 days at full play
+| Product | Contents |
+|---|---|
+| Kibble Small / Medium / Large | 60 / 180 / 600 Kibble |
+| Dog Tag Pack / Bundle / Jackpot | 15 / 60 / 175 Dog Tags |
+| Sanctuary Starter Pack | 100 Kibble + 20 Dog Tags |
+| Sanctuary Pass (subscription) | +20 Kibble/day, ×1.5 multiplier on all claimed Kibble rewards |
+| Energy Pack Small/Medium/Large/XL | Kibble + Dog Tags + a legacy producer + a card pack, bundled |
 
-### Sanctuary Pass Perks (subscription)
-- +30 Kibble bonus on first daily open
-- 1 free timed rescue request skip per day
-- 1 free Spawner Refill per day
-- Exclusive "Pass" badge on profile (future)
-- Early access to seasonal events (future)
+### Rewarded Ads
+See Section 9.9 — reward logic done, ad SDK integration is a stub.
 
-### Rewarded Ads (not yet built — planned)
-- Option to watch ad for +5 Kibble (max 3× per day)
-- Option to watch ad to extend a timed rescue request by 5 minutes
-- Never mandatory; always player-initiated
-- Shown only when Kibble is at 0
-
-### Monetization Principles
-- No paywalled story content
-- No energy walls that prevent all play
-- No "pay to win" — Dog Tags and Kibble never give board advantages
-- Transparent pricing (always show what you're getting)
-- Never show purchase prompt more than once per session
+### Monetization Principles (unchanged from earlier drafts, still true in code)
+No paywalled story content, no hard energy walls, Dog Tags/Coins never buy board advantages, transparent pricing.
 
 ---
 
-## 12. Content Roadmap
+## 14. Social Systems
 
-### Phase 1 — Foundation (Current)
-- [x] 6×5 merge board with drag/drop
-- [x] Kibble + Dog Tag economy
-- [x] Cell unlock progression
-- [x] Active quest system (3 quests)
-- [x] Daily login rewards
-- [x] Daily challenges with streak
-- [x] Timed rescue requests
-- [x] Weekly spotlight
-- [x] IAP scaffold (StoreKit 2)
-- [x] Shop UI (preview mode)
-- [x] Game state persistence
-- [ ] Tutorial / onboarding
-- [ ] Sound effects + haptics
-- [ ] App icon + launch screen
+### Game Center
+`authenticateGameCenter` runs at launch. Friend loading (`loadGameCenterFriends`) and the leaderboard-adjacent Ambassador count are wired; card trading (Section 12) depends on this being authenticated.
 
-### Phase 2 — v2.0 Animal Expansion (Next)
-- [ ] Expand to 15 animal families × 15 stages (data-driven via ContentRegistry)
-- [ ] 5-era visual treatment (Infant → Legendary era borders/effects)
-- [ ] Family unlock progression system (stage milestone gates)
-- [ ] Sub-object spawning chains (15 families × 4-stage sub-chains)
-- [ ] Spawner tile UI (charge pips, idle state)
-- [ ] Consumable rewards system (Speed Burst, Map Supplies, Spawner Refill, Drop Guarantee)
-- [ ] 3-tab inventory (Merge / Spawner / Supplies)
-- [ ] Quest goals updated for sub-objects and 15-stage chain
-- [ ] Family Superpowers (15 abilities, unlock at Era 3 per family)
-- [ ] Active Superpower button strip UI + cooldown display
-- [ ] Legendary celebration animation + Sanctuary Collection
-
-### Phase 3 — Polish & App Store
-- [ ] SwiftData persistence (board, inventory, currencies, quests)
-- [ ] Push notifications (6+ triggers)
-- [ ] StoreKit configuration file (enable Simulator testing)
-- [ ] Onboarding flow (first 5 minutes)
-- [ ] Haptic feedback on merge, unlock, reward
-- [ ] Sound effects (merge, rescue, reward, UI)
-- [ ] App icon + launch screen
-- [ ] Privacy policy + terms (required for App Store)
-- [ ] AI disclosure statement (App Store requirement)
-- [ ] Privacy manifest (PrivacyInfo.xcprivacy)
-
-### Phase 4 — Expansion (Post-launch)
-- [ ] Sanctuary Collection screen (all Legendaries earned)
-- [ ] Player level system (XP + cosmetic rewards)
-- [ ] Legendary milestone rewards
-- [ ] Rare/exclusive families (seasonal)
-- [ ] Rewarded ads integration
-- [ ] Push notification system
-- [ ] Board themes (cosmetic)
-- [ ] Animal encyclopedia / collection log
-- [ ] Score leaderboard
-
-### Phase 5 — Live Ops (3+ months post-launch)
-- [ ] Seasonal events (4/year)
-- [ ] Limited-time families/stages
-- [ ] Event leaderboards
-- [ ] Friend system (view friend sanctuaries)
-- [ ] CloudKit sync (cross-device)
-- [ ] iPad layout
-- [ ] Localization (Spanish, French, German)
-- [ ] Map/area expansion system (uses Map Supplies consumable)
+### Invite-a-Friend
+Unlocks at player level 5. Milestone rewards at 1/3/5 invites sent (Kibble and/or Dog Tags), a `ShareSheet` wrapper for the native iOS share flow. **The App Store URL is still a placeholder** (`id0000000000`) and needs the real listing URL before launch.
 
 ---
 
-## 13. Technical Architecture
+## 15. Technical Architecture
 
-### Data Model (v2.0 — Generalized Chain Model)
-The game uses a **content-registry pattern** (`ContentRegistry`) so that all 15 families × 15 stages × 15 sub-object chains are authored as data, not code. Adding a new family or stage is a data edit, not a code change.
+### Data Model — Generalized Chain Model
+Every mergeable item is `BoardItem(chainID: String, tier: Int)`. All display data (names, colors, symbols, score/XP values) comes from `ContentRegistry` at runtime — saves store only the chain ID and tier, never display data, so content can be added without a save migration.
 
 ```swift
-typealias ChainID = String   // e.g. "animal.canine", "sub.canine"
-
-struct BoardItem: Identifiable, Equatable, Codable {
-    var id = UUID()
-    var chainID: ChainID     // stable identifier
-    var tier: Int            // 0-indexed; 0–14 for animals, 0–3 for sub-objects
+enum ChainCategory: String, Codable, CaseIterable {
+    case animal, spawner, supply, tool, material, subObject, powerUp
 }
 
 struct ContentRegistry {
@@ -617,332 +376,91 @@ struct ContentRegistry {
 }
 ```
 
-The **save only ever stores `chainID` (String) + `tier` (Int)** — never display data. All names/icons/colours come from the registry at runtime.
+### Pattern & Frameworks
+- **Pattern:** MVVM (SwiftUI + a set of `@Observable` domain coordinators — `KibbleEngine`, `PlayerProgression`, `QuestCoordinator`, `AdoptionBoard`, `InventoryStore` — orchestrated by `MergeBoardViewModel`)
+- **UI:** SwiftUI
+- **IAP:** StoreKit 2, local `.storekit` config for Simulator testing
+- **Persistence:** a single `GameState` snapshot, currently at **schema v24**, with an unbroken chain of additive/structural migrations back through v8 (saves from v1–v7 predate the generalized chain model and are detected and discarded with a user-facing alert rather than silently — see Section 16)
 
-### Chain Categories
-```swift
-enum ChainCategory: String, Codable, CaseIterable {
-    case animal     // 15 families × 15 stages
-    case subObject  // 15 families × 4 stages (sub-object chains)
-    case spawner    // Primary Spawner tiles (one per family)
-    case tool       // Phase 4+
-    case material   // Phase 4+
-}
-```
-
-### Current State
-- **Pattern:** MVVM (SwiftUI + SwiftData)
-- **UI framework:** SwiftUI
-- **IAP:** StoreKit 2
-- **Persistence:** SwiftData (game state), UserDefaults (login streak, daily challenges, spotlight)
-
-### Target File Structure
+### Actual File Structure
 ```
 PawSanctuary/
-├── App/
-│   └── PawSanctuaryApp.swift
-│
-├── Models/
-│   ├── BoardItem.swift
-│   ├── BoardCell.swift
-│   ├── GridPosition.swift
-│   ├── ChainCategory.swift
-│   └── ContentRegistry.swift       ← single source of truth for all chains
-│
-├── Content/
-│   ├── AnimalChains.swift          ← 15 families × 15 tiers defined here
-│   └── SubObjectChains.swift       ← 15 families × 4 tiers defined here
-│
-├── Quest Models/
-│   ├── QuestGoal.swift
-│   ├── Quest.swift
-│   ├── DailyChallenge.swift
-│   └── RescueRequest.swift
-│
-├── ViewModels/
-│   ├── MergeBoardViewModel.swift
-│   ├── QuestViewModel.swift
-│   ├── InventoryViewModel.swift
-│   └── EngagementViewModel.swift
-│
-├── Managers/
-│   ├── StoreManager.swift
-│   ├── PersistenceManager.swift
-│   ├── NotificationManager.swift
-│   └── HapticManager.swift
-│
-├── Views/
-│   ├── Game/
-│   │   ├── MergeBoardView.swift
-│   │   ├── CellView.swift
-│   │   ├── SpawnerTileView.swift    ← new: charge pips, idle state
-│   │   └── BottomBarView.swift
-│   ├── Quests/
-│   │   ├── QuestCardView.swift
-│   │   ├── DailyChallengePanelView.swift
-│   │   └── RescueRequestPanelView.swift
-│   ├── Engagement/
-│   │   ├── LoginRewardView.swift
-│   │   └── SpotlightBannerView.swift
-│   ├── Inventory/
-│   │   ├── InventoryScreenView.swift   ← 3-tab layout
-│   │   └── InventorySlotView.swift
-│   ├── Shop/
-│   │   └── ShopView.swift
-│   └── Shared/
-│       └── ToastView.swift
-│
-├── Constants/
-│   └── GameConstants.swift
-│
-└── Resources/
-    ├── Assets.xcassets
-    ├── Sounds/
-    └── PawSanctuary.storekit
+├── AppEntry.swift, LaunchScreen.swift
+├── AnimalSpecies.swift        ← families, RescueStage, BoardCell/GridPosition, constants
+├── ItemChain.swift             ← ChainCategory, ChainTier, MergeChain, ContentRegistry
+├── SubObjectSystem.swift       ← sub-object drop resolution, pity state, power-up effects
+├── SuperpowerSystem.swift      ← Superpower model + per-family registry
+├── GameStore.swift             ← GameState + save/load/migration (v8→v24)
+├── MergeBoardViewModel.swift   ← core gameplay orchestrator (~2,500 lines)
+├── MergeBoardView.swift        ← root game view, banners, overlays
+├── CellView.swift, PanelViews.swift, InventoryScreen.swift, InventoryStore.swift
+├── KibbleEngine.swift, PlayerProgression.swift, QuestCoordinator.swift, AdoptionBoard.swift
+├── SanctuaryMap.swift, MapView.swift
+├── CardSystem.swift, CardTrading.swift, CardAlbumView.swift
+├── EventSystem.swift, EventPanelView.swift
+├── MilestoneManager.swift, MilestoneOverlayView.swift
+├── InviteSystem.swift, InvitePanelView.swift
+├── StoreManager.swift, AdProvider.swift, ShopView.swift
+├── NotificationManager.swift, SoundManager.swift, HapticManager.swift
+├── OnboardingView.swift
+├── Assets.xcassets/ (real app icon + launch assets), PawSanctuary.storekit, PrivacyInfo.xcprivacy
+└── PawSanctuaryTests/PersistenceTests.swift  ← ~1,100 lines covering save/load/migration
 ```
 
-### Persistence Strategy (SwiftData)
-```swift
-@Model class SavedGameState {
-    var board: [[BoardCellData]]
-    var inventory: [String: [BoardItemData?]]  // keyed by tab: "merge", "spawner", "supplies"
-    var kibble: Int
-    var dogTags: Int
-    var score: Int
-    var mergeCount: Int
-    var legendaryCount: Int           // replaces sanctuaryStars
-    var rescueCount: Int
-    var mergeTabUnlocked: Bool        // always true
-    var spawnerTabUnlocked: Bool
-    var suppliesTabUnlocked: Bool
-    var unlockedChainIDs: [String]    // which families are unlocked
-    var activeQuests: [QuestData]
-    var spawnerCharges: [String: Int] // chainID → remaining charges
-    var lastSaved: Date
-}
-```
+### Persisted State (`GameState`, abridged)
+Board, currencies (kibble/dogTags/coins), score/rescueCount/ambassadors, player level/XP, unlocked chain IDs, animal + power-up inventory, material counts, producer storage, quests/challenges/adoption orders, spotlight state, sanctuary map progress + area upgrade levels, spawn multiplier, card inventory + star count + album completions + pending packs + jokers, pending/incoming card trades, weekly/monthly goal state, login/daily-challenge/loyalty-club bookkeeping, event progress, invite progress, pity states, superpower unlock/cooldown state, pouch/sprint buff state.
 
-### App Store Requirements Checklist
-- [ ] Minimum iOS target: 16.0
-- [ ] Privacy manifest (PrivacyInfo.xcprivacy)
-- [ ] Privacy nutrition labels (data types used)
-- [ ] AI-generated content disclosure (Guideline 2.1)
-- [ ] StoreKit products configured in App Store Connect
-- [ ] GENERATE_INFOPLIST_FILE = YES
-- [ ] Valid signing certificate + provisioning profile
-- [ ] App icon (all required sizes via asset catalog)
-- [ ] Launch screen
-- [ ] Privacy policy URL
-- [ ] Terms of service URL
-- [ ] Age rating declaration
-- [ ] Restore Purchases button (IAP requirement)
+### App Store Requirements — actual status
+| Item | Status |
+|---|---|
+| Minimum iOS target (17.0) | ✅ Done |
+| Privacy manifest (`PrivacyInfo.xcprivacy`) | ✅ Present |
+| App icon (all sizes) | ✅ Present (real PNGs, not placeholders) |
+| StoreKit config file | ✅ Present, all 12 products match `IAPProduct` |
+| Restore Purchases | ✅ Implemented (`StoreManager.restorePurchases`) |
+| Push Notifications capability | ❌ Not enabled in Xcode |
+| iCloud (Key-Value + CloudKit) capability | ❌ Not enabled in Xcode |
+| Game Center capability | ❌ Not enabled in Xcode |
+| Privacy policy / terms of service URLs | ❌ Not found anywhere in the repo |
+| AI-generated content disclosure | ❌ Not addressed |
+| Age rating declaration | ❌ App Store Connect metadata, not code |
 
 ---
 
-## 14. Missing Features (Build Priority)
+## 16. Status & Remaining Work
 
-These are ordered by impact and dependency:
+This replaces the old "Missing Features" list and "Feature Status Tracker" — both were wrong often enough to be actively misleading. Everything below reflects the codebase as read directly, not carried forward from prior drafts.
 
-### 🔴 Critical (required before shipping)
-1. **Tutorial / onboarding** — new users have no guidance; kills retention
-2. **App icon + launch screen** — required for App Store submission
-3. **Privacy manifest** — required for App Store submission since iOS 17.5
-4. **StoreKit config file** — needed to test IAP in Simulator
+### ✅ Actually done (previously marked "Not built" in error)
+- 15 families × 15 stages, fully authored content registry
+- 9×7 = 63-cell board with level-gated row unlocks
+- Family unlock via Sanctuary Map (15 areas, 4 upgrade tiers each)
+- Sub-object spawning, pity timers, all 4 power-up effects
+- All 15 family Superpowers (passive hooks + active dispatch/cooldowns)
+- Player level/XP system
+- Tutorial/onboarding
+- App icon, launch screen, privacy manifest, StoreKit config file
+- Sound effects (system-sound placeholders — see below) and haptic feedback
+- Push-notification *scheduling logic* (capability toggle still pending)
 
-### 🟠 V2.0 Expansion (core gameplay completeness)
-5. **15 families × 15 stages** — expand ContentRegistry with all animal chain data
-6. **5-era visual treatment** — era-specific borders, colors, and Legendary glow/animation
-7. **Family unlock progression** — gate families behind stage milestone clears
-8. **Sub-object spawning** — Spawner tiles, 4-stage sub-object chains per family
-9. **Consumable reward system** — Speed Burst, Map Supplies, Spawner Refill, Drop Guarantee
-10. **3-tab inventory** — Merge / Spawner / Supplies tabs
-11. **Family Superpowers** — 15 unique passive/active abilities; unlock at Era 3 per family; Active Superpower button strip with cooldown display
+### 🔴 Genuinely blocking / needs a real integration
+1. **Rewarded ads** — `StubAdProvider` is a 1.5-second fake; needs a real SDK (AdMob/AppLovin/etc.)
+2. **Real sound assets** — `SoundManager` currently plays `AudioServicesPlaySystemSound` IDs, not bundled audio files
+3. **Xcode capability toggles** (Signing & Capabilities, not code): Push Notifications, iCloud (Key-Value + CloudKit), Game Center
+4. **CloudKit schema deployment** for card trading — record type + queryable-field configuration, then Development→Production promotion
+5. **Privacy policy / terms of service URLs**, **AI disclosure**, **age rating** — App Store Connect / legal, not code
 
-### 🟡 High Priority (ship soon after launch)
-12. **Sound effects** — merge, rescue, reward, UI taps
-13. **Haptic feedback** — merge success, unlock, reward claim
-14. **Push notifications** — Kibble refill, daily challenge, streak at risk, spawner idle
-15. **Legendary milestone rewards** — completing the 15-stage chain needs a payoff
-16. **Rewarded ads** — meaningful free-to-play retention tool
-17. **iCloud KVS sync** — entitlement already provisioned; activate in Xcode capabilities
+### 🟠 Content gaps
+6. **Seasonal events registry has one expired event** — infrastructure works, nothing is currently active; needs new `EventDefinition` entries
+7. **Placeholder App Store URL** in the invite system (`id0000000000`)
+8. **All 54 cards use SF Symbols, not illustrated art** — a content/asset-production task
 
-### 🟢 Nice to Have (post-launch)
-17. Player level + XP system
-18. Animal encyclopedia / collection screen
-19. Board cell themes (cosmetic)
-20. Sanctuary Collection display/gallery
-21. Friend system
-22. Seasonal events
-23. CloudKit cross-device sync
-24. iPad layout optimization
-25. Localization
-26. Map/area expansion (using Map Supplies consumable)
+### 🟡 Known code-quality debt (see `docs/CODE_HEALTH.md` for full detail; most items were addressed in the July 2026 pass)
+- The single largest remaining structural item is extracting board manipulation out of `MergeBoardViewModel` (2,500+ lines) into a dedicated `BoardStateManager` — flagged as a "dedicated sprint" item, deliberately not attempted piecemeal because of its size and risk.
+
+### 🟢 Post-launch / nice-to-have (unchanged in spirit from earlier drafts, still not built)
+Animal encyclopedia / collection log, Sanctuary Collection gallery for Legendaries, board cosmetic themes, score leaderboard, CloudKit *cross-device* save sync (the KVS half exists; full CloudKit sync does not), iPad-specific layout, localization.
 
 ---
 
-## 15. Feature Status Tracker
-
-| Feature | Status | Priority |
-|---|---|---|
-| Merge board (6×5) | ✅ Done | — |
-| Drag and drop | ✅ Done | — |
-| Swap on non-match | ✅ Done | — |
-| Cell unlock (every 3 merges) | ✅ Done | — |
-| Kibble regen (1/min, cap 100) | ✅ Done | — |
-| Dog Tags currency | ✅ Done | — |
-| Active quests (3) | ✅ Done | — |
-| Daily login rewards | ✅ Done | — |
-| Daily challenges + streak | ✅ Done | — |
-| Timed rescue requests | ✅ Done | — |
-| Weekly family spotlight | ✅ Done | — |
-| Shop UI (preview mode) | ✅ Done | — |
-| StoreKit 2 scaffold | ✅ Done | — |
-| Game state persistence | ✅ Done | — |
-| 15 families × 15 stages | ❌ Not built | 🟠 V2.0 |
-| 5-era visual treatment | ❌ Not built | 🟠 V2.0 |
-| Family unlock progression | ❌ Not built | 🟠 V2.0 |
-| Sub-object spawning chains | ❌ Not built | 🟠 V2.0 |
-| Consumable reward system | ❌ Not built | 🟠 V2.0 |
-| 3-tab inventory | ❌ Not built | 🟠 V2.0 |
-| Family Superpowers (15 abilities) | ❌ Not built | 🟠 V2.0 |
-| Active Superpower UI strip | ❌ Not built | 🟠 V2.0 |
-| Tutorial / onboarding | ❌ Not built | 🔴 Critical |
-| App icon | ❌ Not built | 🔴 Critical |
-| Privacy manifest | ❌ Not built | 🔴 Critical |
-| StoreKit config file | ❌ Not built | 🔴 Critical |
-| Sound effects | ❌ Not built | 🟡 High |
-| Haptic feedback | ❌ Not built | 🟡 High |
-| Push notifications | ❌ Not built | 🟡 High |
-| Legendary milestone rewards | ❌ Not built | 🟡 High |
-| Rewarded ads | ❌ Not built | 🟡 High |
-| iCloud KVS sync (Xcode capability) | ❌ Not built | 🟡 High |
-| Player level / XP | ❌ Not built | 🟢 Post-launch |
-| Animal encyclopedia | ❌ Not built | 🟢 Post-launch |
-| Sanctuary Collection gallery | ❌ Not built | 🟢 Post-launch |
-| Seasonal events | ❌ Not built | 🟢 Post-launch |
-| Friend system | ❌ Not built | 🟢 Post-launch |
-| CloudKit sync | ❌ Not built | 🟢 Post-launch |
-| iPad layout | ❌ Not built | 🟢 Post-launch |
-| Leaderboard | ❌ Not built | 🟢 Post-launch |
-| Map/area expansion | ❌ Not built | 🟢 Post-launch |
-
----
-
-*This document should be updated each time a major feature is completed or the design changes.*
-
----
-
-## Section 7: Next Development Phases & Feature Roadmap
-*Updated: June 2026 — Based on competitive analysis (Travel Town, Tasty Travels) and current build state*
-
-### 7.1 Competitive Positioning
-
-Travel Town (Magmatic Games, 10M+ downloads) and Tasty Travels (Century Games) establish the benchmark for the merge-2 subgenre. The following summarizes what PawSanctuary should adopt, what it should differentiate from, and the strategic reasoning behind each decision.
-
-**Adopt from Travel Town**
-
-Travel Town's nested chain mechanics are worth emulating: some items require merging products from two different chains (e.g., a Cervid item + a Lagomorph item to create a "Forest Scene" decoration for the map). This creates cross-family interdependency and genuine board pressure that single-chain progression cannot replicate. PawSanctuary's Habitat chain concept in Section 7.7 draws directly from this pattern.
-
-Travel Town's order board with time pressure is already well-mirrored in PawSanctuary's AdoptionBoard. The feature worth reinforcing is visual urgency at the two-minute mark — Travel Town's escalating color and animation at low time remaining increases completion rate. PawSanctuary's timer bar already turns red; adding a pulse animation would close the gap.
-
-Travel Town moved away from "auto-producer only" spawning in 2025, shifting toward energy-gated manual spawners that give players more agency over what they produce. PawSanctuary's current manual kibble-cost spawners are already well-positioned here.
-
-Seasonal map areas — limited-time regions that unlock temporary chains and exclusive cosmetic animals — are a proven Travel Town driver of urgency and replayability. PawSanctuary's Seasonal Events system in Section 7.4 is the direct equivalent.
-
-**Differentiate from Travel Town**
-
-Travel Town uses generic objects (tools, furniture, building materials). PawSanctuary's 15 living animal families with individually named stages create substantially stronger emotional attachment. The "Pup → Primordial" arc for Canines is a character journey; a Travel Town wrench has no equivalent pull. This distinction is the game's core competitive moat and should be preserved and amplified in every design decision.
-
-The sub-object buff system planned for Phases 2–4 (sub-objects that grant Speed Burst, Spawner Refill, Map Supplies, and High-Tier Drop Guarantee) has no direct equivalent in Travel Town. This is a second-order differentiator: it gives players a reason to engage with the spawner economy beyond "tap to get animals."
-
-The Ambassador/milestone system — Junior Rescuer → Animal Friend → Sanctuary Guardian → Legendary Rescuer — creates a player identity layer Travel Town does not have. Titles earned from meaningful achievement drive social sharing and session pride.
-
-**Adopt from Tasty Travels**
-
-Tasty Travels' global community mechanic drives daily engagement beyond solo play. A cooperative sanctuary challenge where players contribute toward a shared weekly goal (e.g., "Rescue 10,000 animals this weekend as a community") creates a reason to log in even when personal goals are met. PawSanctuary's Community Rescue Events concept in Section 7.5 implements this.
-
-Tasty Travels ties cosmetic building unlocks to order completion streaks — completing N orders in a row without skipping unlocks a bonus spawner or cosmetic upgrade. This streak-based retention mechanic is distinct from daily login streaks and rewards sustained active play within a session. It is worth integrating into PawSanctuary's AdoptionBoard flow.
-
----
-
-### 7.2 Phase 5 — Map Area Expansion (9 Remaining Families)
-*(See FEATURE_EXPANSION_PLAN.md Section C for full implementation spec)*
-
-Nine new SanctuaryArea entries unlock the remaining animal families: Ursids, Aquatics (via map area — the milestone path is retired per F.Q4), Amphibians, Marsupials, Primates, Equines, Pachyderms, Bovines, and Cervids. Each area requires a build cost scaled to late-game material tiers and grants a new family spawner on completion.
-
-Each area includes two upgrade tiers that grant UpgradeBonus passives. The three new bonus types required for these areas are: sub-object drop rate increase, pity timer reduction, and power-up duration extension (per F.Q9 decision). These require new fields in the UpgradeBonus struct and corresponding handling in `recalcActiveBonuses()`.
-
-Build cost scaling should create a clear sense of late-game investment: later areas cost higher-tier materials in larger quantities or require a mix of material tiers. The goal is for a player completing Phase 5 to feel they have "built" something substantial, not unlocked content passively.
-
----
-
-### 7.3 Phase 6 — Superpower System
-*(Deferred from Phase 5; see TODO.md and GDD v2.1 Section 6)*
-
-When a family first reaches Era 3 (Stage 7), a unique passive or active ability unlocks for that family. The 15 superpowers are defined in Section 6 of this document. Key strategic notes:
-
-Superpowers create long-term build diversity — they give experienced players a reason to develop all 15 families rather than specializing in the two or three most efficient ones. A player who has unlocked Bovines' Stampede (instant mass-merge of same-stage pairs) has a qualitatively different board management strategy than one who has unlocked Avians' Scout (preview of next two incoming rescues).
-
-The active superpower button strip UI and per-ability cooldown display are the primary engineering challenge in this phase. Each family with an unlocked active ability needs a persistent but non-intrusive button; the strip should collapse when no active abilities are available and expand dynamically as more are unlocked.
-
----
-
-### 7.4 Seasonal Events System
-
-Implement a `SeasonalEventManager: @Observable` class that loads event configuration from a JSON file bundled with the app (or fetched remotely for live updates without an app release). Four events per year: Spring Rescue, Summer Safari, Autumn Harvest, Winter Warmth.
-
-Each event includes a `SeasonalEvent` model with start and end dates, a temporary 4-tier merge chain featuring a seasonal animal variant (e.g., "Festive Fox" at Christmas, "Lunar Rabbit" for Lunar New Year), a seasonal order board with event-exclusive currency, and a prize track with five reward thresholds.
-
-The seasonal chain should not be permanentized on the main board. It lives in a temporary "Event Board" tab alongside the main board and auto-dismisses when the event ends. Players keep any prizes claimed during the event window, but unclaimed event currency expires with the event.
-
-Implementation notes: the event chain is registered in ContentRegistry only while the event is active. Board tab switching already exists in concept via the InventoryScreen tab pattern — apply the same UI primitive to the board context. `SeasonalEventManager` should expose a published `activeEvent: SeasonalEvent?` that drives tab visibility and event UI injection across the app.
-
----
-
-### 7.5 Social & Community Layer
-
-**Sanctuary Leaderboard.** A weekly ranking of players by ambassador count, using Game Center leaderboard infrastructure (partially in place via the existing `authenticateGameCenter` path). Resets Sunday midnight. The leaderboard reinforces the Ambassador system as a prestige signal beyond solo play.
-
-**Community Rescue Events.** Time-limited cooperative goals where each player contributes their ambassador completions during an event window (e.g., "Rescue 10,000 animals as a community this weekend"). Community milestone rewards are granted to all participants at thresholds of 25%, 50%, 75%, and 100% of the goal. This mechanic drives log-ins even when a player's personal kibble is depleted — contributing to a community goal feels meaningful regardless of session intensity.
-
-**Friend Gifting.** Send one free kibble gift per day to each Game Center friend. Receiving a gift adds 5 kibble (below the energy cap threshold so it never fully refills). Uses the existing InviteSystem infrastructure for friend discovery. The 5-kibble gift amount is intentionally small — enough to feel generous without replacing IAP.
-
----
-
-### 7.6 Three-Tab Inventory (GDD v2.0 Implementation)
-
-The three-tab inventory is defined in GDD v2.0 but not yet coded. The current implementation uses a single `InventoryStore` with visual tabs that share the same slot pool.
-
-The coded implementation should produce three genuinely separate slot pools:
-
-**Tab 1 — Sanctuary Animals** holds the current animal inventory (18 base slots with unlockable rows). This is the primary merge staging area.
-
-**Tab 2 — Spawners** holds sub-object chain items in transit between the board and merging. 6 base slots, unlockable with Dog Tags per the existing economy design.
-
-**Tab 3 — Building Supplies** is the "limitless" materials tab decided in F.Q6. Materials are displayed as counts by tier rather than individual item slots (e.g., "Wood Tier 3: 7"). Two materials of the same tier auto-merge into the next tier when both are present. There is no slot cap — the tab accumulates indefinitely, with display paging if the count of distinct tiers grows large.
-
-The limitless Tab 3 design eliminates the board-clogging problem of building materials appearing as individual items and removes a major player frustration in the current build.
-
----
-
-### 7.7 Nested Chain Mechanic (Travel Town Inspiration)
-
-Introduce three "Habitat" chains — one per biome — that require combining high-tier animals from two different families. Completing a Habitat chain grants a permanent passive bonus and a map decoration that signals mastery to the player.
-
-**Forest Habitat:** Merge any Cervid (tier 5+) with any Ursid (tier 5+) → Forest Scene Tier 1. Continue merging Forest Scene items through Tier 4. Completion: permanent +10% kibble regen for both Cervids and Ursids, plus a Forest Clearing decoration placed on the sanctuary map.
-
-**Ocean Habitat:** Merge any Aquatics (tier 5+) with any Amphibian (tier 5+) → Ocean Scene Tier 1 through Tier 4. Completion: permanent +10% kibble regen for both families, plus a Tide Pool decoration.
-
-**Savanna Habitat:** Merge any Bovine (tier 5+) with any Equine (tier 5+) → Savanna Scene Tier 1 through Tier 4. Completion: permanent +10% kibble regen for both families, plus a Watering Hole decoration.
-
-Habitat chains create late-game goals that extend meaningfully beyond Ambassador progression. A player who has completed all 15 family ambassador chains still has three Habitat chains to pursue, each requiring investment in two families simultaneously. The permanent kibble regen bonuses make completing Habitat chains a meaningful economic upgrade rather than a purely cosmetic achievement.
-
-Implementation note: Habitat chains use the same `BoardItem(chainID, tier)` model as all other chains, with chainIDs like `"habitat.forest"`, `"habitat.ocean"`, `"habitat.savanna"`. The cross-family merge input is the only new mechanic: `attemptMergeOrMove` needs a new branch that detects two items from different chain families when both meet a minimum tier threshold and produces the corresponding Habitat Tier 1 item.
-
----
-
-### 7.8 Board Size Correction
-
-**The correct board size is 9×7 = 63 cells.** GDD v2.0 and v2.1 incorrectly stated 6×5 = 30 cells throughout Sections 3, 8, and the Feature Status Tracker. The implementation is correct. This note supersedes all prior GDD references to board dimensions.
-
-The Feature Expansion Plan (Section A and F.Q10) confirmed this discrepancy in June 2026. The board's two locked rows (rows 7 and 8) unlock at player levels 3 and 8 respectively. All references to "30 cells" or "6×5" in earlier sections of this document are superseded by 63 cells / 9×7.
+*This document should be re-verified against the codebase — not just extended — the next time it's updated. The failure mode that produced the July 2026 refresh was incremental edits drifting away from a fast-moving implementation; re-reading the source is cheaper than that drift compounding again.*

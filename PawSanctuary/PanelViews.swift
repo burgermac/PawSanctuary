@@ -753,6 +753,46 @@ struct MonthlyGoalPanelView: View {
 }
 
 // ============================================================
+// MARK: - SLIDE-UP CELEBRATION BANNER
+// ============================================================
+
+/// Shared "slides up from the bottom, auto-dismisses" celebration banner shell —
+/// icon + title + detail line over a rounded, shadowed background. Used by the
+/// unlock/level-up/area-built/superpower-unlock banners in MergeBoardView, which
+/// previously repeated this VStack/HStack/background/transition markup verbatim (QA-06).
+/// Each banner still owns its distinct icon styling and colors via the `icon` closure
+/// and `background` style — only the shared scaffolding moved here.
+struct BannerView<Icon: View>: View {
+    let title: String
+    let detail: String
+    let background: AnyShapeStyle
+    let bottomPadding: CGFloat
+    @ViewBuilder let icon: () -> Icon
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 12) {
+                icon()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline).foregroundColor(.white)
+                    Text(detail)
+                        .font(.caption).foregroundColor(.white.opacity(0.85))
+                        .lineLimit(2)
+                }
+                Spacer()
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 16)
+                .fill(background)
+                .shadow(color: .black.opacity(0.2), radius: 10))
+            .padding(.horizontal, 20).padding(.bottom, bottomPadding)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}
+
+// ============================================================
 // MARK: - AMBASSADOR CELEBRATION BANNER
 // ============================================================
 

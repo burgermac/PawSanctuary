@@ -120,6 +120,14 @@ class MergeBoardViewModel {
     var pendingMaterialLots: [[BoardItem]] = []
     var newlyUnlockedCell: GridPosition? = nil
     var showUnlockBanner = false
+    /// Set on launch when a pre-existing save was too old to migrate (QA-08) — the game
+    /// starts fresh, but the player should be told why rather than silently losing progress.
+    var showIncompatibleSaveAlert = false
+    var incompatibleSaveVersion: Int? = nil
+    /// Bumped each time the unlock banner is shown; a dismiss Task only hides the banner
+    /// if this still matches the generation it captured, so a second unlock within the
+    /// first banner's dismiss window doesn't get cut off early (QA-07).
+    private var unlockBannerGeneration = 0
     var draggingFrom: GridPosition? = nil
     var selectedCell: GridPosition? = nil
     /// Index into `inventoryStore.powerUpInventory` of the power-up the player has selected
@@ -129,6 +137,8 @@ class MergeBoardViewModel {
     // Ambassador celebration banner
     var showAmbassadorBanner  = false
     var ambassadorBannerChainID: ChainID = ContentRegistry.animalChainID(.dog)
+    /// See `unlockBannerGeneration` — same stale-dismiss guard, applied to this banner.
+    private var ambassadorBannerGeneration = 0
 
     // Sanctuary Pass
     var isPassActive: Bool = false
@@ -170,6 +180,8 @@ class MergeBoardViewModel {
     var showAreaBuiltBanner: Bool = false
     var areaBuiltBannerTitle:  String = ""
     var areaBuiltBannerDetail: String = ""
+    /// See `unlockBannerGeneration` — same stale-dismiss guard, applied to this banner.
+    private var areaBuiltBannerGeneration = 0
 
     // Coins & weekly/monthly goal system
     var coins: Int = 0
@@ -203,6 +215,13 @@ class MergeBoardViewModel {
 
     // Cached derived state
     private(set) var boardIsFull: Bool = false
+    /// Empty, unlocked cells — recomputed once in `recalcBoardIsFull()` instead of
+    /// re-scanning all 63 cells at every call site that needs a spawn/placement target.
+    private(set) var emptyUnlockedCells: [BoardCell] = []
+    /// Flattened board — still O(n) per access (not cached), but centralises the
+    /// `board.flatMap { $0 }` pattern for call sites that need something other than
+    /// empty-unlocked cells (see `emptyUnlockedCells` for the hot path).
+    private var flatBoard: [BoardCell] { board.flatMap { $0 } }
 
     // Pity tracking — keyed by AnimalSpecies.rawValue; persisted via GameState.pityStates.
     var pityStates: [String: PityState] = [:]
@@ -224,6 +243,8 @@ class MergeBoardViewModel {
     var showPouchPanel: Bool = false
     var showSuperpowerUnlockBanner: Bool = false
     var superpowerUnlockBannerSpecies: AnimalSpecies? = nil
+    /// See `unlockBannerGeneration` — same stale-dismiss guard, applied to this banner.
+    private var superpowerBannerGeneration = 0
 
     @ObservationIgnored nonisolated(unsafe) private var regenTimer: Timer?
     @ObservationIgnored nonisolated(unsafe) private var saveTickCounter: Int = 0
@@ -470,6 +491,10 @@ class MergeBoardViewModel {
         return nil
     }
 
+    /// Not cached (unlike `exchangeableTrios`): depends on quest/daily-challenge completion
+    /// state as well as board state, and those can change without a board mutation (claiming
+    /// a quest, a daily reset). A 63-cell scan is cheap enough that recomputing on each access
+    /// from this rarely-visited panel is the safer choice over risking a stale cache.
     var retirableProducers: [RetirableProducer] {
         let incompleteGoals = quests.activeQuests.filter { !$0.isComplete }.map(\.goal)
                             + quests.dailyChallenges.filter { !$0.isComplete }.map(\.goal)
@@ -488,10 +513,14 @@ class MergeBoardViewModel {
 
     /// One entry per species that has ≥ 3 Ambassador-tier tiles on the unlocked board.
     /// Each entry carries the first three matching cell positions (row-major order).
-    var exchangeableTrios: [ExchangeableTrio] {
-        AnimalSpecies.allCases.compactMap { species in
+    /// Cached and recomputed only in `recalcBoardIsFull()` — safe because this depends
+    /// solely on board contents, which always route through that recalc after mutation.
+    private(set) var exchangeableTrios: [ExchangeableTrio] = []
+
+    private func recalcExchangeableTrios() {
+        exchangeableTrios = AnimalSpecies.allCases.compactMap { species in
             let chainID = ContentRegistry.animalChainID(species)
-            let positions = board.flatMap { $0 }
+            let positions = flatBoard
                 .filter { cell in
                     guard cell.isUnlocked, let item = cell.item else { return false }
                     return item.chainID == chainID && item.isTopTier
@@ -617,6 +646,10 @@ class MergeBoardViewModel {
             apply(saved)
             if let last = saved.lastActiveDate { applyOfflineProgress(since: last) }
         } else {
+            if let oldVersion = GameStore.discardedIncompatibleVersion {
+                incompatibleSaveVersion = oldVersion
+                showIncompatibleSaveAlert = true
+            }
             freshStart()
         }
         checkDailyLogin()
@@ -655,7 +688,7 @@ class MergeBoardViewModel {
     /// Ensures at least one Canines family spawner exists on an unlocked cell.
     /// Called after restoring a save to recover boards that lost all producers.
     private func ensureStartingProducer() {
-        let hasProducer = board.flatMap { $0 }.contains { $0.producer != nil }
+        let hasProducer = flatBoard.contains { $0.producer != nil }
         guard !hasProducer else { return }
         let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockLevels[$0] == nil }.max() ?? 0
         if let col = (0..<cols).first(where: { board[lastUnlockedRow][$0].isEmpty }) {
@@ -932,12 +965,38 @@ class MergeBoardViewModel {
     // MARK: Cached state helpers
 
     private func recalcBoardIsFull() {
-        boardIsFull = board.flatMap { $0 }.filter { $0.isUnlocked }.allSatisfy { !$0.isEmpty }
+        let flat = board.flatMap { $0 }
+        let unlocked = flat.filter { $0.isUnlocked }
+        boardIsFull = unlocked.allSatisfy { !$0.isEmpty }
+        emptyUnlockedCells = unlocked.filter { $0.isEmpty }
+        recalcExchangeableTrios()
     }
 
     // MARK: Spawning
 
     // MARK: Producer tiles
+
+    /// Places a freshly-resolved spawn item on the board and applies the bookkeeping shared
+    /// by every rescue-producer path in `activateProducer` (currency spend, notification
+    /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
+    /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
+    private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int) {
+        board[target.position.row][target.position.col].item = item
+        kibbleEngine.kibble -= cost
+        if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
+            NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
+        }
+        rescueCount += 1
+        recalcBoardIsFull()
+        grantXP(xpPerRescue)
+        updateAllAfterRescue()
+        updateOrdersAfterMerge(chainID: item.chainID, tier: item.tier)
+        animatingCell = target.position
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            self.animatingCell = nil
+        }
+    }
 
     func activateProducer(at pos: GridPosition) {
         guard var producer = board[pos.row][pos.col].producer else { return }
@@ -951,7 +1010,7 @@ class MergeBoardViewModel {
             guard kibbleEngine.kibble >= cost else {
                 triggerToast(.noKibble); selectedCell = pos; return
             }
-            let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+            let empty = emptyUnlockedCells
             guard let target = empty.randomElement() else {
                 triggerToast(.boardFull); selectedCell = pos; return
             }
@@ -992,7 +1051,6 @@ class MergeBoardViewModel {
                 let subTier = hoardActive ? min(1, ContentRegistry.shared.chain(subChainID)?.maxTier ?? 0) : 0
                 spawnedItem = BoardItem(chainID: subChainID, tier: subTier)
             }
-            board[target.position.row][target.position.col].item = spawnedItem
             // Scout (Avians .bird): after spawning, pre-roll next drop and cache it.
             if unlockedSuperpowerSpecies.contains(AnimalSpecies.bird.rawValue) {
                 var pityForPreview = pityStates[species.rawValue] ?? PityState()
@@ -1009,27 +1067,14 @@ class MergeBoardViewModel {
                     board[pos.row][pos.col].producer = p
                 }
             }
-            kibbleEngine.kibble -= cost
-            if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
-                NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
-            }
-            rescueCount += 1
-            recalcBoardIsFull()
-            grantXP(xpPerRescue)
-            updateAllAfterRescue()
-            updateOrdersAfterMerge(chainID: chainID, tier: spawnTier)
-            animatingCell = target.position
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(600))
-                self.animatingCell = nil
-            }
+            finishSpawn(item: spawnedItem, at: target, cost: cost)
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
             let cost = progression.spawnMultiplier
             guard kibbleEngine.kibble >= cost else {
                 triggerToast(.noKibble); selectedCell = pos; return
             }
-            let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+            let empty = emptyUnlockedCells
             guard let target = empty.randomElement() else {
                 triggerToast(.boardFull); selectedCell = pos; return
             }
@@ -1038,25 +1083,10 @@ class MergeBoardViewModel {
                 ?? ContentRegistry.animalChainID(.dog)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
             let spawnTier = min(progression.spawnMultiplier - 1, maxTier)
-            board[target.position.row][target.position.col].item =
-                BoardItem(chainID: chainID, tier: spawnTier)
-            kibbleEngine.kibble -= cost
-            if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
-                NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
-            }
-            rescueCount += 1
-            recalcBoardIsFull()
-            grantXP(xpPerRescue)
-            updateAllAfterRescue()
-            updateOrdersAfterMerge(chainID: chainID, tier: spawnTier)
-            animatingCell = target.position
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(600))
-                self.animatingCell = nil
-            }
+            finishSpawn(item: BoardItem(chainID: chainID, tier: spawnTier), at: target, cost: cost)
         } else {
             if producer.isReady {
-                let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty && $0.position != pos }
+                let empty = emptyUnlockedCells.filter { $0.position != pos }
                 if let target = empty.randomElement() {
                     let chainID = producer.level.targetChainID ?? ContentRegistry.animalChainID(.dog)
                     board[target.position.row][target.position.col].item =
@@ -1111,7 +1141,7 @@ class MergeBoardViewModel {
 
     func buyProducer(_ level: ProducerLevel) {
         guard kibbleEngine.dogTags >= level.dogTagCost else { return }
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         guard let target = empty.randomElement() else { triggerToast(.boardFull); return }
         kibbleEngine.dogTags -= level.dogTagCost
         board[target.position.row][target.position.col].producer = ProducerTile(level: level)
@@ -1123,7 +1153,7 @@ class MergeBoardViewModel {
     }
 
     private func placeProducerReward(_ level: ProducerLevel) {
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         if let target = empty.randomElement() {
             board[target.position.row][target.position.col].producer = ProducerTile(level: level)
             recalcBoardIsFull()
@@ -1134,7 +1164,7 @@ class MergeBoardViewModel {
 
     @discardableResult
     private func spawnAnimal() -> Bool {
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         guard let target = empty.randomElement() else { return false }
         let chainID = progression.unlockedAnimalChainIDs.randomElement()
                       ?? ContentRegistry.animalChainID(.dog)
@@ -1398,8 +1428,11 @@ class MergeBoardViewModel {
             SoundManager.shared.playCellUnlock()
             HapticManager.shared.successPattern()
             withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) { showUnlockBanner = true }
+            unlockBannerGeneration += 1
+            let unlockGeneration = unlockBannerGeneration
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
+                guard self.unlockBannerGeneration == unlockGeneration else { return }
                 withAnimation(.easeOut(duration: 0.4)) { self.showUnlockBanner = false }
             }
         }
@@ -1424,13 +1457,17 @@ class MergeBoardViewModel {
         withAnimation(.spring(response: 0.5, dampingFraction: 0.65)) {
             showAmbassadorBanner = true
         }
+        ambassadorBannerGeneration += 1
+        let ambassadorGeneration = ambassadorBannerGeneration
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
+            guard self.ambassadorBannerGeneration == ambassadorGeneration else { return }
             withAnimation(.easeOut(duration: 0.4)) { self.showAmbassadorBanner = false }
         }
     }
 
     func dismissAmbassadorBanner() {
+        ambassadorBannerGeneration += 1   // invalidate any pending auto-dismiss too
         withAnimation(.easeOut(duration: 0.3)) { showAmbassadorBanner = false }
     }
 
@@ -1489,7 +1526,7 @@ class MergeBoardViewModel {
 
     func placeSelectedInventoryItemOnBoard() {
         guard inventoryStore.selectedInventorySlot != nil else { return }
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         guard let target = empty.first else { triggerToast(.boardFull); return }
         guard let item = inventoryStore.consumeSelectedInventoryItem() else { return }
         board[target.position.row][target.position.col].item = item
@@ -1530,7 +1567,7 @@ class MergeBoardViewModel {
 
     func placeDesignatedProducerOnBoard() {
         guard inventoryStore.selectedProducerLevel != nil else { return }
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         guard let target = empty.first else { triggerToast(.boardFull); return }
         guard let producer = inventoryStore.consumeSelectedDesignatedProducer() else { return }
         board[target.position.row][target.position.col].producer = producer
@@ -1546,7 +1583,7 @@ class MergeBoardViewModel {
             // Migrated to the designated slot — no board placement needed.
             return
         }
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         guard let target = empty.first else {
             // Board is full — put the producer back in overflow.
             let slot = inventoryStore.overflowProducerStorage.indices
@@ -1655,6 +1692,10 @@ class MergeBoardViewModel {
             showAlbumCompleteCard = album
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(4))
+                // Only clear if this is still the album shown — guards against a second
+                // album completing (rare, but possible from one card claim) and having
+                // its card cut short by the first album's dismiss timer (QA-07).
+                guard self.showAlbumCompleteCard?.id == album.id else { return }
                 self.showAlbumCompleteCard = nil
             }
         }
@@ -1736,6 +1777,23 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Picks up the `.claimed` transition a recipient wrote via `markClaimed` so the
+    /// sender's "Sent" list reflects reality instead of showing "Pending" forever.
+    func refreshOutgoingTrades() async {
+        guard gcIsAuthenticated else { return }
+        let fetched = await CardTradeBackend.fetchOutgoing(for: gcLocalPlayerID)
+        guard !fetched.isEmpty else { return }
+        let remoteByID = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
+        var changed = false
+        for i in pendingOutgoingTrades.indices {
+            guard let remote = remoteByID[pendingOutgoingTrades[i].id],
+                  remote.status != pendingOutgoingTrades[i].status else { continue }
+            pendingOutgoingTrades[i].status = remote.status
+            changed = true
+        }
+        if changed { persist() }
+    }
+
     func loadGCFriends() async {
         gcIsLoadingFriends = true
         gcFriends = await loadGameCenterFriends()
@@ -1784,8 +1842,11 @@ class MergeBoardViewModel {
         HapticManager.shared.successPattern()
         showSuperpowerUnlockBanner = true
         superpowerUnlockBannerSpecies = species
+        superpowerBannerGeneration += 1
+        let superpowerGeneration = superpowerBannerGeneration
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
+            guard self.superpowerBannerGeneration == superpowerGeneration else { return }
             self.showSuperpowerUnlockBanner = false
         }
     }
@@ -1793,7 +1854,7 @@ class MergeBoardViewModel {
     /// Place a free tile at a random empty cell. Returns false if the board is full.
     @discardableResult
     private func placeFreeTile(chainID: ChainID, tier: Int) -> Bool {
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         guard let target = empty.randomElement() else { return false }
         board[target.position.row][target.position.col].item = BoardItem(chainID: chainID, tier: tier)
         recalcBoardIsFull()
@@ -1898,7 +1959,7 @@ class MergeBoardViewModel {
         var changed = true
         while changed {
             changed = false
-            let cells = board.flatMap { $0 }.filter { $0.item != nil }
+            let cells = flatBoard.filter { $0.item != nil }
             // Build a frequency map: chainID+tier → [positions]
             var groups: [String: [GridPosition]] = [:]
             for cell in cells {
@@ -2054,7 +2115,7 @@ class MergeBoardViewModel {
 
     private func placeToolbox() {
         let lot = buildToolboxLot()
-        let empty = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+        let empty = emptyUnlockedCells
         if let target = empty.randomElement() {
             pendingMaterialLots.append(lot)
             board[target.position.row][target.position.col].item =
@@ -2105,7 +2166,7 @@ class MergeBoardViewModel {
     }
 
     private var boardToolboxCount: Int {
-        board.flatMap { $0 }.filter { $0.item?.chainID == ContentRegistry.toolboxChainID }.count
+        flatBoard.filter { $0.item?.chainID == ContentRegistry.toolboxChainID }.count
     }
 
     private func weightedToolboxTier(max maxTier: Int) -> Int {
@@ -2336,7 +2397,7 @@ class MergeBoardViewModel {
             if !progression.unlockedChainIDs.contains(chainID) { progression.unlockedChainIDs.append(chainID) }
             // Auto-place the spawner; overflow to storage if board is full
             let spawnerTile = ProducerTile(level: .familySpawner, species: species)
-            let emptyUnlocked = board.flatMap { $0 }.filter { $0.isUnlocked && $0.isEmpty }
+            let emptyUnlocked = emptyUnlockedCells
             if let target = emptyUnlocked.randomElement() {
                 board[target.position.row][target.position.col].producer = spawnerTile
                 recalcBoardIsFull()
@@ -2354,11 +2415,22 @@ class MergeBoardViewModel {
         if r.bonusDogTags > 0 { kibbleEngine.dogTags += r.bonusDogTags }
         if r.bonusXP      > 0 { grantXP(r.bonusXP) }
         if cachedActiveBonuses.areaEventCoins > 0 { earnCoins(cachedActiveBonuses.areaEventCoins) }
-        areaBuiltBannerTitle  = "\(area.displayName) Built!"
-        areaBuiltBannerDetail = r.primaryMessage()
+        presentAreaBuiltBanner(title: "\(area.displayName) Built!", detail: r.primaryMessage())
+    }
+
+    /// Shows the area-built/upgraded banner and schedules its auto-dismiss. Shared by both
+    /// the build and upgrade call sites (previously duplicated verbatim); the generation
+    /// guard prevents a build-then-immediate-upgrade from having its banner cut short by
+    /// the first banner's dismiss timer (QA-07).
+    private func presentAreaBuiltBanner(title: String, detail: String) {
+        areaBuiltBannerTitle  = title
+        areaBuiltBannerDetail = detail
         withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) { showAreaBuiltBanner = true }
+        areaBuiltBannerGeneration += 1
+        let generation = areaBuiltBannerGeneration
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
+            guard self.areaBuiltBannerGeneration == generation else { return }
             withAnimation(.easeOut(duration: 0.4)) { self.showAreaBuiltBanner = false }
         }
     }
@@ -2493,13 +2565,7 @@ class MergeBoardViewModel {
                                                 unlockedChainIDs: progression.unlockedAnimalChainIDs,
                                                 playerLevel: progression.playerLevel)
         if cachedActiveBonuses.areaEventCoins > 0 { earnCoins(cachedActiveBonuses.areaEventCoins) }
-        areaBuiltBannerTitle  = "\(area.displayName) Upgraded!"
-        areaBuiltBannerDetail = upgrade.bonus.primaryDescription
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) { showAreaBuiltBanner = true }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            withAnimation(.easeOut(duration: 0.4)) { self.showAreaBuiltBanner = false }
-        }
+        presentAreaBuiltBanner(title: "\(area.displayName) Upgraded!", detail: upgrade.bonus.primaryDescription)
     }
 
     // MARK: IAP

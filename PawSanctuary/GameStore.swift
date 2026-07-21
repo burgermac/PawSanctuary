@@ -204,6 +204,18 @@ enum GameStore {
 
     private static let cloudKey = "pawSanctuary.gameState"
 
+    /// Set when the most recent `load()` had to discard a save from schema v1–v7 —
+    /// versions that predate every migration path below and can't be recovered.
+    /// `nil` after a `load()` that found a usable state (local, backup, or cloud) even
+    /// if an old-format copy was encountered along the way. Callers check this right
+    /// after a `nil` result from `load()` to tell the difference between "no save ever
+    /// existed" and "a save existed but couldn't be restored" (QA-08) — surfacing that
+    /// distinction to the player is the caller's responsibility.
+    /// nonisolated(unsafe): GameStore's static methods are only ever called from the
+    /// MainActor-isolated ViewModel, matching the pattern used elsewhere in this codebase
+    /// (see MergeBoardViewModel.regenTimer) for state that's single-threaded in practice.
+    private(set) nonisolated(unsafe) static var discardedIncompatibleVersion: Int? = nil
+
     // MARK: Storage locations
 
     /// `Application Support/PawSanctuary/` (created on demand).
@@ -252,12 +264,17 @@ enum GameStore {
     /// (most-recently-active wins) and recovers from the backup slot if the main file
     /// is missing or unreadable. Returns `nil` only when no usable save exists.
     static func load() -> GameState? {
+        discardedIncompatibleVersion = nil
         let localState = readValid(try? Data(contentsOf: mainFileURL)) ?? recoverFromBackup()
         let cloudState = isCloudAvailable
             ? readValid(NSUbiquitousKeyValueStore.default.data(forKey: cloudKey))
             : nil
 
         guard let chosen = mostRecent(localState, cloudState) else { return nil }
+
+        // A usable state was found (local, backup, or cloud) — any old-format copy
+        // encountered along the way was superseded, not lost.
+        discardedIncompatibleVersion = nil
 
         // Make every slot consistent with the winning state, and refresh the
         // last-known-good backup from a state we just validated.
@@ -328,6 +345,13 @@ enum GameStore {
         if version == 21 { return migrateV21toV22(data) }
         if version == 22 { return migrateV22toV23(data) }
         if version == 23 { return migrateV23toV24(data) }
+        if version >= 1 && version < 8 {
+            // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
+            // no sensible migration path. Record why, rather than discarding silently (QA-08).
+            print("[GameStore] discarding save from schema v\(version) — predates all migration paths (earliest supported migration starts at v8)")
+            discardedIncompatibleVersion = version
+            return nil
+        }
         guard version == currentVersion else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: data) }
         catch { assertionFailure("GameStore: decode v\(version) failed — \(error)"); return nil }

@@ -109,23 +109,13 @@ struct MergeBoardView: View {
             }
 
             if viewModel.showUnlockBanner {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        Image(systemName: "lock.open.fill").font(.system(size: 32))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("New Row Unlocked!").font(.headline).foregroundColor(.white)
-                            Text("7 more spaces are now open for rescued animals!")
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                        }
-                        Spacer()
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 0.2, green: 0.55, blue: 0.35))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 70)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                BannerView(
+                    title: "New Row Unlocked!",
+                    detail: "7 more spaces are now open for rescued animals!",
+                    background: AnyShapeStyle(Color(red: 0.2, green: 0.55, blue: 0.35)),
+                    bottomPadding: 70
+                ) {
+                    Image(systemName: "lock.open.fill").font(.system(size: 32))
                 }
             }
 
@@ -140,103 +130,65 @@ struct MergeBoardView: View {
 
             // Level-up banner — slides up from bottom
             if viewModel.showLevelUpBanner {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.yellow.opacity(0.25))
-                                .frame(width: 46, height: 46)
-                            Text("Lv.\(viewModel.playerLevel)")
-                                .font(.system(size: 13, weight: .heavy))
-                                .foregroundColor(.yellow)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(viewModel.levelUpBannerTitle)
-                                .font(.headline).foregroundColor(.white)
-                            Text(viewModel.levelUpBannerDetail)
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                        }
-                        Spacer()
+                BannerView(
+                    title: viewModel.levelUpBannerTitle,
+                    detail: viewModel.levelUpBannerDetail,
+                    background: AnyShapeStyle(LinearGradient(
+                        colors: [Color(red: 0.20, green: 0.45, blue: 0.30),
+                                 Color(red: 0.35, green: 0.60, blue: 0.40)],
+                        startPoint: .leading, endPoint: .trailing)),
+                    bottomPadding: 80
+                ) {
+                    ZStack {
+                        Circle().fill(Color.yellow.opacity(0.25)).frame(width: 46, height: 46)
+                        Text("Lv.\(viewModel.playerLevel)")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.yellow)
                     }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color(red: 0.20, green: 0.45, blue: 0.30),
-                                     Color(red: 0.35, green: 0.60, blue: 0.40)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(99)
             }
 
             // Area-built celebration banner
             if viewModel.showAreaBuiltBanner {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.72, green: 0.50, blue: 0.10).opacity(0.25))
-                                .frame(width: 46, height: 46)
-                            Image(systemName: "hammer.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(Color(red: 0.88, green: 0.68, blue: 0.15))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(viewModel.areaBuiltBannerTitle)
-                                .font(.headline).foregroundColor(.white)
-                            Text(viewModel.areaBuiltBannerDetail)
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                        }
-                        Spacer()
+                BannerView(
+                    title: viewModel.areaBuiltBannerTitle,
+                    detail: viewModel.areaBuiltBannerDetail,
+                    background: AnyShapeStyle(LinearGradient(
+                        colors: [Color(red: 0.48, green: 0.32, blue: 0.08),
+                                 Color(red: 0.65, green: 0.48, blue: 0.12)],
+                        startPoint: .leading, endPoint: .trailing)),
+                    bottomPadding: 80
+                ) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.72, green: 0.50, blue: 0.10).opacity(0.25))
+                            .frame(width: 46, height: 46)
+                        Image(systemName: "hammer.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(Color(red: 0.88, green: 0.68, blue: 0.15))
                     }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color(red: 0.48, green: 0.32, blue: 0.08),
-                                     Color(red: 0.65, green: 0.48, blue: 0.12)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(98)
             }
 
             // Superpower unlock celebration banner
             if viewModel.showSuperpowerUnlockBanner, let sp = viewModel.superpowerUnlockBannerSpecies {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.purple.opacity(0.25))
-                                .frame(width: 46, height: 46)
-                            Image(systemName: sp.superpower.sfSymbol)
-                                .font(.system(size: 22))
-                                .foregroundColor(.purple)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Superpower Unlocked!")
-                                .font(.headline).foregroundColor(.white)
-                            Text("\(sp.spawnerName): \(sp.superpower.name) — \(sp.superpower.description)")
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                                .lineLimit(2)
-                        }
-                        Spacer()
+                BannerView(
+                    title: "Superpower Unlocked!",
+                    detail: "\(sp.spawnerName): \(sp.superpower.name) — \(sp.superpower.description)",
+                    background: AnyShapeStyle(LinearGradient(
+                        colors: [Color(red: 0.35, green: 0.10, blue: 0.55),
+                                 Color(red: 0.55, green: 0.25, blue: 0.75)],
+                        startPoint: .leading, endPoint: .trailing)),
+                    bottomPadding: 80
+                ) {
+                    ZStack {
+                        Circle().fill(Color.purple.opacity(0.25)).frame(width: 46, height: 46)
+                        Image(systemName: sp.superpower.sfSymbol)
+                            .font(.system(size: 22))
+                            .foregroundColor(.purple)
                     }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color(red: 0.35, green: 0.10, blue: 0.55),
-                                     Color(red: 0.55, green: 0.25, blue: 0.75)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(97)
             }
@@ -402,6 +354,11 @@ struct MergeBoardView: View {
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .sheet(item: $activeRoute) { route in routeContent(route) }
+        .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your save is from an older version of the app and could not be restored. A new game has been started.")
+        }
         .onChange(of: viewModel.showKibbleSheet) { _, show in
             if show { activeRoute = .kibbleRefill; viewModel.showKibbleSheet = false }
         }

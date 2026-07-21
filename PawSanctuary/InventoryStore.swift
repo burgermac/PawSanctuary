@@ -80,7 +80,7 @@ class InventoryStore {
             guard ContentRegistry.shared.chain(item.chainID)?.category == .material,
                   materialCounts[item.chainID] != nil else { continue }
             let tier = max(0, min(item.tier, 5))
-            materialCounts[item.chainID]![tier] += 1
+            materialCounts[item.chainID]?[tier] += 1
         }
         for chainID in materialCounts.keys { cascadeMaterial(chainID: chainID) }
     }
@@ -88,9 +88,9 @@ class InventoryStore {
     private func cascadeMaterial(chainID: ChainID) {
         guard materialCounts[chainID] != nil else { return }
         for tier in 0..<5 {
-            while materialCounts[chainID]![tier] >= 2 {
-                materialCounts[chainID]![tier] -= 2
-                materialCounts[chainID]![tier + 1] += 1
+            while (materialCounts[chainID]?[tier] ?? 0) >= 2 {
+                materialCounts[chainID]?[tier] -= 2
+                materialCounts[chainID]?[tier + 1] += 1
             }
         }
     }
@@ -190,7 +190,7 @@ class InventoryStore {
     func consumeFromToolInventory(chainID: ChainID, tier: Int) -> Bool {
         guard tier >= 0 && tier <= 5,
               (materialCounts[chainID]?[tier] ?? 0) > 0 else { return false }
-        materialCounts[chainID]![tier] -= 1
+        materialCounts[chainID]?[tier] -= 1
         return true
     }
 

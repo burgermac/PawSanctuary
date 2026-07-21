@@ -481,11 +481,15 @@ struct GridPosition: Equatable, Hashable, Codable {
 }
 
 struct BoardCell: Identifiable, Codable {
-    var id = UUID()
     var position: GridPosition
     var item: BoardItem?           // a merge tile (any chain) — nil when empty or has a producer
     var producer: ProducerTile?    // a generator tile — nil when empty or has an item
     var isUnlocked: Bool
+
+    /// Stable identity for SwiftUI's ForEach diffing — a board cell's identity is its
+    /// grid position, not a per-copy UUID (which regenerated on every mutation and broke
+    /// merge/unlock animations that rely on identity to interpolate between states).
+    var id: GridPosition { position }
 
     /// A cell is empty when it holds neither an animal nor a producer.
     var isEmpty: Bool { item == nil && producer == nil }
@@ -886,7 +890,6 @@ let totalInventorySlots       = 18
 let freeInventorySlots        = 6
 let inventoryRow1Cost         = 10
 let inventoryRow2Cost         = 25
-let totalToolInventorySlots    = 18  // Phase 3: materials accumulate here before being spent
 let totalProducerOverflowSlots = 4   // Phase 3: overflow for producers retired before slot unlocks
 let spotlightWeeklyGoal    = 10
 let adoptionSkipCost       = 2   // kibble cost to skip an order you don't want
