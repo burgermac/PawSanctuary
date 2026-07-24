@@ -660,6 +660,26 @@ class MergeBoardViewModel {
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
         startTimer()
+        // Game Center auth is opt-in, triggered only from the Card Album (see
+        // ensureGameCenterAuthenticated()) — NOT here at launch. It used to run
+        // unconditionally for every player on every cold start; on top of the two
+        // GameKit bugs fixed in CardTrading.swift (a dropped sign-in view controller,
+        // and an unmanaged GKAccessPoint overlay), some Simulator/OS combinations hit
+        // a genuine OS-level failure in GameKit's own overlay service ("Could not
+        // create endpoint for service name: com.apple.GameOverlayUI.dashboard-service",
+        // confirmed via the device log) that hangs the main run loop. Scoping
+        // authentication to only the players who actually open the trading UI keeps
+        // that residual, environment-level risk away from the other 90%+ of the game
+        // that has nothing to do with Game Center.
+    }
+
+    private var didAttemptGameCenterAuth = false
+
+    /// Call when a screen that actually needs Game Center (currently: Card Album)
+    /// appears. Idempotent — only the first call does anything.
+    func ensureGameCenterAuthenticated() {
+        guard !didAttemptGameCenterAuth else { return }
+        didAttemptGameCenterAuth = true
         authenticateGameCenter { [weak self] playerID, alias in
             self?.gcIsAuthenticated  = true
             self?.gcLocalPlayerID    = playerID
@@ -1783,7 +1803,10 @@ class MergeBoardViewModel {
         guard gcIsAuthenticated else { return }
         let fetched = await CardTradeBackend.fetchOutgoing(for: gcLocalPlayerID)
         guard !fetched.isEmpty else { return }
-        let remoteByID = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
+        // Built with a merge closure rather than uniqueKeysWithValues: a duplicate id in
+        // `fetched` (e.g. an unexpected CloudKit query result) must not crash the app —
+        // keep the first occurrence and move on.
+        let remoteByID = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var changed = false
         for i in pendingOutgoingTrades.indices {
             guard let remote = remoteByID[pendingOutgoingTrades[i].id],

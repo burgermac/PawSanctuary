@@ -70,6 +70,7 @@ struct CardAlbumView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.70), value: viewModel.showAlbumCompleteCard?.id)
         .task {
+            viewModel.ensureGameCenterAuthenticated()
             await viewModel.refreshIncomingTrades()
             await viewModel.refreshOutgoingTrades()
         }

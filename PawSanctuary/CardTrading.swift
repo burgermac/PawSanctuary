@@ -106,9 +106,29 @@ struct GameCenterFriend: Identifiable, Codable, Equatable {
 
 /// Call once on app launch. Sets up the GC auth handler and notifies the
 /// ViewModel when authentication state changes.
+///
+/// Two distinct GameKit behaviors were causing the app to freeze (touches stop
+/// responding; only the hardware Home button still works) as soon as any screen
+/// touched Game-Center-gated state:
+///
+/// 1. `authenticateHandler` is called with a non-nil `viewController` whenever Game
+///    Center needs to show its own sign-in UI. That view controller is the app's
+///    responsibility to present — dropping it (as the previous `{ _, error in ... }`
+///    did) leaves GameKit holding UI it can never show.
+/// 2. GameKit's `GKAccessPoint` — its own floating overlay/banner UI — defaults to
+///    active. Confirmed via device log (`Requesting welcome banner presentation in
+///    overlay`, `Unhiding access point in overlay`) that this overlay window sits on
+///    top of the app and swallows touch input even while showing nothing visible in
+///    a screenshot. This app has entirely custom trading UI and never wants Game
+///    Center's own overlay, so it must be explicitly disabled.
 @MainActor
 func authenticateGameCenter(onAuthenticated: @escaping (String, String) -> Void) {
-    GKLocalPlayer.local.authenticateHandler = { _, error in
+    GKAccessPoint.shared.isActive = false
+    GKLocalPlayer.local.authenticateHandler = { viewController, error in
+        if let viewController {
+            gameCenterRootViewController()?.present(viewController, animated: true)
+            return
+        }
         if let error {
             print("[GameCenter] Auth error: \(error.localizedDescription)")
             return
@@ -119,6 +139,18 @@ func authenticateGameCenter(onAuthenticated: @escaping (String, String) -> Void)
         }
     }
 }
+
+/// The active window's root view controller, used only to present Game Center's
+/// own sign-in UI when GameKit hands one to `authenticateHandler`.
+@MainActor
+private func gameCenterRootViewController() -> UIViewController? {
+    UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap { $0.windows }
+        .first { $0.isKeyWindow }?
+        .rootViewController
+}
+
 
 /// Fetches the local player's Game Center friends.
 /// Requires the Game Center entitlement and user consent.
