@@ -1230,20 +1230,19 @@ class MergeBoardViewModel {
             return
         }
         if board[pos.row][pos.col].producer != nil {
-            if let sel = selectedCell, sel != pos, board[sel.row][sel.col].producer == nil {
-                attemptMergeOrMove(from: sel, to: pos)
-                selectedCell = nil
-            } else {
-                activateProducer(at: pos)
-            }
+            activateProducer(at: pos)
             return
         }
-        if let sel = selectedCell {
-            if sel == pos { selectedCell = nil }
-            else { attemptMergeOrMove(from: sel, to: pos); selectedCell = nil }
+        // Tapping never moves, swaps, or merges — it only selects, so the info
+        // panel updates. Repositioning items on the board is drag-only (see the
+        // DragGesture in MergeBoardView, which calls attemptMergeOrMove directly).
+        if let sel = selectedCell, sel == pos {
+            selectedCell = nil
         } else if board[pos.row][pos.col].item != nil {
             inventoryStore.selectedInventorySlot = nil
             selectedCell = pos
+        } else {
+            selectedCell = nil
         }
     }
 
