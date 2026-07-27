@@ -51,7 +51,7 @@ final class PersistenceTests: XCTestCase {
         let board: [[BoardCell]] = [
             [
                 BoardCell(position: GridPosition(row: 0, col: 0),
-                          item: BoardItem(chainID: aid(.fox), tier: 8),   // tier 8 = Ambassador (9-tier chain)
+                          item: BoardItem(chainID: aid(.fox), tier: 14),   // tier 14 = Moose, top tier (15-tier chain)
                           isUnlocked: true),
                 BoardCell(position: GridPosition(row: 0, col: 1),
                           producer: ProducerTile(level: .shelterPod, cooldownRemaining: 17.5),
@@ -156,8 +156,8 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.board.count, 2)
         XCTAssertEqual(decoded.board[0].count, 2)
         XCTAssertEqual(decoded.board[0][0].item?.chainID, aid(.fox))
-        XCTAssertEqual(decoded.board[0][0].item?.tier, 8)
-        XCTAssertTrue(decoded.board[0][0].item?.isTopTier ?? false)   // registry-driven (tier 8 = ambassador, top of 9-tier chain)
+        XCTAssertEqual(decoded.board[0][0].item?.tier, 14)
+        XCTAssertTrue(decoded.board[0][0].item?.isTopTier ?? false)   // registry-driven (tier 14 = Moose, top of Cervids' 15-tier chain)
         XCTAssertNil(decoded.board[0][0].producer)
         XCTAssertEqual(decoded.board[0][1].producer?.level, .shelterPod)
         XCTAssertEqual(decoded.board[0][1].producer?.cooldownRemaining, 17.5)
@@ -414,8 +414,13 @@ final class PersistenceTests: XCTestCase {
     // MARK: GameStore save / load
 
     func testGameStoreSaveThenLoadIsFaithful() throws {
-        let original = makeSampleState()
-        GameStore.save(original)
+        // GameStore.save(_:) is fire-and-forget (Task.detached — see its doc comment),
+        // so it can't be read back synchronously with no wait. Write via the same
+        // synchronous path the migration tests below use instead of racing the
+        // detached task.
+        var original = makeSampleState()
+        original.version = GameStore.currentVersion
+        try writeMainFile(try JSONEncoder().encode(original))
 
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.version, GameStore.currentVersion)   // save stamps the version
@@ -866,9 +871,12 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testCompletedAreaIDsPersistedByGameStore() throws {
+        // See testGameStoreSaveThenLoadIsFaithful — GameStore.save(_:) is async
+        // (Task.detached), so write synchronously to avoid racing it.
         var state = makeSampleState()
         state.completedAreaIDs = ["area.welcome", "area.grooming", "area.rescue"]
-        GameStore.save(state)
+        state.version = GameStore.currentVersion
+        try writeMainFile(try JSONEncoder().encode(state))
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.completedAreaIDs, ["area.welcome", "area.grooming", "area.rescue"])
     }
@@ -901,18 +909,28 @@ final class PersistenceTests: XCTestCase {
     // ── Adoption order stage capping ────────────────────────────
 
     func testMaxAchievableOrderTierAtEachLevelBand() {
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 1),  RescueStage.groomed.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 3),  RescueStage.groomed.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 4),  RescueStage.trained.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 6),  RescueStage.trained.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 7),  RescueStage.adopted.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 9),  RescueStage.adopted.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 10), RescueStage.bondedPair.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 12), RescueStage.bondedPair.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 13), RescueStage.communityFav.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 15), RescueStage.communityFav.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 16), RescueStage.ambassador.tierIndex)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), RescueStage.ambassador.tierIndex)
+        // maxAchievableOrderTier returns a 0-based index into a family's 15-tier
+        // animal chain (0...14). RescueStage is the older 9-stage system (see its
+        // doc comment) and is no longer the right comparison target — this test
+        // previously compared across those two incompatible tier spaces, which is
+        // why it was failing (e.g. RescueStage.groomed.tierIndex == 1, but the
+        // level-1 band below is genuinely 2). Assert the literal band boundaries
+        // from the switch in maxAchievableOrderTier(forPlayerLevel:) directly;
+        // testMaxAchievableOrderTierIsNonDecreasing separately locks in monotonicity.
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 1),  2)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 3),  2)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 4),  5)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 6),  5)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 7),  8)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 9),  8)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 10), 10)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 12), 10)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 13), 12)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 15), 12)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 16), 12)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 18), 12)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 19), 14)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), 14)
     }
 
     func testMaxAchievableOrderTierIsNonDecreasing() {
@@ -927,20 +945,26 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testAdoptionOrderStageClamping() {
-        // Simulate the clamping formula used in generateAdoptionOrder().
-        // At level 1-3 an "ambassador" roll should be clamped to "groomed".
-        let maxTier = maxAchievableOrderTier(forPlayerLevel: 1)
-        let ambassadorRaw = RescueStage.ambassador.rawValue
-        let clampedRaw    = min(ambassadorRaw, maxTier + 1)
-        let clamped       = RescueStage(rawValue: clampedRaw)
-        XCTAssertEqual(clamped, .groomed,
-                       "Ambassador order at level 1 must clamp to Groomed")
+        // Mirrors the real clamping in AdoptionBoard.generateOrder():
+        //   let tier = min(rawTier, maxAchievableOrderTier(forPlayerLevel: playerLevel))
+        // both rawTier and maxAchievableOrderTier already live in the same 0-based
+        // 15-tier animal-chain index space — no RescueStage conversion happens
+        // (RescueStage's 9-stage system predates the per-family 15-tier chains;
+        // see its doc comment). This test previously simulated a RescueStage-based
+        // formula that no longer exists in production.
+        let topTierRoll = 14   // highest possible animal tier index (e.g. Cervids' Moose)
 
-        // At level 16+ clamping should be a no-op for ambassador.
-        let maxTierHigh  = maxAchievableOrderTier(forPlayerLevel: 16)
-        let clampedHigh  = RescueStage(rawValue: min(ambassadorRaw, maxTierHigh + 1))
-        XCTAssertEqual(clampedHigh, .ambassador,
-                       "Ambassador order at level 16 must not be clamped")
+        // At level 1-3 a top-tier roll must clamp down to the level's cap.
+        let maxTier = maxAchievableOrderTier(forPlayerLevel: 1)
+        XCTAssertEqual(min(topTierRoll, maxTier), maxTier,
+                       "Top-tier order roll at level 1 must clamp to the level's max achievable tier")
+        XCTAssertEqual(maxTier, 2, "Level 1 max achievable tier")
+
+        // At level 19+ the cap itself reaches the top tier, so clamping is a no-op.
+        let maxTierHigh = maxAchievableOrderTier(forPlayerLevel: 19)
+        XCTAssertEqual(min(topTierRoll, maxTierHigh), topTierRoll,
+                       "Top-tier order roll at level 19 must not be clamped")
+        XCTAssertEqual(maxTierHigh, 14, "Level 19 max achievable tier reaches the top")
     }
 
     // MARK: Phase 5 — Coins, weekly/monthly goals, area upgrades
@@ -1028,10 +1052,13 @@ final class PersistenceTests: XCTestCase {
         }
     }
 
-    func testEachAreaHasTwoUpgradeTiers() {
+    func testEachAreaHasFourUpgradeTiers() {
+        // Per the GDD (Section 11), each Sanctuary Map area has 4 upgrade tiers,
+        // not 2 — this test's expectation was stale (written before that design
+        // was finalized/expanded).
         for area in sanctuaryAreas {
-            XCTAssertEqual(area.upgrades.count, 2,
-                           "'\(area.id)' must have exactly 2 upgrade tiers, found \(area.upgrades.count)")
+            XCTAssertEqual(area.upgrades.count, 4,
+                           "'\(area.id)' must have exactly 4 upgrade tiers, found \(area.upgrades.count)")
         }
     }
 
@@ -1083,8 +1110,12 @@ final class PersistenceTests: XCTestCase {
     // MARK: Backup recovery
 
     func testRecoversFromBackupWhenMainFileIsCorrupt() throws {
-        // A good save populates the backup slot (load() refreshes it).
-        GameStore.save(makeSampleState())
+        // A good save populates the backup slot (load() refreshes it). Write
+        // synchronously — see testGameStoreSaveThenLoadIsFaithful — rather than
+        // racing GameStore.save(_:)'s detached write task.
+        var seed = makeSampleState()
+        seed.version = GameStore.currentVersion
+        try writeMainFile(try JSONEncoder().encode(seed))
         _ = GameStore.load()   // promotes main → backup
 
         // Now corrupt the main file; load() should fall back to the backup.

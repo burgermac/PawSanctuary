@@ -25,6 +25,18 @@
 - [ ] **Seasonal Events — add future events to registry:** the infrastructure in `EventSystem.swift` is complete, but the only event ever defined (`rescue_rush_jun2026`, June 1–15 2026) has expired. Add new `EventDefinition` entries to `EventRegistry.allEvents` — nothing seasonal is currently active.
 - [ ] **Card artwork:** all 54 cards in `CardSystem.swift` use SF Symbols as stand-ins. Illustrated art is a content/asset-production task, not a code change.
 
+### Test suite health (discovered 26 July 2026, fixed same day)
+
+`PersistenceTests.swift` (~1,100 lines) had never successfully compiled. The scheme's `TestAction` had no `<Testables>` entry, so `xcodebuild test` failed outright rather than running; once fixed, the test target's deployment target (17.0 vs the app's 17.6) blocked `@testable import`; once that was fixed, 9 accumulated compile errors surfaced referencing fields deleted long ago (`GameState.supplyCount`, `AdoptionOrder.rewardKibble`, `AreaReward.newSpecies`).
+
+**Implication:** every schema migration from v8 through v24 shipped without test verification. Treat the older migrations as unproven rather than trusted. If a save-corruption bug surfaces, that chain is the first place to look.
+
+All fixed: scheme wiring, deployment target, the 9 compile errors, and 7 further behavioural failures the suite surfaced once it could actually run (stale expected values for tier-clamping/level-band logic and Sanctuary Map upgrade-tier count, one `isTopTier` assertion against test data that assumed a 9-tier chain instead of the real 15-tier one, and a `GameStore.save()`/`load()` race in 3 tests — see below). 70 passing, then 78 with these fixes.
+
+- [ ] **`RescueStage` is vestigial but still drives live quest generation.** `RescueStage` is a legacy 9-stage enum (its own doc comment says so) from before the game moved to 15-tier-per-family chains. It survives in `AnimalSpecies.swift` (5 references) — but also in **`QuestCoordinator.swift`, at 17 sites**, where `RescueStage.X.tierIndex` (range 0–8) is used to build `reachTier` goals against chains whose real range is 0–14.
+  **Consequence:** quests can only ever target the bottom 9 tiers of a 15-tier chain. **Tiers 9–14 — a third of the authored content, including every top-tier Ambassador stage — are unreachable as quest objectives.** This is the same apples-to-oranges confusion found in the tests, except it is in shipping code.
+  Fix alongside Phase 5 (order/quest restructuring), or sooner if quest variety matters before then.
+
 ### Competitive analysis
 - [ ] **Feature-parity audit vs. Gossip Harbor / Travel Town / Tasty Travels.** `PawSanctuary_Gap_Analysis.md` (in the parent Claude Code folder) deliberately scoped itself to *gameplay psychology* — the mechanisms driving return visits and spend — and explicitly did **not** enumerate feature-by-feature coverage. A straight parity audit is still outstanding: catalogue every discrete feature in the three reference titles, mark present / partial / absent in PawSanctuary, and flag which absences are deliberate differentiation versus unexamined gaps. Reference material: `Merge2_Reference_Blueprint.md`, `Findings_26July.md`, `Reference_Data_Extract.md`, `Phase2_Economy_Model.xlsx`.
 
