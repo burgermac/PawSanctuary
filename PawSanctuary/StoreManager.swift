@@ -68,7 +68,12 @@ class StoreManager {
             switch result {
             case .success(let v):
                 let tx = try checkVerified(v)
-                if let iap = IAPProduct(rawValue: product.id) { onPurchaseComplete?(iap, tx.price ?? 0) }
+                // A restore or family-shared entitlement can also surface here with
+                // no price and/or a revocation date — not a new purchase, so don't count it.
+                if let iap = IAPProduct(rawValue: product.id),
+                   let price = tx.price, tx.revocationDate == nil {
+                    onPurchaseComplete?(iap, price)
+                }
                 await tx.finish()
             case .pending:
                 purchaseError = "Purchase pending."
@@ -100,7 +105,12 @@ class StoreManager {
                 let tx = try checkVerified(result)
                 if let iap = IAPProduct(rawValue: tx.productID) {
                     if iap == .sanctuaryPass { isPassActive = tx.revocationDate == nil }
-                    onPurchaseComplete?(iap, tx.price ?? 0)
+                    // listenForTransactions() delivers every transaction, including
+                    // restores and family-shared entitlements — those have no price
+                    // and/or a revocation date. A restore is not a new purchase.
+                    if let price = tx.price, tx.revocationDate == nil {
+                        onPurchaseComplete?(iap, price)
+                    }
                 }
                 await tx.finish()
             } catch {

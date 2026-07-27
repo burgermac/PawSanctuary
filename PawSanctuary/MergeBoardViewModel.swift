@@ -2671,6 +2671,17 @@ class MergeBoardViewModel {
             claimPassDaily()
         }
         // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
+        //
+        // Sanctuary Pass subscription renewals also arrive here via
+        // StoreManager.listenForTransactions() and count as a purchase each time,
+        // same as any other IAP. That's correct for lifetime spend, but it distorts
+        // commerce.averagePurchaseMicros — a player who bought one large pack and
+        // then rides a $4.99/mo pass for a year accumulates twelve small "purchases"
+        // that drag the average well below what any single purchase looked like.
+        // Phase 3 uses averagePurchaseMicros to size contextual offers, so whether
+        // renewals should count toward it (vs. only toward hasEverPurchased /
+        // totalSpendMicros) is an open targeting decision for that phase — not
+        // changing the recording behaviour here.
         commerce.purchaseCount += 1
         commerce.totalSpendMicros += Int(truncating: NSDecimalNumber(decimal: priceUSD * 1_000_000))
         commerce.lastPurchaseDate = Date()
