@@ -3,11 +3,12 @@
 ## Pending
 
 ### Xcode capability toggles (Signing & Capabilities — not code changes)
-- [ ] Enable **Push Notifications** capability. Required for `UNUserNotificationCenter` permission prompt to work on device — the scheduling logic in `NotificationManager.swift` is already fully implemented and just needs this to actually fire.
-- [ ] Enable **iCloud** capability → check **Key-Value Storage**. The sync code in `GameStore.swift` is wired and degrades gracefully without it, but cross-device save sync won't actually happen until this is provisioned.
-- [ ] Enable **iCloud** capability → check **CloudKit** → create/select a container (separate from the Key-Value Storage service above). Required for card trading.
-- [ ] Enable **Game Center** capability. Also required for card trading (Game Center auth gates the whole feature) and for friend discovery in the invite system.
-- [ ] In the CloudKit Dashboard, confirm the `CardTrade` record type has fields `cardID`, `fromPlayerID`, `fromDisplayName`, `toPlayerID`, `toDisplayName`, `sentAt`, `status` — mark `toPlayerID`, `fromPlayerID`, and `status` **Queryable** (the trading queries in `CardTradeBackend` filter on these and CloudKit rejects predicates on non-queryable fields). Deploy the schema from Development to Production before release.
+- [ ] Enable **Push Notifications** capability. Required for `UNUserNotificationCenter` permission prompt to work on device — the scheduling logic in `NotificationManager.swift` is already fully implemented and just needs this to actually fire. (Works on a free/Personal Team.)
+- [x] Enable **Game Center** capability — done (commit `adf1be4`). (Works on a free/Personal Team.)
+- [ ] **BLOCKED on paid Apple Developer Program enrollment ($99/yr):** the Xcode account for this project (team `H2QZGDY8UN`) is currently a free/Personal Team, and Apple does not expose the **iCloud** capability at all for Personal Teams — it's missing from the `+ Capability` list, not just greyed out. Confirmed 2026-07-23. Both of the following are blocked on enrolling first:
+  - [ ] Enable **iCloud** capability → check **Key-Value Storage**. The sync code in `GameStore.swift` is wired and degrades gracefully without it, but cross-device save sync won't actually happen until this is provisioned.
+  - [ ] Enable **iCloud** capability → check **CloudKit** → create/select a container (separate from the Key-Value Storage service above). Required for card trading.
+- [ ] In the CloudKit Dashboard, confirm the `CardTrade` record type has fields `cardID`, `fromPlayerID`, `fromDisplayName`, `toPlayerID`, `toDisplayName`, `sentAt`, `status` — mark `toPlayerID`, `fromPlayerID`, and `status` **Queryable** (the trading queries in `CardTradeBackend` filter on these and CloudKit rejects predicates on non-queryable fields). Deploy the schema from Development to Production before release. Depends on iCloud/CloudKit above.
 
 ### Real integrations still stubbed
 - [ ] **Rewarded ads:** `AdProvider.swift`'s `StubAdProvider` just waits 1.5s and always succeeds. Swap in a real SDK (AdMob, AppLovin, etc.) before launch — the reward logic and daily-cap bookkeeping around it are already correct.
@@ -23,6 +24,9 @@
 ### Content gaps
 - [ ] **Seasonal Events — add future events to registry:** the infrastructure in `EventSystem.swift` is complete, but the only event ever defined (`rescue_rush_jun2026`, June 1–15 2026) has expired. Add new `EventDefinition` entries to `EventRegistry.allEvents` — nothing seasonal is currently active.
 - [ ] **Card artwork:** all 54 cards in `CardSystem.swift` use SF Symbols as stand-ins. Illustrated art is a content/asset-production task, not a code change.
+
+### Competitive analysis
+- [ ] **Feature-parity audit vs. Gossip Harbor / Travel Town / Tasty Travels.** `PawSanctuary_Gap_Analysis.md` (in the parent Claude Code folder) deliberately scoped itself to *gameplay psychology* — the mechanisms driving return visits and spend — and explicitly did **not** enumerate feature-by-feature coverage. A straight parity audit is still outstanding: catalogue every discrete feature in the three reference titles, mark present / partial / absent in PawSanctuary, and flag which absences are deliberate differentiation versus unexamined gaps. Reference material: `Merge2_Reference_Blueprint.md`, `Findings_26July.md`, `Reference_Data_Extract.md`, `Phase2_Economy_Model.xlsx`.
 
 ## Code Health (from June 2026 audit, cross-checked against `docs/CODE_HEALTH.md` — fixed in the July 2026 pass unless noted)
 
