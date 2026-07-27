@@ -908,6 +908,33 @@ class MergeBoardViewModel {
     private func save() { GameStore.save(captureState()) }
     func persist() { GameStore.saveAndSync(captureState()) }
 
+    // MARK: Background/foreground catch-up
+    //
+    // `startTimer()`'s live Timer only advances regen while the app is in the
+    // foreground — iOS suspends it (no CPU) once backgrounded, so time spent in
+    // another app is otherwise lost rather than credited on return. `init()`
+    // already catches up correctly on a cold launch via `applyOfflineProgress`,
+    // but that only runs once per process; these two hooks extend the same
+    // catch-up to a plain background→foreground cycle within one process.
+
+    private var backgroundedAt: Date? = nil
+
+    /// Records when the app left the foreground. Guarded so the transient
+    /// `.inactive` scenePhase fired on the way *back* to `.active` (the
+    /// background → inactive → active sequence) doesn't clobber the original
+    /// timestamp with "now".
+    func appDidEnterBackground() {
+        if backgroundedAt == nil { backgroundedAt = Date() }
+    }
+
+    /// Applies regen/cooldown progress for the time spent backgrounded, then
+    /// clears the marker so the next background cycle starts fresh.
+    func appDidBecomeActive() {
+        guard let backgroundedAt else { return }
+        self.backgroundedAt = nil
+        applyOfflineProgress(since: backgroundedAt)
+    }
+
     private func applyOfflineProgress(since lastActive: Date) {
         let elapsed = Date().timeIntervalSince(lastActive)
         guard elapsed >= 1 else { return }

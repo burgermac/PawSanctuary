@@ -386,11 +386,17 @@ struct MergeBoardView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background, .inactive:
+                // Mark when we left, so returning to .active can credit regen
+                // that the (now-suspended) live timer missed.
+                viewModel.appDidEnterBackground()
                 // Flush save
                 viewModel.persist()
                 // Schedule all re-engagement notifications
                 scheduleAllNotifications()
             case .active:
+                // Catch up on kibble regen / producer cooldowns / adoption
+                // orders for the time spent backgrounded.
+                viewModel.appDidBecomeActive()
                 // Cancel everything — the player is here now
                 NotificationManager.shared.cancelAll()
             default:
