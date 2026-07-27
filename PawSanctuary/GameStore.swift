@@ -143,6 +143,9 @@ struct GameState: Codable {
     var pouchItems: [BoardItem?] = [nil, nil]          // Marsupials Pouch: 2 off-board storage slots
     var pouchExpiryTimestamp: Double = 0               // Unix timestamp when Pouch expires (0 = inactive)
 
+    // Player commerce state (v26) — offer targeting / difficulty scaling / Phase 3 first-purchase gate.
+    var commerce: PlayerCommerceState = PlayerCommerceState()
+
     /// Wall-clock time the snapshot was taken, used to advance timers for the
     /// span the app was closed. Optional so pre-existing saves still decode.
     var lastActiveDate: Date?
@@ -198,7 +201,9 @@ enum GameStore {
     /// v23: pityStates type changed [String:Int]→[String:PityState]; sub-object chains registered.
     /// v25: AdoptionOrder's rewardDogTags/rewardCoins/rewardCardPack collapse into
     ///      rewards: [OrderReward] (Phase 1, Task 1.1); OrderRewardRegistry rider hook (Task 1.2).
-    static let currentVersion = 25
+    /// v26: commerce: PlayerCommerceState added (Phase 1, Task 1.4) — purchase history
+    ///      and kibble-wall events, for Phase 3 offer targeting/gating. Additive.
+    static let currentVersion = 26
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -348,6 +353,7 @@ enum GameStore {
         if version == 22 { return migrateV22toV23(data) }
         if version == 23 { return migrateV23toV24(data) }
         if version == 24 { return migrateV24toV25(data) }
+        if version == 25 { return migrateV25toV26(data) }
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -585,6 +591,16 @@ enum GameStore {
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migrateV24toV25 decode failed — \(error)"); return nil }
+    }
+
+    /// v25 → v26: adds `commerce: PlayerCommerceState` (purely additive — every field
+    /// has a Swift default; only the four non-Optional fields need explicit JSON values,
+    /// since synthesized Decodable already treats Optional stored properties as absent-ok).
+    private static func migrateV25toV26(_ data: Data) -> GameState? {
+        return migrateByInjecting(defaults: [
+            "commerce": ["purchaseCount": 0, "totalSpendMicros": 0,
+                         "wallEventsTotal": 0, "hasReachedFirstWall": false],
+        ], into: data)
     }
 
     /// Picks the snapshot with the later `lastActiveDate` (the device that played

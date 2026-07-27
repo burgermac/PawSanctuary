@@ -24,7 +24,10 @@ class StoreManager {
     var isPassActive: Bool = false
 
     /// Called by the ViewModel when a purchase or subscription renewal is verified.
-    @ObservationIgnored var onPurchaseComplete: ((IAPProduct) -> Void)?
+    /// The `Decimal` is the transaction's price (Task 1.4, Phase 1 — recorded into
+    /// PlayerCommerceState.totalSpendMicros; treated as USD without currency
+    /// conversion, an accepted simplification for this phase's plumbing).
+    @ObservationIgnored var onPurchaseComplete: ((IAPProduct, Decimal) -> Void)?
 
     init() {
         Task {
@@ -65,7 +68,7 @@ class StoreManager {
             switch result {
             case .success(let v):
                 let tx = try checkVerified(v)
-                if let iap = IAPProduct(rawValue: product.id) { onPurchaseComplete?(iap) }
+                if let iap = IAPProduct(rawValue: product.id) { onPurchaseComplete?(iap, tx.price ?? 0) }
                 await tx.finish()
             case .pending:
                 purchaseError = "Purchase pending."
@@ -97,7 +100,7 @@ class StoreManager {
                 let tx = try checkVerified(result)
                 if let iap = IAPProduct(rawValue: tx.productID) {
                     if iap == .sanctuaryPass { isPassActive = tx.revocationDate == nil }
-                    onPurchaseComplete?(iap)
+                    onPurchaseComplete?(iap, tx.price ?? 0)
                 }
                 await tx.finish()
             } catch {

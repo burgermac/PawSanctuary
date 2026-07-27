@@ -363,7 +363,7 @@ struct MergeBoardView: View {
             if show { activeRoute = .kibbleRefill; viewModel.showKibbleSheet = false }
         }
         .onAppear {
-            storeManager.onPurchaseComplete = { viewModel.applyPurchase($0) }
+            storeManager.onPurchaseComplete = { viewModel.applyPurchase($0, priceUSD: $1) }
             viewModel.isPassActive = storeManager.isPassActive
             // Cancel stale notifications whenever the app becomes visible
             NotificationManager.shared.cancelAll()

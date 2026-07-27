@@ -236,6 +236,10 @@ class MergeBoardViewModel {
     var pouchItems: [BoardItem?] = [nil, nil]
     var pouchExpiryTimestamp: Double = 0
 
+    // Player commerce state (v26) — persisted field mirrors GameState. Record only;
+    // Phase 3 uses this to gate monetization surfaces.
+    var commerce: PlayerCommerceState = PlayerCommerceState()
+
     // Superpower session-only state (not persisted).
     var preMoveSnapshot: BoardSnapshot? = nil
     var leapMode: Bool = false
@@ -692,6 +696,9 @@ class MergeBoardViewModel {
     // MARK: Fresh game
 
     private func freshStart() {
+        // Task 1.4 (Phase 1) — first-launch timestamp for offer targeting; cannot
+        // be backfilled, so it's recorded unconditionally on every fresh install.
+        if commerce.firstLaunchDate == nil { commerce.firstLaunchDate = Date() }
         buildEmptyBoard()
         spawnAnimal(); spawnAnimal(); spawnAnimal()
         let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockLevels[$0] == nil }.max() ?? 0
@@ -821,6 +828,7 @@ class MergeBoardViewModel {
         s.equineSprintRemaining     = equineSprintRemaining
         s.pouchItems                = pouchItems
         s.pouchExpiryTimestamp      = pouchExpiryTimestamp
+        s.commerce                  = commerce
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -894,6 +902,7 @@ class MergeBoardViewModel {
         equineSprintRemaining     = s.equineSprintRemaining
         pouchItems                = s.pouchItems
         pouchExpiryTimestamp      = s.pouchExpiryTimestamp
+        commerce                  = s.commerce
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -1045,6 +1054,17 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Task 1.4 (Phase 1) — records a kibble-wall event (hit zero kibble while
+    /// trying to act). Record only; Phase 3 will use this (with player level) to
+    /// gate monetization surfaces — no behaviour changes based on it yet.
+    private func recordWallEvent(chainID: String?, tier: Int?) {
+        commerce.wallEventsTotal += 1
+        commerce.lastWallDate = Date()
+        commerce.lastWallChainID = chainID
+        commerce.lastWallTier = tier
+        commerce.hasReachedFirstWall = true
+    }
+
     func activateProducer(at pos: GridPosition) {
         guard var producer = board[pos.row][pos.col].producer else { return }
 
@@ -1055,6 +1075,10 @@ class MergeBoardViewModel {
             let baskActive = species == .turtle && unlockedSuperpowerSpecies.contains(AnimalSpecies.turtle.rawValue)
             let cost = baskActive ? max(1, baseCost / 2) : baseCost
             guard kibbleEngine.kibble >= cost else {
+                let blockedChainID = ContentRegistry.animalChainID(species)
+                let blockedMaxTier = ContentRegistry.shared.chain(blockedChainID)?.maxTier ?? 0
+                recordWallEvent(chainID: blockedChainID,
+                                tier: min(progression.spawnMultiplier - 1, blockedMaxTier))
                 triggerToast(.noKibble); selectedCell = pos; return
             }
             let empty = emptyUnlockedCells
@@ -1119,6 +1143,9 @@ class MergeBoardViewModel {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
             let cost = progression.spawnMultiplier
             guard kibbleEngine.kibble >= cost else {
+                // Which chain would be picked is randomized below and never reached —
+                // nothing specific was actually blocked, so record no chain/tier.
+                recordWallEvent(chainID: nil, tier: nil)
                 triggerToast(.noKibble); selectedCell = pos; return
             }
             let empty = emptyUnlockedCells
@@ -2628,7 +2655,7 @@ class MergeBoardViewModel {
 
     // MARK: IAP
 
-    func applyPurchase(_ product: IAPProduct) {
+    func applyPurchase(_ product: IAPProduct, priceUSD: Decimal) {
         if let k = product.kibbleAmount { kibbleEngine.kibble  += k }
         if let t = product.dogTagAmount { kibbleEngine.dogTags += t }
         if let ep = product.energyPackContents {
@@ -2641,5 +2668,9 @@ class MergeBoardViewModel {
             isPassActive = true
             claimPassDaily()
         }
+        // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
+        commerce.purchaseCount += 1
+        commerce.totalSpendMicros += Int(truncating: NSDecimalNumber(decimal: priceUSD * 1_000_000))
+        commerce.lastPurchaseDate = Date()
     }
 }

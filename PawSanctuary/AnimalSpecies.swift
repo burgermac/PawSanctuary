@@ -845,6 +845,39 @@ enum IAPProduct: String, CaseIterable {
 }
 
 // ============================================================
+// MARK: - COMMERCE STATE (Phase 1, Task 1.4)
+// ============================================================
+
+/// Behavioural history for offer targeting, difficulty scaling, and the Phase 3
+/// first-purchase gate. Recorded starting Phase 1; cannot be backfilled for
+/// players who installed before this shipped.
+struct PlayerCommerceState: Codable, Equatable {
+    var firstLaunchDate: Date? = nil
+    var purchaseCount: Int = 0
+    /// Total spend in integer micros (USD × 1,000,000) — avoids Double drift.
+    var totalSpendMicros: Int = 0
+    var lastPurchaseDate: Date? = nil
+
+    /// Times the player has hit zero kibble while trying to act.
+    var wallEventsTotal: Int = 0
+    var lastWallDate: Date? = nil
+    /// What they were blocked on at the most recent wall event.
+    var lastWallChainID: String? = nil
+    var lastWallTier: Int? = nil
+
+    /// Flips permanently once the player first reaches a genuine wall.
+    /// Phase 3 uses this (with player level) to gate monetization surfaces.
+    var hasReachedFirstWall: Bool = false
+
+    var hasEverPurchased: Bool { purchaseCount > 0 }
+    var averagePurchaseMicros: Int { purchaseCount == 0 ? 0 : totalSpendMicros / purchaseCount }
+    var daysSinceLastPurchase: Int? {
+        guard let last = lastPurchaseDate else { return nil }
+        return Calendar.current.dateComponents([.day], from: last, to: Date()).day
+    }
+}
+
+// ============================================================
 // MARK: - CONSTANTS
 // ============================================================
 

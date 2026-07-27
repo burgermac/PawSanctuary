@@ -638,6 +638,26 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(second.rewardCardPack, .star1)
     }
 
+    func testV25toV26MigrationInjectsDefaultCommerce() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "commerce")
+        obj["version"] = 25
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v25 save should migrate to v26")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.commerce.purchaseCount, 0)
+        XCTAssertEqual(loaded.commerce.totalSpendMicros, 0)
+        XCTAssertEqual(loaded.commerce.wallEventsTotal, 0)
+        XCTAssertFalse(loaded.commerce.hasReachedFirstWall)
+        XCTAssertNil(loaded.commerce.firstLaunchDate)
+        XCTAssertNil(loaded.commerce.lastPurchaseDate)
+        XCTAssertNil(loaded.commerce.lastWallDate)
+        XCTAssertNil(loaded.commerce.lastWallChainID)
+        XCTAssertNil(loaded.commerce.lastWallTier)
+    }
+
     func testV15toV16MigrationInjectsDefaultEventProgress() throws {
         let data = try JSONEncoder().encode(makeSampleState())
         var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
