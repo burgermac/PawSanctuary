@@ -2279,10 +2279,19 @@ class MergeBoardViewModel {
         // Adoption orders are fulfilled by merging animals on the board; kibble is
         // intentionally NOT a merge reward (regen timer, dog tags, quests, IAP only).
         SoundManager.shared.playRescueClaim()
-        kibbleEngine.dogTags += order.rewardDogTags
         grantXP(xpPerOrderFulfil)
-        earnCoins(order.rewardCoins + cachedActiveBonuses.coinsPerOrderFulfil)
-        if let pack = order.rewardCardPack { earnCardPack(pack) }
+        for reward in order.rewards {
+            switch reward.kind {
+            case .dogTags:  kibbleEngine.dogTags += reward.amount
+            case .coins:    earnCoins(reward.amount + cachedActiveBonuses.coinsPerOrderFulfil)
+            case .kibble:   kibbleEngine.kibble += reward.amount
+            case .xp:       grantXP(reward.amount)
+            case .cardPack:
+                if let raw = reward.payloadID, let pack = CardPackType(rawValue: raw) { earnCardPack(pack) }
+            case .boardItem, .material, .eventToken:
+                break   // Phase 2 / Phase 6 — intentionally unhandled for now
+            }
+        }
         adoptionBoardCoordinator.markClaimed(at: index)
         NotificationManager.shared.cancelRescueExpiring()
         Task { @MainActor in

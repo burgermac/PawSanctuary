@@ -67,15 +67,22 @@ class AdoptionBoard {
                                       : tags >= 3 ? .star1
                                       : nil
 
+        var rewards: [OrderReward] = [
+            OrderReward(kind: .dogTags, amount: tags),
+            OrderReward(kind: .coins,   amount: orderCoins)
+        ]
+        if let pack = packReward {
+            rewards.append(OrderReward(kind: .cardPack, amount: 1, payloadID: pack.rawValue))
+        }
+        rewards.append(contentsOf: OrderRewardRegistry.riders(playerLevel: playerLevel))
+
         return AdoptionOrder(
             familyIndex: familyIndex,
             wantedChainID: chainID,
             wantedTier: tier,
             wantedCount: count,
             timeRemaining: adoptionOrderDuration,
-            rewardDogTags: tags,
-            rewardCoins: orderCoins,
-            rewardCardPack: packReward
+            rewards: rewards
         )
     }
 

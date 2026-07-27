@@ -673,6 +673,31 @@ let adoptionFamilies: [AdoptionFamily] = [
 /// Duration (seconds) before an unfulfilled order expires and is replaced.
 let adoptionOrderDuration: Double = 900
 
+/// The kind of payload a single `OrderReward` carries.
+enum RewardKind: String, Codable, CaseIterable {
+    case dogTags
+    case coins
+    case kibble
+    case xp
+    case cardPack
+    case boardItem     // recirculation — Phase 2
+    case material      // wood / metal / cement — Phase 2
+    case eventToken    // Phase 6
+}
+
+/// A single reward payload attached to an order.
+/// `payloadID` / `payloadTier` carry kind-specific detail:
+///   .cardPack   → payloadID = CardPackType.rawValue
+///   .boardItem  → payloadID = ChainID, payloadTier = tier index
+///   .material   → payloadID = material chain ID, payloadTier = tier index
+///   .eventToken → payloadID = event token identifier
+struct OrderReward: Codable, Equatable {
+    var kind: RewardKind
+    var amount: Int
+    var payloadID: String? = nil
+    var payloadTier: Int? = nil
+}
+
 /// A specific adoption request from a named family for a particular animal type.
 struct AdoptionOrder: Identifiable, Codable {
     var id = UUID()
@@ -684,9 +709,7 @@ struct AdoptionOrder: Identifiable, Codable {
     var wantedCount: Int             // 1 or 2
     var fulfilled: Int = 0
     var timeRemaining: Double
-    var rewardDogTags: Int
-    var rewardCoins: Int             // Phase 5: coins awarded on auto-claim
-    var rewardCardPack: CardPackType? = nil   // nil = no pack reward
+    var rewards: [OrderReward] = []
     var isClaimed: Bool = false
 
     /// Resolves the family from the fixed roster (clamped for safety).
@@ -716,6 +739,18 @@ struct AdoptionOrder: Identifiable, Codable {
         // ChainTier.name is now the family-specific tier name (e.g. "Pup", "Tabby", "Rex").
         let tierName = ContentRegistry.shared.tier(wantedChainID, wantedTier)?.name ?? "animal"
         return "\(prefix) \(tierName)\(plural)"
+    }
+}
+
+/// Computed accessors preserving the pre-Task-1.1 field names so PanelViews and
+/// other UI reading `order.rewardDogTags` / `.rewardCoins` / `.rewardCardPack`
+/// compile untouched against the new `rewards: [OrderReward]` list.
+extension AdoptionOrder {
+    var rewardDogTags: Int { rewards.first { $0.kind == .dogTags }?.amount ?? 0 }
+    var rewardCoins: Int   { rewards.first { $0.kind == .coins   }?.amount ?? 0 }
+    var rewardCardPack: CardPackType? {
+        guard let raw = rewards.first(where: { $0.kind == .cardPack })?.payloadID else { return nil }
+        return CardPackType(rawValue: raw)
     }
 }
 

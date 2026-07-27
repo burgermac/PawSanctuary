@@ -65,7 +65,7 @@ final class PersistenceTests: XCTestCase {
         return GameState(
             board: board,
             kibble: 73, dogTags: 12, score: 4250,
-            rescueCount: 88, supplyCount: 7, ambassadors: 3, mergeCount: 140,
+            rescueCount: 88, ambassadors: 3, mergeCount: 140,
             secondsUntilNextKibble: 41,
             playerLevel: 9, playerXP: 320,
             unlockedChainIDs: [aid(.dog), aid(.cat), aid(.rabbit), aid(.bird), aid(.hamster), aid(.turtle)],
@@ -83,8 +83,10 @@ final class PersistenceTests: XCTestCase {
             dailyChallengeStreak: 5, dailyChallengeBonusClaimed: true,
             adoptionOrders: [
                 AdoptionOrder(familyIndex: 2, wantedChainID: aid(.turtle), wantedTier: 5,  // tier 5 = Adopted (9-tier chain)
-                              wantedCount: 2, timeRemaining: 312, rewardKibble: 56, rewardDogTags: 4,
-                              rewardCoins: 10),
+                              wantedCount: 2, timeRemaining: 312,
+                              rewards: [OrderReward(kind: .kibble, amount: 56),
+                                        OrderReward(kind: .dogTags, amount: 4),
+                                        OrderReward(kind: .coins, amount: 10)]),
             ],
             spotlightMergesThisWeek: 7,
             materialCounts: [ContentRegistry.woodChainID: [0, 0, 1, 0, 0, 0],
@@ -186,7 +188,7 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.adoptionOrders[0].wantedChainID, aid(.turtle))
         XCTAssertEqual(decoded.adoptionOrders[0].wantedTier, 5)
         XCTAssertEqual(decoded.adoptionOrders[0].wantedCount, 2)
-        XCTAssertEqual(decoded.adoptionOrders[0].rewardKibble, 56)
+        XCTAssertEqual(decoded.adoptionOrders[0].rewards.first { $0.kind == .kibble }?.amount, 56)
         XCTAssertEqual(decoded.adoptionOrders[0].rewardCoins, 10)
 
         // Spawn multiplier (v9)
@@ -357,13 +359,6 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.level, .feedBox)
         XCTAssertEqual(decoded.chargesRemaining, ProducerLevel.feedBox.maxCharges)
         XCTAssertEqual(decoded.id, producer.id)
-    }
-
-    func testSupplyCountRoundTrips() throws {
-        var state = makeSampleState()
-        state.supplyCount = 42
-        let decoded = try decoder.decode(GameState.self, from: encoder.encode(state))
-        XCTAssertEqual(decoded.supplyCount, 42)
     }
 
     func testReachTierQuestOnlyProgressesOnMatchingCategory() {
@@ -578,6 +573,66 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded2.board[0][0].item?.tier, 0, "Stray tier 0 clamps at 0, not -1")
     }
 
+    func testV24toV25MigrationCollapsesAdoptionOrderRewardsIntoList() throws {
+        // Build a v24-style save: AdoptionOrder still has the three flat reward
+        // fields (rewardDogTags / rewardCoins / rewardCardPack), no `rewards` key.
+        // Shape mirrors a real device save inspected at v24 — rewardCardPack
+        // encodes as a plain JSON string ("star1"), not a nested object, because
+        // CardPackType is a String-rawValue enum with no custom encode(to:) (only
+        // a custom init(from:) for legacy rawValue remapping), so it gets the
+        // standard RawRepresentable-as-String synthesis for encoding.
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        obj["adoptionOrders"] = [
+            [
+                "id": UUID().uuidString,
+                "familyIndex": 2,
+                "wantedChainID": aid(.turtle),
+                "wantedTier": 5,
+                "wantedCount": 2,
+                "fulfilled": 0,
+                "timeRemaining": 312,
+                "rewardDogTags": 2,
+                "rewardCoins": 7,
+                "isClaimed": false,
+            ],
+            [
+                "id": UUID().uuidString,
+                "familyIndex": 2,
+                "wantedChainID": aid(.dog),
+                "wantedTier": 2,
+                "wantedCount": 1,
+                "fulfilled": 0,
+                "timeRemaining": 500,
+                "rewardDogTags": 3,
+                "rewardCoins": 8,
+                "rewardCardPack": "star1",
+                "isClaimed": false,
+            ],
+        ]
+        obj["version"] = 24
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v24 save should migrate to v25")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.adoptionOrders.count, 2)
+
+        // Order without a card pack: two rewards, dogTags + coins only.
+        let first = loaded.adoptionOrders[0]
+        XCTAssertEqual(first.rewards.count, 2)
+        XCTAssertEqual(first.rewardDogTags, 2)
+        XCTAssertEqual(first.rewardCoins, 7)
+        XCTAssertNil(first.rewardCardPack)
+
+        // Order with a card pack: three rewards, all three original fields reproduced.
+        let second = loaded.adoptionOrders[1]
+        XCTAssertEqual(second.rewards.count, 3)
+        XCTAssertEqual(second.rewardDogTags, 3)
+        XCTAssertEqual(second.rewardCoins, 8)
+        XCTAssertEqual(second.rewardCardPack, .star1)
+    }
+
     func testV15toV16MigrationInjectsDefaultEventProgress() throws {
         let data = try JSONEncoder().encode(makeSampleState())
         var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -784,12 +839,14 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testAreaRewardPrimaryMessageIncludesAllComponents() {
-        let reward = AreaReward(newBoardRow: true, newSpecies: [.fox, .owl],
+        // AreaReward grants at most one family spawner per area (newFamilySpawner is
+        // singular) — this test previously exercised a multi-species newSpecies list
+        // that predates that design; updated to match.
+        let reward = AreaReward(newBoardRow: true, newFamilySpawner: .fox,
                                 bonusKibble: 20, bonusDogTags: 5, bonusXP: 60)
         let msg = reward.primaryMessage()
         XCTAssertTrue(msg.contains("board row"), "Message should mention new board row")
         XCTAssertTrue(msg.contains("Cervids"),   "Message should mention Cervids (fox family)")
-        XCTAssertTrue(msg.contains("Ursids"),    "Message should mention Ursids (owl family)")
         XCTAssertTrue(msg.contains("20"),        "Message should mention kibble amount")
         XCTAssertTrue(msg.contains("5"),         "Message should mention dog tag amount")
         XCTAssertTrue(msg.contains("60"),        "Message should mention XP amount")
@@ -919,10 +976,13 @@ final class PersistenceTests: XCTestCase {
     func testAdoptionOrderRewardCoinsRoundTrips() throws {
         let order = AdoptionOrder(familyIndex: 0, wantedChainID: aid(.dog), wantedTier: 3,
                                   wantedCount: 1, timeRemaining: 500,
-                                  rewardKibble: 30, rewardDogTags: 3, rewardCoins: 8)
+                                  rewards: [OrderReward(kind: .kibble, amount: 30),
+                                            OrderReward(kind: .dogTags, amount: 3),
+                                            OrderReward(kind: .coins, amount: 8)])
         let decoded = try decoder.decode(AdoptionOrder.self, from: encoder.encode(order))
         XCTAssertEqual(decoded.rewardCoins, 8)
-        XCTAssertEqual(decoded.rewardKibble, 30)
+        XCTAssertEqual(decoded.rewardDogTags, 3)
+        XCTAssertEqual(decoded.rewards.first { $0.kind == .kibble }?.amount, 30)
         XCTAssertEqual(decoded.id, order.id)
     }
 

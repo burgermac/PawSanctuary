@@ -196,7 +196,9 @@ enum GameStore {
     /// v21: limitless material accumulator — toolInventory replaced by materialCounts dict.
     /// v22: pity tracking — pityStates dict added (additive; empty default for old saves).
     /// v23: pityStates type changed [String:Int]→[String:PityState]; sub-object chains registered.
-    static let currentVersion = 24
+    /// v25: AdoptionOrder's rewardDogTags/rewardCoins/rewardCardPack collapse into
+    ///      rewards: [OrderReward] (Phase 1, Task 1.1); OrderRewardRegistry rider hook (Task 1.2).
+    static let currentVersion = 25
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -345,6 +347,7 @@ enum GameStore {
         if version == 21 { return migrateV21toV22(data) }
         if version == 22 { return migrateV22toV23(data) }
         if version == 23 { return migrateV23toV24(data) }
+        if version == 24 { return migrateV24toV25(data) }
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -543,6 +546,45 @@ enum GameStore {
             "pouchItems":               [NSNull(), NSNull()],
             "pouchExpiryTimestamp":      0.0,
         ], into: data)
+    }
+
+    /// v24 → v25: AdoptionOrder's three fixed reward fields (rewardDogTags,
+    /// rewardCoins, rewardCardPack) collapse into a single `rewards: [OrderReward]`
+    /// list (Phase 1, Task 1.1). Structural, not additive — the old keys are removed
+    /// so the field doesn't linger as unused JSON.
+    ///
+    /// `commerce` (Phase 1, Task 1.4) is a separate persisted addition landing in a
+    /// later v25→v26 migration — not touched here.
+    private static func migrateV24toV25(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        if var orders = json["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices {
+                var rewards: [[String: Any]] = []
+                if let tags = orders[i]["rewardDogTags"] as? Int, tags > 0 {
+                    rewards.append(["kind": "dogTags", "amount": tags])
+                }
+                if let coins = orders[i]["rewardCoins"] as? Int, coins > 0 {
+                    rewards.append(["kind": "coins", "amount": coins])
+                }
+                // CardPackType is a String-rawValue enum with no custom encode(to:),
+                // so it encodes as a plain JSON string — verified against a real v24
+                // save (rewardCardPack: "star1"), not just the struct definition.
+                if let pack = orders[i]["rewardCardPack"] as? String {
+                    rewards.append(["kind": "cardPack", "amount": 1, "payloadID": pack])
+                }
+                orders[i]["rewards"] = rewards
+                orders[i].removeValue(forKey: "rewardDogTags")
+                orders[i].removeValue(forKey: "rewardCoins")
+                orders[i].removeValue(forKey: "rewardCardPack")
+            }
+            json["adoptionOrders"] = orders
+        }
+
+        json["version"] = currentVersion
+        guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        do { return try JSONDecoder().decode(GameState.self, from: patched) }
+        catch { assertionFailure("GameStore: migrateV24toV25 decode failed — \(error)"); return nil }
     }
 
     /// Picks the snapshot with the later `lastActiveDate` (the device that played
