@@ -122,6 +122,11 @@ class InventoryStore {
             return addToPowerUpInventory(item) || addToAnimalInventory(item)
         case .powerUp:
             return addToPowerUpInventory(item)
+        case .currency:
+            // Currency items (kibble / coin chains) are collected by tapping them on the
+            // board - they never enter inventory. Phase 4 implements tap-to-collect;
+            // until then nothing can produce one, so this path is unreachable.
+            return true
         default:
             return addToAnimalInventory(item)
         }

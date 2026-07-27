@@ -27,6 +27,7 @@ enum ChainCategory: String, Codable, CaseIterable {
     case material    // wood / metal / cement building supplies (Phase 3)
     case subObject   // per-family 4-stage merge chain; top tier becomes a power-up consumable
     case powerUp     // power-up consumable item (drag onto spawner to apply)
+    case currency    // kibble / coin chains that spawn on the board — Phase 4
 }
 
 // ============================================================
