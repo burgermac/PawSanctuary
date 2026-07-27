@@ -37,6 +37,16 @@ All fixed: scheme wiring, deployment target, the 9 compile errors, and 7 further
   **Consequence:** quests can only ever target the bottom 9 tiers of a 15-tier chain. **Tiers 9–14 — a third of the authored content, including every top-tier Ambassador stage — are unreachable as quest objectives.** This is the same apples-to-oranges confusion found in the tests, except it is in shipping code.
   Fix alongside Phase 5 (order/quest restructuring), or sooner if quest variety matters before then.
 
+### Background save was fire-and-forget at suspension time — FIXED 26 July 2026
+
+The `GameStore.save()`/`load()` race hit by 3 tests above wasn't only a test-timing artefact. `MergeBoardView.swift` handled `.background`/`.inactive` by calling `viewModel.persist()` under a "Flush save" comment, but `GameStore.save()`/`saveAndSync()` are `Task.detached(priority: .utility)` — a low-QoS task started as iOS suspends the process, with no background-task assertion protecting it. Not a flush; a request that might never be scheduled. Saves made in the final moments of a session could be silently lost.
+
+**Resolution:** added `GameStore.saveNow(_:)` (synchronous, reusing the existing private helpers) and `MergeBoardViewModel.persistNow()`. `.background` now saves synchronously; `.inactive` keeps the async path, since it fires on transient events (Control Centre, notification banners) and on the way back to `.active`. `save()`/`saveAndSync()` unchanged — the PERF-01 detachment remains correct for periodic saves.
+
+**Measured:** encode + two atomic writes + cloud check averages **1.2 ms** (max 2.1 ms) on a realistic ~9.6 KB `GameState`. Safe on the main thread at a one-time transition.
+
+The three previously-failing persistence tests now call `saveNow()` directly, so they exercise the real production path instead of a hand-rolled substitute.
+
 ### Competitive analysis
 - [ ] **Feature-parity audit vs. Gossip Harbor / Travel Town / Tasty Travels.** `PawSanctuary_Gap_Analysis.md` (in the parent Claude Code folder) deliberately scoped itself to *gameplay psychology* — the mechanisms driving return visits and spend — and explicitly did **not** enumerate feature-by-feature coverage. A straight parity audit is still outstanding: catalogue every discrete feature in the three reference titles, mark present / partial / absent in PawSanctuary, and flag which absences are deliberate differentiation versus unexamined gaps. Reference material: `Merge2_Reference_Blueprint.md`, `Findings_26July.md`, `Reference_Data_Extract.md`, `Phase2_Economy_Model.xlsx`.
 

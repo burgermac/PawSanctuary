@@ -267,6 +267,17 @@ enum GameStore {
         }
     }
 
+    /// Synchronous save for moments that cannot tolerate deferral — principally
+    /// app backgrounding, where a detached task may never be scheduled before
+    /// iOS suspends the process. Routine periodic saves should keep using
+    /// `save()` / `saveAndSync()`, which stay off the main thread (PERF-01).
+    static func saveNow(_ state: GameState) {
+        guard let data = encode(state) else { return }
+        writeLocal(data)
+        writeBackup(data)
+        if isCloudAvailable { writeCloud(data) }
+    }
+
     /// Loads the best available state: reconciles the local file and the iCloud copy
     /// (most-recently-active wins) and recovers from the backup slot if the main file
     /// is missing or unreadable. Returns `nil` only when no usable save exists.

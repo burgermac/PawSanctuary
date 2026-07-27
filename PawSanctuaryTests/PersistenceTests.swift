@@ -415,12 +415,11 @@ final class PersistenceTests: XCTestCase {
 
     func testGameStoreSaveThenLoadIsFaithful() throws {
         // GameStore.save(_:) is fire-and-forget (Task.detached — see its doc comment),
-        // so it can't be read back synchronously with no wait. Write via the same
-        // synchronous path the migration tests below use instead of racing the
-        // detached task.
-        var original = makeSampleState()
-        original.version = GameStore.currentVersion
-        try writeMainFile(try JSONEncoder().encode(original))
+        // so it can't be read back synchronously with no wait. GameStore.saveNow(_:)
+        // is the real synchronous path production uses for moments (app backgrounding)
+        // that can't tolerate deferral — exercise that instead of a hand-rolled write.
+        let original = makeSampleState()
+        GameStore.saveNow(original)
 
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.version, GameStore.currentVersion)   // save stamps the version
@@ -892,11 +891,11 @@ final class PersistenceTests: XCTestCase {
 
     func testCompletedAreaIDsPersistedByGameStore() throws {
         // See testGameStoreSaveThenLoadIsFaithful — GameStore.save(_:) is async
-        // (Task.detached), so write synchronously to avoid racing it.
+        // (Task.detached); use the real synchronous path, GameStore.saveNow(_:),
+        // instead of racing it or hand-rolling the write.
         var state = makeSampleState()
         state.completedAreaIDs = ["area.welcome", "area.grooming", "area.rescue"]
-        state.version = GameStore.currentVersion
-        try writeMainFile(try JSONEncoder().encode(state))
+        GameStore.saveNow(state)
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.completedAreaIDs, ["area.welcome", "area.grooming", "area.rescue"])
     }
@@ -1130,12 +1129,11 @@ final class PersistenceTests: XCTestCase {
     // MARK: Backup recovery
 
     func testRecoversFromBackupWhenMainFileIsCorrupt() throws {
-        // A good save populates the backup slot (load() refreshes it). Write
-        // synchronously — see testGameStoreSaveThenLoadIsFaithful — rather than
-        // racing GameStore.save(_:)'s detached write task.
-        var seed = makeSampleState()
-        seed.version = GameStore.currentVersion
-        try writeMainFile(try JSONEncoder().encode(seed))
+        // A good save populates the backup slot (load() refreshes it). Use the real
+        // synchronous path, GameStore.saveNow(_:) — see testGameStoreSaveThenLoadIsFaithful —
+        // rather than racing GameStore.save(_:)'s detached write task.
+        let seed = makeSampleState()
+        GameStore.saveNow(seed)
         _ = GameStore.load()   // promotes main → backup
 
         // Now corrupt the main file; load() should fall back to the backup.

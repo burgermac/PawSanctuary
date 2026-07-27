@@ -385,13 +385,22 @@ struct MergeBoardView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .background, .inactive:
+            case .background:
                 // Mark when we left, so returning to .active can credit regen
                 // that the (now-suspended) live timer missed.
                 viewModel.appDidEnterBackground()
-                // Flush save
-                viewModel.persist()
+                // Flush save synchronously — a detached Task.detached save may never
+                // get scheduled before iOS suspends the process from here.
+                viewModel.persistNow()
                 // Schedule all re-engagement notifications
+                scheduleAllNotifications()
+            case .inactive:
+                // Transient (Control Centre, a notification banner, app switcher
+                // preview, or the moment on the way back to .active) — not the real
+                // suspension point, so an async flush is fine and avoids a
+                // synchronous main-thread encode on every one of these.
+                viewModel.appDidEnterBackground()
+                viewModel.persist()
                 scheduleAllNotifications()
             case .active:
                 // Catch up on kibble regen / producer cooldowns / adoption

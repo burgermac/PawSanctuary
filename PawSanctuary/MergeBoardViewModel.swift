@@ -916,6 +916,8 @@ class MergeBoardViewModel {
 
     private func save() { GameStore.save(captureState()) }
     func persist() { GameStore.saveAndSync(captureState()) }
+    /// Synchronous counterpart to `persist()`, for app-suspension moments.
+    func persistNow() { GameStore.saveNow(captureState()) }
 
     // MARK: Background/foreground catch-up
     //
