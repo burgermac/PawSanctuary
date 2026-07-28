@@ -39,6 +39,149 @@ final class EconomyTests: XCTestCase {
         XCTAssertEqual(spawnCost(forTier: 14), 16384)
     }
 
+    // MARK: Phase 2c — the coin economy
+
+    /// The core invariant: waiting for an order always beats selling, at every
+    /// tier, even when the order rolls its worst spread and the sale its best.
+    func testFulfillingAnOrderAlwaysBeatsSellingAtEveryTier() {
+        for tier in 0...animalChainTopTier {
+            let sell  = animalSellValue(tier: tier)
+            let order = orderCoinPayout(tier: tier)
+            XCTAssertLessThan(sell, order,
+                              "tier \(tier): selling pays \(sell), order pays \(order)")
+            let worstOrder = orderCoinPayout(tier: tier, spreadFactor: 1 - orderCoinSpread)
+            XCTAssertLessThan(sell, worstOrder,
+                              "tier \(tier): the worst order roll must still beat selling")
+        }
+    }
+
+    /// A flat premium means no tier is relatively better to sell, so there is no
+    /// farming incentive anywhere on the chain.
+    func testWaitingPremiumIsRoughlyConstantAcrossTiers() {
+        let premiums = (0...animalChainTopTier).map {
+            Double(orderCoinPayout(tier: $0)) / Double(animalSellValue(tier: $0))
+        }
+        let expected = coinsPerKibbleOfOrder / coinsPerKibbleOfSale   // ~2.36
+        for (tier, premium) in premiums.enumerated() {
+            XCTAssertEqual(premium, expected, accuracy: 0.25,
+                           "tier \(tier) premium \(premium) departs from the flat ratio")
+        }
+    }
+
+    func testOrderPayoutIsProportionalToBuildCost() {
+        // Doubling the tier's cost doubles the payout; two items pay twice one.
+        for tier in 0..<animalChainTopTier {
+            XCTAssertEqual(Double(orderCoinPayout(tier: tier + 1)),
+                           Double(orderCoinPayout(tier: tier) * 2), accuracy: 1.0)
+        }
+        XCTAssertEqual(orderCoinPayout(tier: 5, count: 2),
+                       orderCoinPayout(tier: 5, count: 1) * 2)
+        XCTAssertEqual(orderCoinPayout(tier: 11), 13_312)
+        XCTAssertEqual(animalSellValue(tier: 11), 5_632)
+    }
+
+    func testSellTableMatchesTheDerivedRate() {
+        XCTAssertEqual(animalSellValues.count, 12)
+        XCTAssertEqual(animalSellValues.first, 3)
+        XCTAssertEqual(animalSellValues.last, 5_632)
+        for (tier, value) in animalSellValues.enumerated() {
+            XCTAssertEqual(Double(value),
+                           coinsPerKibbleOfSale * Double(spawnCost(forTier: tier)),
+                           accuracy: 0.5)
+        }
+    }
+
+    /// Generated orders must honour the formula, spread included.
+    func testGeneratedOrdersPayWithinTheSpreadOfNominal() {
+        let board = AdoptionBoard()
+        let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
+        for _ in 0..<500 {
+            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 45)
+            guard let coins = order.rewards.first(where: { $0.kind == .coins })?.amount else {
+                return XCTFail("every order should carry a coin reward")
+            }
+            let nominal = orderCoinPayout(tier: order.wantedTier, count: order.wantedCount)
+            XCTAssertGreaterThanOrEqual(Double(coins), Double(nominal) * (1 - orderCoinSpread) - 1)
+            XCTAssertLessThanOrEqual(Double(coins), Double(nominal) * (1 + orderCoinSpread) + 1)
+            // And it must still beat selling the same items outright.
+            let sellingInstead = animalSellValue(tier: order.wantedTier) * order.wantedCount
+            XCTAssertGreaterThan(coins, sellingInstead)
+        }
+    }
+
+    /// The trio exchange consumed three top-tier tiles for a flat 50 coins while
+    /// each sold for 5,632 — a trap. It must now beat selling them individually.
+    func testAmbassadorTrioBeatsSellingTheThreeSeparately() {
+        let sellSeparately = animalSellValue(tier: animalChainTopTier) * 3
+        let viaTrio = Int((Double(sellSeparately) * ambassadorTrioExchangeMultiplier).rounded())
+        XCTAssertGreaterThan(viaTrio, sellSeparately,
+                             "a trio bonus that pays less than selling is a trap")
+    }
+
+    // MARK: Phase 2c — weekly goals and the smaller faucets
+
+    /// These thresholds live in a different file from the payout formula and are
+    /// denominated in the currency it moved by ~45×. Before Phase 2c a single
+    /// mid-tier order cleared Bronze outright.
+    func testWeeklyGoalsAreNotClearedByASingleOrder() {
+        let averageOrder = orderCoinPayout(tier: 5)
+        XCTAssertGreaterThan(weeklyGoalBronzeCoins, averageOrder * 2,
+                             "Bronze should take more than a couple of orders")
+        XCTAssertLessThan(weeklyGoalBronzeCoins, weeklyGoalSilverCoins)
+        XCTAssertLessThan(weeklyGoalSilverCoins, weeklyGoalGoldCoins)
+    }
+
+    func testWeeklyGoldIsAchievableInAWeekOfMidGamePlay() {
+        // A level-30 player's daily coin income, times seven.
+        let weekly = EconomySimulation.coinRow(level: 30, sells: false).total * 7
+        XCTAssertGreaterThan(weekly, Double(weeklyGoalGoldCoins),
+                             "Gold must be reachable inside a week at mid-game")
+        XCTAssertLessThan(Double(weeklyGoalGoldCoins), weekly,
+                          "but not trivially — it should ask for real engagement")
+        XCTAssertGreaterThan(Double(weeklyGoalGoldCoins),
+                             EconomySimulation.coinRow(level: 30, sells: false).total * 2,
+                             "Gold should take more than two days")
+    }
+
+    func testSmallerFaucetsSitBelowTheMainChannel() {
+        let averageOrder = orderCoinPayout(tier: 5)          // ~416 coins
+        // A legendary quest spans many merges, so it outweighs a single order...
+        XCTAssertGreaterThan(QuestDifficulty.legendary.coinReward, averageOrder)
+        // ...but never a top-tier one, which is days of work.
+        XCTAssertLessThan(QuestDifficulty.legendary.coinReward,
+                          orderCoinPayout(tier: animalChainTopTier))
+        XCTAssertLessThan(QuestDifficulty.easy.coinReward, averageOrder)
+        XCTAssertLessThan(coinsPerAllDailyChallenges, averageOrder * 2)
+        // An Ambassador merge is a bonus on top of the item, never a rival to it.
+        XCTAssertLessThan(coinsPerAmbassadorMerge, animalSellValue(tier: animalChainTopTier))
+    }
+
+    // MARK: Phase 2c — map build-out projection
+
+    func testMapBuildOutLandsInTheTargetWindow() {
+        let neverSells = EconomySimulation.daysToFullMap(sells: false)
+        let sells      = EconomySimulation.daysToFullMap(sells: true)
+
+        XCTAssertLessThanOrEqual(neverSells, 75.0,
+                                 "a player who never discovers selling must not stall")
+        XCTAssertGreaterThan(neverSells, 40.0, "and the map should not fall over in a month")
+        XCTAssertTrue((55.0...70.0).contains(sells),
+                      "selling player projected \(sells) days, target 55-70")
+    }
+
+    /// Under Phase 2c orders pay 2.4× what selling does, so diverting production
+    /// to sales is necessarily *slower*. Locking that in: it is the whole point
+    /// of the decision, and the inverse would mean the rates had drifted.
+    func testSellingIsSlowerThanHoldingOutForOrders() {
+        XCTAssertGreaterThan(EconomySimulation.daysToFullMap(sells: true),
+                             EconomySimulation.daysToFullMap(sells: false),
+                             "selling trades coins for immediacy — it cannot also be faster")
+    }
+
+    func testMapCostMatchesTheLiveAreaRoster() {
+        XCTAssertEqual(EconomySimulation.mapTotalCoinCost, 291_900)
+    }
+
     // MARK: Phase 2b — 12-tier chains
 
     func testEveryFamilyHasTwelveTiers() {
@@ -79,16 +222,17 @@ final class EconomyTests: XCTestCase {
         XCTAssertLessThan(daysOfIncome, 3.0, "top tier should be ~2.7 days of total income")
     }
 
-    /// Sell value must climb faster than build cost, so selling is a late-game
-    /// liquidity option rather than something to farm early.
-    func testSellValueRatioClimbsWithTier() {
+    /// Phase 2b had sell value climbing faster than build cost. Phase 2c makes the
+    /// rate deliberately FLAT at `coinsPerKibbleOfSale`: with orders paying a
+    /// constant 2.4× premium, a climbing sell rate would make some tier
+    /// relatively better to sell and create a farming incentive there.
+    func testSellRateIsFlatAcrossTiers() {
         XCTAssertEqual(animalSellValues.count, 12)
         let ratios = animalSellValues.enumerated().map { Double($1) / Double(spawnCost(forTier: $0)) }
-        for (a, b) in zip(ratios, ratios.dropFirst()) {
-            XCTAssertLessThanOrEqual(a, b, "coins-per-kibble must never fall as tier rises")
+        for (tier, ratio) in ratios.enumerated() {
+            XCTAssertEqual(ratio, coinsPerKibbleOfSale, accuracy: 0.3,
+                           "tier \(tier) sells at \(ratio) per kibble, not the flat rate")
         }
-        XCTAssertGreaterThan(ratios.last! / ratios.first!, 5.0,
-                             "the top tier should be worth substantially more per kibble")
     }
 
     func testSellValuesAreStrictlyIncreasingAndSmooth() {

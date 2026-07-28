@@ -1333,7 +1333,11 @@ private struct SpawnMultiplierButton: View {
 // ============================================================
 
 /// Appears in the bottom bar when an animal cell is selected.
-/// Tapping sells the animal for coins scaled to its merge tier.
+///
+/// Shows both halves of the Phase 2c decision: what selling pays now, and what an
+/// adoption order would pay for the same animal. Selling is always available but
+/// always worse (~2.4×), and a choice the player cannot see is not a choice —
+/// before this, only the sell price was on screen.
 private struct SellAnimalButton: View {
     let viewModel: MergeBoardViewModel
 
@@ -1344,29 +1348,36 @@ private struct SellAnimalButton: View {
         return viewModel.board[pos.row][pos.col].item
     }
 
+    private let sellTint = Color(red: 0.55, green: 0.35, blue: 0.02)
+
     var body: some View {
         if let item = selectedItem {
-            let value = viewModel.sellValue(forTier: item.tier)
+            let value      = viewModel.sellValue(forTier: item.tier)
+            let orderValue = viewModel.orderValue(forTier: item.tier)
             Button(action: { viewModel.sellSelectedAnimal() }) {
                 VStack(spacing: 3) {
                     ZStack {
                         Circle()
-                            .fill(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.18))
+                            .fill(sellTint.opacity(0.18))
                             .frame(width: 38, height: 38)
                         Image(systemName: "dollarsign.circle.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
+                            .foregroundColor(sellTint)
                     }
                     Text("Sell")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.8))
+                        .foregroundColor(sellTint.opacity(0.8))
                     Text("+\(value)")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
+                    // The road not taken: what an order would pay for this animal.
+                    Text("order \(orderValue)")
+                        .font(.system(size: 7, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
                 .frame(width: 70).padding(.vertical, 8)
                 .background(RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.10)))
+                    .fill(sellTint.opacity(0.10)))
             }
         }
     }

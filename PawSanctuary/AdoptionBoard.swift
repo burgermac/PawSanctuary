@@ -61,8 +61,15 @@ class AdoptionBoard {
         let tier    = min(rawTier, maxTier)
         let count   = (tier <= 5 && Int.random(in: 1...3) == 1) ? 2 : 1
 
-        let tags       = max(1, (tier + 1) / 2) + Int.random(in: 0...2)
-        let orderCoins = (tier + 1) * 2 + Int.random(in: 0...2)
+        let tags = max(1, (tier + 1) / 2) + Int.random(in: 0...2)
+        // Task 2c: coins scale with what the order actually costs to fulfil, so a
+        // deep order is worth the days of kibble it takes to build. The previous
+        // `(tier + 1) * 2` paid 9–25 coins against a map costing 291,900.
+        let orderCoins = orderCoinPayout(
+            tier: tier,
+            count: count,
+            spreadFactor: Double.random(in: (1 - orderCoinSpread)...(1 + orderCoinSpread))
+        )
         let packReward: CardPackType? = tags >= 7 ? .star3
                                       : tags >= 5 ? .star2
                                       : tags >= 3 ? .star1

@@ -161,10 +161,128 @@ struct EconomySimulation {
 
     static let reportLevels = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
 
+    // ============================================================
+    // MARK: - COIN ECONOMY (Phase 2c)
+    // ============================================================
+    //
+    // Coins gate the Sanctuary Map, the game's forever goal. Phases 2 and 2b
+    // modelled kibble only, which is how the coin faucet ended up with selling
+    // paying ~45× everything else combined.
+    //
+    // Assumptions, stated so they can be argued with:
+    //  · A player converts kibble into fulfilled orders up to whichever binds
+    //    first — what the orders ask for, or what they can afford.
+    //  · A "selling" player diverts `sellSurplusFraction` of that production to
+    //    sales instead, earning the worse rate on it.
+    //  · Quests: ~2 claims/day at mixed difficulty.
+    //  · Albums are one-time; amortised over the 60-day target rather than the
+    //    projection itself, which would make the calculation circular.
+
+    /// Total coins to build out the whole map — read from the live area roster so
+    /// it cannot drift from the content.
+    static var mapTotalCoinCost: Int {
+        sanctuaryAreas.flatMap(\.upgrades).reduce(0) { $0 + $1.coinCost }
+    }
+
+    /// Assumed share of production a "selling" player diverts to sales.
+    static let sellSurplusFraction = 0.20
+
+    /// Share of production that actually lands in a completed order.
+    ///
+    /// Not 1.0: 20% of spawner activations yield sub-objects rather than animals,
+    /// orders ask for specific families the player may not be growing, and an
+    /// order expires after 15 minutes whether or not the board had room. Assuming
+    /// every kibble converts to order coins overstates income by about half again.
+    static let orderFulfilmentEfficiency = 0.65
+    /// Quest claims per day, and the mixed-difficulty average payout.
+    static let questClaimsPerDay = 2.0
+    static var averageQuestCoins: Double {
+        Double(QuestDifficulty.easy.coinReward
+             + QuestDifficulty.medium.coinReward
+             + QuestDifficulty.hard.coinReward) / 3.0
+    }
+    /// Horizon used only to amortise one-time album rewards.
+    static let amortisationDays = 60.0
+
+    @MainActor
+    struct CoinRow {
+        let level: Int
+        let fromOrders: Double
+        let fromSelling: Double
+        let fromOther: Double
+        var total: Double { fromOrders + fromSelling + fromOther }
+        var daysToFullMap: Double {
+            total <= 0 ? .infinity : Double(mapTotalCoinCost) / total
+        }
+    }
+
+    /// Kibble-equivalent per day that actually becomes completed orders: the
+    /// smaller of what orders ask for and what the player can field, discounted
+    /// by how much of that production really lands in an order.
+    ///
+    /// Note the `+ recirculation`: recirculated items fulfil orders too, so order
+    /// throughput exceeds raw kibble supply by roughly a quarter in the endgame.
+    /// The 6.5 anchor was derived against supply alone, which is why the
+    /// projection lands faster than the 60-day target it came from.
+    static func kibbleIntoOrders(level: Int) -> Double {
+        let r = row(level: level)
+        return min(r.grossDemand, Double(r.supply) + r.recirculation) * orderFulfilmentEfficiency
+    }
+
+    /// Coins per day from the faucets that aren't the two main channels.
+    static func otherCoinIncome(level: Int) -> Double {
+        let production = kibbleIntoOrders(level: level)
+        let dailies = Double(coinsPerAllDailyChallenges)
+        let quests  = questClaimsPerDay * averageQuestCoins
+        // A top-tier merge consumes a full top-tier item's worth of production.
+        let topTierMergesPerDay = production / Double(spawnCost(forTier: animalChainTopTier))
+        let ambassadors = topTierMergesPerDay * Double(coinsPerAmbassadorMerge)
+        let albums = Double(CardRegistry.albums.reduce(0) { $0 + $1.rewardCoins }) / amortisationDays
+        return dailies + quests + ambassadors + albums
+    }
+
+    static func coinRow(level: Int, sells: Bool) -> CoinRow {
+        let production = kibbleIntoOrders(level: level)
+        let sellShare  = sells ? sellSurplusFraction : 0
+        let orderKibble = production * (1 - sellShare)
+        let sellKibble  = production * sellShare
+        return CoinRow(
+            level: level,
+            fromOrders:  orderKibble * coinsPerKibbleOfOrder,
+            fromSelling: sellKibble * coinsPerKibbleOfSale,
+            fromOther:   otherCoinIncome(level: level))
+    }
+
+    /// The headline projection. Most of the map is bought in the steady state a
+    /// player reaches around the first wall, so the projection is anchored there
+    /// rather than on peak endgame income — see `projectionLevel`.
+    static let projectionLevel = 45
+
+    static func daysToFullMap(sells: Bool) -> Double {
+        coinRow(level: projectionLevel, sells: sells).daysToFullMap
+    }
+
+    // MARK: Report
+
     static func report() -> String {
-        var out = "PawSanctuary economy model — Phase 2\n"
-        out += "target: <0.70 to L30 · 0.70-0.95 L31-40 · crosses 1.00 at L41-50 · 1.05-1.25 L51+\n\n"
+        var out = "PawSanctuary economy model — Phases 2 / 2b / 2c\n"
+        out += "kibble target: <0.70 to L30 · 0.70-0.95 L31-40 · crosses 1.00 at L41-50 · 1.05-1.25 L51+\n\n"
         for level in reportLevels { out += row(level: level).description + "\n" }
+
+        out += "\ncoins — map costs \(mapTotalCoinCost) across "
+        out += "\(sanctuaryAreas.flatMap(\.upgrades).count) upgrades\n"
+        out += "target: 55-70 days selling \(Int(sellSurplusFraction * 100))% · no worse than ~75 never selling\n\n"
+        for level in reportLevels {
+            let never = coinRow(level: level, sells: false)
+            let sell  = coinRow(level: level, sells: true)
+            out += String(format:
+                "L%-3d  orders %7.0f  other %5.0f  |  never-sell %7.0f/day → %5.1f days   sell-%d%% %7.0f/day → %5.1f days\n",
+                level, never.fromOrders, never.fromOther,
+                never.total, never.daysToFullMap,
+                Int(sellSurplusFraction * 100), sell.total, sell.daysToFullMap)
+        }
+        out += String(format: "\nheadline (L%d): never-sell %.1f days · sell %.1f days\n",
+                      projectionLevel, daysToFullMap(sells: false), daysToFullMap(sells: true))
         return out
     }
 

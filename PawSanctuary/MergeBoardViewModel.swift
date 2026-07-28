@@ -466,11 +466,11 @@ class MergeBoardViewModel {
     }
 
     /// Coin reward for selling an animal at the given tier index (0 = base, 14 = top tier).
-    func sellValue(forTier tier: Int) -> Int {
-        guard tier >= 0 else { return animalSellValues[0] }
-        guard tier < animalSellValues.count else { return animalSellValues[animalSellValues.count - 1] }
-        return animalSellValues[tier]
-    }
+    func sellValue(forTier tier: Int) -> Int { animalSellValue(tier: tier) }
+
+    /// What an adoption order would pay for one animal at `tier` — the other half
+    /// of the sell decision, shown alongside the sell price (Phase 2c).
+    func orderValue(forTier tier: Int) -> Int { orderCoinPayout(tier: tier) }
 
     var selectedItemInfo: (text: String, chainID: ChainID?)? {
         if draggingFrom != nil {
@@ -545,15 +545,25 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Coins the trio exchange pays: the three tiles' combined sell value plus a
+    /// premium, so exchanging always beats selling them one by one (Phase 2c).
+    func ambassadorTrioValue(_ trio: ExchangeableTrio) -> Int {
+        let chainID = ContentRegistry.animalChainID(trio.species)
+        let topTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? animalChainTopTier
+        let combined = animalSellValue(tier: topTier) * trio.positions.count
+        return Int((Double(combined) * ambassadorTrioExchangeMultiplier).rounded())
+    }
+
     /// Removes three Ambassador tiles of the species from the board and awards the trio bonus.
     func exchangeAmbassadorTrio(_ trio: ExchangeableTrio) {
+        let value = ambassadorTrioValue(trio)
         for pos in trio.positions {
             board[pos.row][pos.col].item = nil
         }
-        earnCoins(ambassadorTrioExchangeCoins)
+        earnCoins(value)
         recalcBoardIsFull()
         enqueueToast(Toast(kind: .info(
-            "\(trio.species.name) Trio exchanged for \(ambassadorTrioExchangeCoins) coins!"
+            "\(trio.species.name) Trio exchanged for \(value) coins!"
         )))
     }
 
@@ -1646,7 +1656,9 @@ class MergeBoardViewModel {
     // MARK: Ambassador Collection Quest
 
     let ambassadorQuestGoal      = 3
-    let ambassadorQuestCoinReward = 500
+    /// Phase 2c: a one-off milestone for merging three chains to the top — days of
+    /// work — so it pays about half a day of order income rather than one order.
+    let ambassadorQuestCoinReward = 2_500
 
     var ambassadorQuestReady: Bool { ambassadorQuestProgress >= ambassadorQuestGoal }
 

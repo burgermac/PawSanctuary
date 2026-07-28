@@ -265,7 +265,9 @@ let sanctuaryAreas: [SanctuaryArea] = [
                     MaterialCost(chainID: ContentRegistry.metalChainID,  tier: 5, count: 3),
                     MaterialCost(chainID: ContentRegistry.cementChainID, tier: 5, count: 2),
                 ],
-                bonus: UpgradeBonus(weeklyGoldDiscount: 25)
+                // Phase 2c: an absolute coin discount, rescaled alongside the Gold
+                // threshold it reduces (was 25 against a target of 250).
+                bonus: UpgradeBonus(weeklyGoldDiscount: 1_500)
             ),
         ]
     ),
@@ -347,7 +349,9 @@ let sanctuaryAreas: [SanctuaryArea] = [
                 description: "A cosy indoor roost where birdsong fills the corridors all morning. The uplifting atmosphere draws extra donations — the weekly Gold target drops.",
                 coinCost: 250,
                 materialCosts: [MaterialCost(chainID: ContentRegistry.metalChainID, tier: 5, count: 2)],
-                bonus: UpgradeBonus(weeklyGoldDiscount: 25)
+                // Phase 2c: an absolute coin discount, rescaled alongside the Gold
+                // threshold it reduces (was 25 against a target of 250).
+                bonus: UpgradeBonus(weeklyGoldDiscount: 1_500)
             ),
             AreaUpgradeTier(
                 id: "area.foster.upgrade.2",

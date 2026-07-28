@@ -1500,7 +1500,8 @@ struct TaskStripView: View {
                         .onTapGesture { activeSheet = .quests }
                 }
                 ForEach(viewModel.exchangeableTrios) { trio in
-                    AmbassadorTrioTaskCard(trio: trio) {
+                    AmbassadorTrioTaskCard(trio: trio,
+                                           coinValue: viewModel.ambassadorTrioValue(trio)) {
                         viewModel.exchangeAmbassadorTrio(trio)
                     }
                 }
@@ -1534,6 +1535,9 @@ struct TaskStripView: View {
 
 struct AmbassadorTrioTaskCard: View {
     let trio: ExchangeableTrio
+    /// Phase 2c: derived from the trio's sell value rather than a flat constant,
+    /// so the card can't advertise a number the exchange no longer pays.
+    let coinValue: Int
     let onClaim: () -> Void
 
     var body: some View {
@@ -1567,7 +1571,7 @@ struct AmbassadorTrioTaskCard: View {
                     Image(systemName: "coin.fill")
                         .font(.system(size: 10))
                         .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
-                    Text("+\(ambassadorTrioExchangeCoins) coins")
+                    Text("+\(coinValue) coins")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
                     Spacer()

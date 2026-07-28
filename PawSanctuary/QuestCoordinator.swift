@@ -332,7 +332,7 @@ class QuestCoordinator {
             : "Daily Complete! +\(bonusT) Tags"
         return QuestRewards(
             dogTags: bonusT, xp: xpDailyComplete,
-            coins: 15 + coinsPerDailyComplete,
+            coins: coinsPerAllDailyChallenges + coinsPerDailyComplete,
             bannerText: bannerText, showBonus: true
         )
     }

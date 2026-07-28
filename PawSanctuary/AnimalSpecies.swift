@@ -502,12 +502,18 @@ enum QuestDifficulty: String, Codable {
         }
     }
     /// Coins awarded when the player claims a completed quest of this difficulty.
+    ///
+    /// Rescaled in Phase 2c. Rationale: a quest spans many merges, so it should
+    /// pay more than the single order it competes with for attention — a
+    /// legendary quest is worth about 2.5 average orders (~400 coins each), an
+    /// easy one about an eighth of that. Was 2/5/10/25, which a single tier-3
+    /// order now beats several times over.
     var coinReward: Int {
         switch self {
-        case .easy:      return 2
-        case .medium:    return 5
-        case .hard:      return 10
-        case .legendary: return 25
+        case .easy:      return 50
+        case .medium:    return 150
+        case .hard:      return 400
+        case .legendary: return 1_000
         }
     }
     var color: Color {
@@ -874,19 +880,48 @@ struct PlayerCommerceState: Codable, Equatable {
 // ============================================================
 
 // ── Weekly / monthly goal constants ──────────────────────────
-let weeklyGoalBronzeCoins  = 50
-let weeklyGoalSilverCoins  = 120
-let weeklyGoalGoldCoins    = 250
+//
+// Rescaled in Phase 2c. These are thresholds on coins *earned this week*, and
+// the coin faucet moved by roughly 45× — the old Bronze 50 would have been
+// cleared by a single mid-tier order, silently, because these live here and the
+// payout formula lives in AdoptionBoard.
+//
+// Anchored on mid-game income: a level-30 player fulfilling orders earns roughly
+// 3,000 coins/day, so Gold at 12,000 asks for about four days of engagement and
+// Bronze lands on day one. The original 1 : 2.4 : 5 spacing is preserved.
+let weeklyGoalBronzeCoins  = 2_500
+let weeklyGoalSilverCoins  = 6_000
+let weeklyGoalGoldCoins    = 12_000
 /// Default number of Gold weeks required to complete the monthly goal.
 /// Foster Haven T2 can reduce this by 1.
 let monthlyGoalWeeksNeeded = 3
 
 // ── Coin rewards ──────────────────────────────────────────────
-let coinsPerAmbassadorMerge   = 10  // awarded in triggerTopTierCelebration
-/// Bonus coins for exchanging a trio of Ambassador-tier tiles of the same species.
-/// The player already earned coinsPerAmbassadorMerge × 3 = 30 from merging them up —
-/// this is the extra reward for holding three and cashing them in together.
-let ambassadorTrioExchangeCoins = 50
+//
+// All rescaled in Phase 2c against the new anchor: an *average* order pays
+// roughly 400 coins, and a top-tier one 13,312. Each of these is a bonus on top
+// of whatever the player does with the item, so none should rival the item's own
+// value — but none should be a rounding error either, which is what they became.
+
+/// Awarded in `triggerTopTierCelebration` when any chain reaches its top tier.
+/// Rationale: recognises the achievement without competing with what the item
+/// itself is worth (5,632 sold, 13,312 to an order). Was 10 — pure noise.
+let coinsPerAmbassadorMerge = 500
+
+/// Coins for clearing all three daily challenges.
+/// Rationale: a day's engagement, worth about one average order (~400) — a real
+/// top-up that doesn't compete with the main faucet. Was 15.
+let coinsPerAllDailyChallenges = 400
+
+/// Multiplier applied to the combined sell value when three top-tier tiles of one
+/// species are exchanged together.
+///
+/// Rationale: this consumes three items outright, so it has to beat selling them
+/// individually or it is a trap. It paid a flat 50 coins for three tiles worth
+/// 5,632 each — destroying about 16,850 coins of value for anyone who used it.
+/// A premium over the sell price makes the trio the best liquidity option for
+/// three matching Ambassadors, which is what a "trio bonus" should mean.
+let ambassadorTrioExchangeMultiplier = 1.25
 
 // ── Weekly goal tiers ─────────────────────────────────────────
 
@@ -1104,6 +1139,9 @@ func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
 /// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
 func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
 
+/// Top 0-based tier of every animal chain (12 tiers as of Phase 2b).
+let animalChainTopTier = 11
+
 // ── Recirculation (Phase 2, Task 2.3) ─────────────────────────
 //
 // Under neutral pricing a Stage-15 item costs 16,384 kibble — roughly 22 days of
@@ -1148,20 +1186,63 @@ let dogTagStoreMaxOffset   = 1   // deepest − 1 is the dearest
 let dogTagStoreBasePrice   = 15
 let dogTagStorePriceStep   = 18
 
-// ── Selling animals for coins (Phase 2b) ──────────────────────
+// ── The coin economy (Phase 2c) ───────────────────────────────
+//
+// Coins gate the Sanctuary Map — 291,900 coins across 61 entries — which is the
+// game's forever goal. Phases 2 and 2b modelled kibble only; coins were never
+// modelled, and the two tables that happened to exist put selling at ~6,500
+// coins/day against ~145/day from everything else combined. Selling *was* the
+// coin economy, and it is taught nowhere.
+//
+// Both channels now pay, in proportion to what an item cost to build:
+//
+//   Fulfil an order  →  6.50 coins per kibble   the efficient path; needs a
+//                                                matching order, so costs patience
+//   Sell an animal   →  2.75 coins per kibble   instant liquidity, ~2.4× worse
+//
+// A flat ratio at every tier is deliberate: no tier is relatively better to sell,
+// so there is no farming incentive anywhere on the chain, and the tradeoff reads
+// the same wherever the player is — always about 2.4× for waiting.
+//
+// The 6.5 anchor comes from the target of a ~60-day full map build-out:
+//   291,900 ÷ 60 days = ~4,865 coins/day, ÷ ~745 kibble/day of orders = ~6.5.
 
-/// Coins paid for selling an animal at each 0-based tier — one entry per tier,
-/// a smooth ~2.5× geometric series.
+/// Coins paid per kibble of build cost when an adoption order is fulfilled.
+let coinsPerKibbleOfOrder = 6.5
+
+/// Coins paid per kibble of build cost when an animal is sold.
+let coinsPerKibbleOfSale = 2.75
+
+/// Random spread applied to order payouts so they don't read as mechanical.
+/// Small enough that the worst order still beats the best sale by a wide margin.
+let orderCoinSpread = 0.10
+
+/// Kibble cost to build one item at `tier`, times `count` — the quantity both
+/// coin channels are denominated in.
+func buildCost(tier: Int, count: Int = 1) -> Int {
+    spawnCost(forTier: tier) * max(1, count)
+}
+
+/// Coins an adoption order pays for the items it asks for.
+/// `spreadFactor` is 1.0 for the nominal payout; `generateOrder` randomises it
+/// within ±`orderCoinSpread`.
 ///
-/// Re-derived in Phase 2b rather than spliced: deleting old indices 9–11 from the
-/// previous 15-entry table left a 500 → 10,000 jump.
-///
-/// The shape that matters is `sellValue / 2^tier` — coins returned per kibble the
-/// item cost to build. That ratio climbs monotonically from 1.0 at tier 0 to ~8.8
-/// at tier 11, so selling is a late-game liquidity option and never an early-game
-/// grind. (Coins and kibble are not interchangeable — there is no coins→kibble
-/// path — so the absolute comparison is a design signal, not an arbitrage check.)
-let animalSellValues = [1, 2, 5, 12, 30, 75, 180, 450, 1100, 2800, 7000, 18000]
+/// Proportional rather than a hand-tuned table on purpose: the order tier
+/// distribution has already been re-swept twice (Phases 2 and 2b), and a formula
+/// stays correct across a re-sweep where a table would need re-deriving.
+func orderCoinPayout(tier: Int, count: Int = 1, spreadFactor: Double = 1.0) -> Int {
+    max(1, Int((Double(buildCost(tier: tier, count: count))
+                * coinsPerKibbleOfOrder * spreadFactor).rounded()))
+}
+
+/// Coins paid for selling one animal at `tier`.
+func animalSellValue(tier: Int) -> Int {
+    max(1, Int((Double(spawnCost(forTier: max(0, tier))) * coinsPerKibbleOfSale).rounded()))
+}
+
+/// The sell table, derived rather than authored so it cannot drift from the rate
+/// or from the chain length. Tier 0 → 3 coins, tier 11 → 5,632.
+let animalSellValues: [Int] = (0...animalChainTopTier).map { animalSellValue(tier: $0) }
 
 // ── XP constants ──────────────────────────────────────────────
 let xpPerMergeBase     = 5    // multiplied by srcItem.stage.rawValue in code
