@@ -36,6 +36,16 @@ class AdoptionBoard {
 
     // MARK: Generation
 
+    /// Draws an uncapped tier from `orderTierBands`.
+    static func rollTier() -> Int {
+        var roll = Double.random(in: 0..<1)
+        for band in orderTierBands {
+            roll -= band.probability
+            if roll < 0 { return band.tiers.randomElement() ?? 0 }
+        }
+        return orderTierBands.last?.tiers.last ?? 0
+    }
+
     func generateOrder(unlockedChainIDs: [ChainID], playerLevel: Int) -> AdoptionOrder {
         let animalChainIDs = unlockedChainIDs.filter {
             ContentRegistry.shared.chain($0)?.category == .animal
@@ -43,19 +53,10 @@ class AdoptionBoard {
         let familyIndex = Int.random(in: 0..<adoptionFamilies.count)
         let chainID     = animalChainIDs.randomElement() ?? ContentRegistry.animalChainID(.dog)
 
-        // Tier weighting table for the 15-tier chain.
-        // Lower tiers are more common for early players; higher tiers more
-        // accessible for experienced ones. All tiers are capped by maxAchievableOrderTier.
-        let roll = Int.random(in: 1...10)
-        let rawTier: Int
-        switch roll {
-        case 1...2: rawTier = [0, 1, 2].randomElement()!
-        case 3...4: rawTier = [3, 4, 5].randomElement()!
-        case 5...6: rawTier = [6, 7, 8].randomElement()!
-        case 7...8: rawTier = [9, 10, 11].randomElement()!
-        case 9:     rawTier = [12, 13].randomElement()!
-        default:    rawTier = 14
-        }
+        // Tier weighting comes from the shared `orderTierBands` table so the
+        // economy model in EconomySimulation can never drift from what is
+        // actually generated here. All tiers are capped by maxAchievableOrderTier.
+        let rawTier = Self.rollTier()
         let maxTier = maxAchievableOrderTier(forPlayerLevel: playerLevel)
         let tier    = min(rawTier, maxTier)
         let count   = (tier <= 5 && Int.random(in: 1...3) == 1) ? 2 : 1
@@ -74,6 +75,20 @@ class AdoptionBoard {
         if let pack = packReward {
             rewards.append(OrderReward(kind: .cardPack, amount: 1, payloadID: pack.rawValue))
         }
+
+        // Recirculation (Task 2.3a): one order in `orderBoardItemFrequency` pays a
+        // board item as well as currency. The item is always well below what the
+        // order asked for, so fulfilling an order never returns more than it cost —
+        // but it is what makes the deepest tiers reachable at all, since building a
+        // Stage-15 from taps alone costs ~22 days of total income.
+        if Int.random(in: 0..<orderBoardItemFrequency) == 0 {
+            let rewardChainID = animalChainIDs.randomElement() ?? chainID
+            let rewardMaxTier = ContentRegistry.shared.chain(rewardChainID)?.maxTier ?? 0
+            let rewardTier = min(max(0, tier - orderRewardTierOffset), rewardMaxTier)
+            rewards.append(OrderReward(kind: .boardItem, amount: 1,
+                                       payloadID: rewardChainID, payloadTier: rewardTier))
+        }
+
         rewards.append(contentsOf: OrderRewardRegistry.riders(playerLevel: playerLevel))
 
         return AdoptionOrder(

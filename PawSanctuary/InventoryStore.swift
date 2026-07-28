@@ -119,6 +119,10 @@ class InventoryStore {
         case .tool:
             return true   // toolboxes are consumed on the board tap; discard if they reach here
         case .subObject:
+            // Only a completed sub-object (one carrying a rolled effect) is a
+            // usable power-up. Tiers 0–2 are inert intermediates and belong in
+            // the animal inventory, not in the 6 power-up slots.
+            guard item.rarity != nil else { return addToAnimalInventory(item) }
             return addToPowerUpInventory(item) || addToAnimalInventory(item)
         case .powerUp:
             return addToPowerUpInventory(item)
@@ -285,6 +289,10 @@ class InventoryStore {
         }
         producerStorage         = s.producerStorage
         overflowProducerStorage = s.overflowProducerStorage
+        // Pad/trim in case the saved array predates the current slot count.
+        var slots = s.powerUpInventory
+        if slots.count < 6 { slots.append(contentsOf: Array(repeating: nil, count: 6 - slots.count)) }
+        powerUpInventory        = Array(slots.prefix(6))
         recalcInventoryOccupied()
         recalcProducerStorageOccupied()
     }
@@ -296,5 +304,6 @@ class InventoryStore {
         s.materialCounts          = materialCounts
         s.producerStorage         = producerStorage
         s.overflowProducerStorage = overflowProducerStorage
+        s.powerUpInventory        = powerUpInventory
     }
 }

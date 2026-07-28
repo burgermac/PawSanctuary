@@ -11,26 +11,36 @@ import SwiftUI
 
 // MARK: — Rarity & Effects
 
+/// The effect a completed (tier-3) sub-object carries. Rolled once, at the
+/// moment the sub-object is merged to its top tier, and then stored on the
+/// `BoardItem` so it survives save/load — see `SubObjectSystem.rollPowerUpRarity`.
+///
+/// Phase 2 (Task 2.2) replaced `spawnerRefill` (+20 kibble) with `boardItemGrant`.
+/// A per-tap *currency* rebate is unbounded under the neutral pricing introduced
+/// by Task 2.1: at the base 20% drop rate it returned exactly 1.00 kibble per
+/// activation, and up to 6.50 with full area upgrades and the Rodents Hoard
+/// superpower. An *item* payload is immune to that arithmetic and doubles as a
+/// recirculation channel, which is what the endgame needs.
 enum SubObjectRarity: String, CaseIterable, Codable {
-    case speed          // 60% — 2x Speed Burst (30s)
-    case mapSupplies    // 25% — Map Supplies drop
-    case spawnerRefill  // 10% — Spawner Refill
-    case highTierDrop   // 5%  — High-Tier Drop Guarantee
+    case speed           // 60% — 2x Speed Burst (30s)
+    case mapSupplies     // 25% — Map Supplies drop
+    case boardItemGrant  // 10% — one board item, scaled to the player's deepest tier
+    case highTierDrop    // 5%  — High-Tier Drop Guarantee
 
     var weight: Double {
         switch self {
-        case .speed:         return 60
-        case .mapSupplies:   return 25
-        case .spawnerRefill: return 10
-        case .highTierDrop:  return 5
+        case .speed:          return 60
+        case .mapSupplies:    return 25
+        case .boardItemGrant: return 10
+        case .highTierDrop:   return 5
         }
     }
     var displayName: String {
         switch self {
-        case .speed:         return "Speed Burst"
-        case .mapSupplies:   return "Map Supplies"
-        case .spawnerRefill: return "Spawner Refill"
-        case .highTierDrop:  return "High-Tier Drop"
+        case .speed:          return "Speed Burst"
+        case .mapSupplies:    return "Map Supplies"
+        case .boardItemGrant: return "Board Item"
+        case .highTierDrop:   return "High-Tier Drop"
         }
     }
 }
@@ -38,13 +48,13 @@ enum SubObjectRarity: String, CaseIterable, Codable {
 enum PowerUpEffect: Codable {
     case speedBurst(duration: Double)      // seconds
     case mapSupplies
-    case spawnerRefill
+    case boardItemGrant
     case highTierDrop
 }
 
 enum SpawnDropResult {
     case animal(tier: Int)
-    case subObject(chainID: String, rarity: SubObjectRarity)
+    case subObject(chainID: String)
 }
 
 // MARK: — Pity State
@@ -62,70 +72,92 @@ struct SubObjectDropConfig {
     static let baseSubObjectChance: Double = 0.20   // 20% of spawns produce a sub-object
 }
 
+/// Top tier of every per-family sub-object chain. Only an item at this tier
+/// carries a rolled effect and counts as a usable power-up (Task 2.2).
+let subObjectTopTier = 3
+
 // MARK: — Drop Resolution
 
 enum SubObjectSystem {
-    /// Resolve what a family spawner produces. Updates pityState in place.
-    /// `dropRateBonus` adds percentage points to the 20% base sub-object chance.
-    /// `pityTimerReduction` lowers both pity thresholds by that many spawns (min 5/10).
+    /// Resolve what a family spawner produces, and advance that family's pity
+    /// counters by one spawn. `dropRateBonus` adds percentage points to the 20%
+    /// base sub-object chance.
+    ///
+    /// This no longer picks a rarity. Before Task 2.2 it rolled one here and the
+    /// call site discarded it — the effect was really chosen by which tier the
+    /// player stopped merging at. The roll now happens once, when a sub-object
+    /// is completed: see `rollPowerUpRarity`.
     static func resolveSpawnerDrop(
         species: AnimalSpecies,
         pityState: inout PityState,
         spawnTier: Int,
-        dropRateBonus: Int = 0,
-        pityTimerReduction: Int = 0
+        dropRateBonus: Int = 0
     ) -> SpawnDropResult {
         let effectiveChance = SubObjectDropConfig.baseSubObjectChance + Double(dropRateBonus) / 100.0
-        let rareThreshold   = max(5,  PityState.rareThreshold  - pityTimerReduction)
-        let epicThreshold   = max(10, PityState.epicThreshold  - pityTimerReduction)
 
-        // Determine if this spawn produces a sub-object at all
-        let roll = Double.random(in: 0..<1)
-        guard roll < effectiveChance else {
-            // Animal drop — still advance pity counters
-            pityState.spawnsSinceLastRare  += 1
-            pityState.spawnsSinceLastEpic  += 1
+        // Every activation counts toward pity, whatever it produces.
+        pityState.spawnsSinceLastRare += 1
+        pityState.spawnsSinceLastEpic += 1
+
+        guard Double.random(in: 0..<1) < effectiveChance else {
             return .animal(tier: spawnTier)
         }
+        return .subObject(chainID: "subobject.\(species.rawValue)")
+    }
 
-        // Resolve rarity (pity guarantees override random roll)
+    /// Rolls the effect a just-completed sub-object will carry, consuming the
+    /// family's accumulated pity. Call this once, when a sub-object reaches its
+    /// top tier; store the result on the item.
+    ///
+    /// `pityTimerReduction` lowers both thresholds by that many spawns (floored
+    /// at 5 / 15). These are the Sanctuary Map upgrades that were a no-op for as
+    /// long as the rarity was discarded — they do something again as of Task 2.2.
+    static func rollPowerUpRarity(
+        pityState: inout PityState,
+        pityTimerReduction: Int = 0
+    ) -> SubObjectRarity {
+        let rareThreshold = max(5,  PityState.rareThreshold - pityTimerReduction)
+        let epicThreshold = max(15, PityState.epicThreshold - pityTimerReduction)
+
         let rarity: SubObjectRarity
         if pityState.spawnsSinceLastEpic >= epicThreshold {
             rarity = .highTierDrop
         } else if pityState.spawnsSinceLastRare >= rareThreshold {
-            rarity = .spawnerRefill
+            rarity = .boardItemGrant
         } else {
             rarity = weightedRarityRoll()
         }
 
-        // Update pity counters
         switch rarity {
         case .highTierDrop:
             pityState.spawnsSinceLastRare = 0
             pityState.spawnsSinceLastEpic = 0
-        case .spawnerRefill:
+        case .boardItemGrant:
             pityState.spawnsSinceLastRare = 0
-            pityState.spawnsSinceLastEpic += 1
-        default:
-            pityState.spawnsSinceLastRare += 1
-            pityState.spawnsSinceLastEpic += 1
+        case .speed, .mapSupplies:
+            break   // neither counter resets on a common roll
         }
-
-        let chainID = "subobject.\(species.rawValue)"
-        return .subObject(chainID: chainID, rarity: rarity)
+        return rarity
     }
 
     // MARK: — Power-up application
 
-    /// Maps a power-up BoardItem's tier to the PowerUpEffect it carries.
-    /// Convention: tier 0 = Speed Burst, 1 = Map Supplies, 2 = Spawner Refill, 3 = High-Tier Drop.
+    /// The effect a power-up item carries, or `nil` if it isn't usable.
+    ///
+    /// Only a completed sub-object is usable, and its effect is whatever was
+    /// rolled and stored when it was completed. Tiers 0–2 are inert intermediates
+    /// and return `nil`, so the UI can refuse to apply them.
     static func powerUpEffect(for item: BoardItem) -> PowerUpEffect? {
-        switch item.tier {
-        case 0: return .speedBurst(duration: 30)
-        case 1: return .mapSupplies
-        case 2: return .spawnerRefill
-        case 3: return .highTierDrop
-        default: return nil
+        guard let rarity = item.rarity else { return nil }
+        return effect(for: rarity)
+    }
+
+    static func effect(for rarity: SubObjectRarity) -> PowerUpEffect {
+        switch rarity {
+        case .speed:          return .speedBurst(duration: 30)
+        case .mapSupplies:    return .mapSupplies
+        case .boardItemGrant: return .boardItemGrant
+        case .highTierDrop:   return .highTierDrop
         }
     }
 
@@ -144,9 +176,11 @@ enum SubObjectSystem {
             producer.speedBurstActive    = true
             producer.speedBurstRemaining = duration + powerUpDurationBonus
 
-        case .spawnerRefill:
-            // Family spawners have unlimited charges; grant bonus kibble instead.
-            viewModel.kibble += 20
+        case .boardItemGrant:
+            // Recirculation, not a rebate. One item from a random unlocked animal
+            // chain, two tiers below the player's deepest — meaningful progress
+            // without ever paying out more than the merge it replaces.
+            viewModel.grantRecirculatedBoardItem()
 
         case .highTierDrop:
             producer.nextDropGuaranteedHighTier = true

@@ -932,6 +932,14 @@ enum WeeklyGoalTier: Int, CaseIterable {
     var toolboxCount: Int {
         switch self { case .bronze: return 0; case .silver: return 1; case .gold: return 2 }
     }
+    /// Board items paid out by this chest — recirculation (Phase 2, Task 2.3b).
+    var boardItemCount: Int {
+        switch self { case .bronze: return 1; case .silver: return 1; case .gold: return 2 }
+    }
+    /// How far below `deepestUnlockedTier` this chest's items land. Lower is richer.
+    var boardItemTierOffset: Int {
+        switch self { case .bronze: return 4; case .silver: return 3; case .gold: return 2 }
+    }
     var xpReward: Int {
         switch self { case .bronze: return 15; case .silver: return 35; case .gold: return 75 }
     }
@@ -939,16 +947,50 @@ enum WeeklyGoalTier: Int, CaseIterable {
 
 // ── Dog Tag → Kibble exchange ─────────────────────────────────
 
+/// A single Dog Tag → Kibble exchange offer.
+///
+/// Phase 2 (Task 2.4) reversed the shape. It used to be a *volume discount*
+/// (40→100, 80→240, 120→480 — 2.5, 3.0, then 4.0 kibble per tag), which rewarded
+/// bulk absorption and let a paying player flatten the pacing curve at will.
+///
+/// The reference games do the opposite: an escalating ladder for an identical
+/// amount of energy, resetting daily, which caps how much cheap energy anyone can
+/// absorb per day. That cap is what protects the pacing curve.
 struct DogTagKibbleExchange {
     let dogTagCost: Int
     let kibbleGain: Int
+    /// 0-based position in today's ladder.
+    let purchaseIndex: Int
     var label: String { "\(dogTagCost) Dog Tags → \(kibbleGain) Kibble" }
 
-    static let all: [DogTagKibbleExchange] = [
-        DogTagKibbleExchange(dogTagCost:  40, kibbleGain: 100),
-        DogTagKibbleExchange(dogTagCost:  80, kibbleGain: 240),
-        DogTagKibbleExchange(dogTagCost: 120, kibbleGain: 480),
-    ]
+    /// Every rung buys the same kibble; only the price climbs.
+    static let kibblePerExchange = 100
+    /// Tag cost by purchase number within the day. The last entry repeats forever.
+    static let dailyLadder = [15, 30, 60]
+
+    /// The offer a player with `purchasesToday` exchanges already made would see.
+    static func offer(purchasesToday: Int) -> DogTagKibbleExchange {
+        let i = max(0, purchasesToday)
+        let cost = dailyLadder[min(i, dailyLadder.count - 1)]
+        return DogTagKibbleExchange(dogTagCost: cost,
+                                    kibbleGain: kibblePerExchange,
+                                    purchaseIndex: i)
+    }
+
+    /// True once the ladder has bottomed out and the rate is flat.
+    var isAtFlatRate: Bool { purchaseIndex >= Self.dailyLadder.count - 1 }
+}
+
+// ── Dog Tag store stock (Phase 2, Task 2.3c) ──────────────────
+
+/// One purchasable board item in the daily Dog Tag store. Stock is 1 by design;
+/// `purchased` is what enforces it until the next daily rotation.
+struct DogTagStoreSlot: Codable, Equatable, Identifiable {
+    var id = UUID()
+    var chainID: ChainID
+    var tier: Int
+    var priceDogTags: Int
+    var purchased: Bool = false
 }
 
 let kibbleRegenCap            = 100
@@ -1007,16 +1049,110 @@ func toolboxMaxTier(forPlayerLevel level: Int) -> Int {
 /// Maximum 0-based animal tier that adoption orders should request at `level`.
 /// Early players never receive orders for stages they can't realistically reach,
 /// preventing the frustration of watching orders expire unfilled.
+///
+/// **Phase 2 dial.** Together with `orderTierBands` this is the primary control on
+/// the demand/supply ratio — see `EconomySimulation`. Retuned in Phase 2 because
+/// under neutral pricing a tier-14 item costs 16,384 kibble (~22 days of a
+/// player's entire income); the pre-Phase-2 table was written for the old world
+/// where the ×8 multiplier sold tier-7 items for 8 kibble.
 func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
     switch level {
     case 1...3:   return 2
-    case 4...6:   return 5
-    case 7...9:   return 8
-    case 10...12: return 10
-    case 13...18: return 12
-    default:      return 14
+    case 4...6:   return 3
+    case 7...9:   return 4
+    case 10...30: return 5    // holds through L30 — ratio stays near 0.60
+    case 31...40: return 7    // tightening; ratio ~0.86
+    case 41...50: return 8    // the ratio crosses 1.00 here — Phase 3's offer moment
+    default:      return 9    // persistent ~1.16, never punitive
     }
 }
+
+/// The adoption-order tier-weighting table: `(probability, tiers)`, probabilities
+/// summing to 1. A tier above `maxAchievableOrderTier` collapses onto it.
+///
+/// **Phase 2 dial** — shared by `AdoptionBoard.generateOrder` and
+/// `EconomySimulation` so the model can never drift from what the game generates.
+///
+/// The distribution is deliberately bottom-heavy: cost doubles per tier, so the
+/// top band dominates the mean however rare it is. At the pre-Phase-2 weighting
+/// (20/20/20/20/10/10 across tiers 0-14) the average order cost 2,526 kibble
+/// against a daily income of ~745 — a ratio of 54.
+let orderTierBands: [(probability: Double, tiers: [Int])] = [
+    (0.38, [0, 1, 2]),
+    (0.28, [3, 4]),
+    (0.24, [5, 6]),
+    (0.06, [7, 8]),
+    (0.02, [9, 10]),
+    (0.02, [11]),
+]
+
+// ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
+//
+// The multiplier selects a TIER; the tier sets the price. Cost is `2^tier`,
+// which is exactly what that item is worth in merge inputs, so no multiplier
+// level buys progress at a discount to building it by hand.
+//
+// Before Phase 2 the tier was `multiplier - 1` at a cost of `multiplier`,
+// which made ×8 an 8-kibble purchase of a 128-kibble item — a 16× arbitrage
+// that unlocked at level 20 and never closed.
+
+/// Maps a spawn multiplier (1 / 2 / 4 / 8) to the 0-based tier it produces.
+/// Total by construction: any unrecognised value falls back to tier 0.
+func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
+    switch multiplier {
+    case 1:  return 0
+    case 2:  return 1
+    case 4:  return 2
+    case 8:  return 3
+    default: return 0
+    }
+}
+
+/// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
+func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
+
+// ── Recirculation (Phase 2, Task 2.3) ─────────────────────────
+//
+// Under neutral pricing a Stage-15 item costs 16,384 kibble — roughly 22 days of
+// a player's *entire* income — so deep tiers cannot be reached by tapping and
+// must arrive as items. These are the dials for how much comes back.
+
+/// How far below `deepestUnlockedTier` a granted board item lands.
+/// Offset 2 = a quarter of the player's current frontier item.
+let recirculationTierOffset = 2
+
+/// Absolute ceiling on any `deepestUnlockedTier`-relative item grant.
+///
+/// Without this the grant channel is *exponential in tenure*: item worth is `2^tier`,
+/// so pegging the payout a fixed number of tiers below the player's frontier doubles
+/// it every time they advance one stage. The Phase 2 model showed a deepest-14 player
+/// receiving ~7,600 kibble-equivalent per day from Board Item Grants alone, against a
+/// total daily income of ~745 — the same unbounded-faucet shape Task 2.2 removed from
+/// Spawner Refill, just denominated in items.
+///
+/// Capping at tier 7 (128 kibble, ~17% of a day's income per grant) keeps the channel
+/// meaningful for shallow players — where `deepest − 2` is the binding term — while
+/// stopping it outrunning demand in the endgame.
+let recirculationMaxItemTier = 7
+
+/// How far below an order's own `wantedTier` its board-item reward lands.
+/// Always a fraction of what the order asked for, never the whole thing.
+let orderRewardTierOffset = 3
+
+/// One order in this many carries a board-item reward.
+let orderBoardItemFrequency = 3
+
+// ── Dog Tag store (Phase 2, Task 2.3c) ────────────────────────
+
+/// Board items purchasable with Dog Tags — 3 slots, rotating daily, stock 1 each.
+/// Tiers span `deepestUnlockedTier - 4` … `deepestUnlockedTier - 1`.
+let dogTagStoreSlotCount   = 3
+let dogTagStoreMinOffset   = 4   // deepest − 4 is the cheapest slot on offer
+let dogTagStoreMaxOffset   = 1   // deepest − 1 is the dearest
+/// Price for the cheapest tier on offer, then +step per tier above it.
+/// Anchored against the measured reference band of ~9–70 gems per item.
+let dogTagStoreBasePrice   = 15
+let dogTagStorePriceStep   = 18
 
 // ── XP constants ──────────────────────────────────────────────
 let xpPerMergeBase     = 5    // multiplied by srcItem.stage.rawValue in code

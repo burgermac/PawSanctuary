@@ -68,6 +68,11 @@ struct BoardItem: Identifiable, Equatable, Codable {
     var chainID: ChainID
     var tier: Int
 
+    /// For completed (top-tier) sub-objects only: the effect rolled when this
+    /// item was merged into existence. `nil` for every other item, and for the
+    /// inert tier 0–2 intermediates. Optional so pre-v27 saves still decode.
+    var rarity: SubObjectRarity? = nil
+
     /// The tier definition (display + values). `nil` only if a save references a
     /// chain this build doesn't know — callers treat that as an empty cell.
     var def: ChainTier? { ContentRegistry.shared.tier(chainID, tier) }

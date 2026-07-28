@@ -103,6 +103,7 @@ class MergeBoardViewModel {
     let quests        = QuestCoordinator()
     let adoptionBoardCoordinator = AdoptionBoard()
     let progression   = PlayerProgression()
+    let dogTagStore   = DogTagStore()
 
     // MARK: Board state
 
@@ -415,6 +416,15 @@ class MergeBoardViewModel {
         get { progression.spawnMultiplier }
         set { progression.spawnMultiplier = newValue }
     }
+    var deepestUnlockedTier: Int {
+        get { progression.deepestUnlockedTier }
+        set { progression.deepestUnlockedTier = newValue }
+    }
+    /// Kibble a single spawner tap costs at the current multiplier (Task 2.1: `2^tier`).
+    /// Excludes per-family modifiers such as Bask, which are applied at the tap site.
+    var currentSpawnCost: Int {
+        spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
+    }
     var showLevelUpBanner: Bool {
         get { progression.showLevelUpBanner }
         set { progression.showLevelUpBanner = newValue }
@@ -472,9 +482,9 @@ class MergeBoardViewModel {
         let cell = board[pos.row][pos.col]
         if let producer = cell.producer {
             if producer.level == .familySpawner, let sp = producer.species {
-                return ("\(sp.spawnerName) · Tap to rescue \(sp.name) · costs \(spawnMultiplier) kibble · 20% sub-object drop chance", nil)
+                return ("\(sp.spawnerName) · Tap to rescue \(sp.name) · costs \(currentSpawnCost) kibble · 20% sub-object drop chance", nil)
             }
-            return ("\(producer.level.displayName) · Tap to spawn · costs \(spawnMultiplier) kibble", nil)
+            return ("\(producer.level.displayName) · Tap to spawn · costs \(currentSpawnCost) kibble", nil)
         }
         if let item = cell.item, let def = item.def, let chain = item.chain {
             let levelPrefix = chain.category == .animal ? "Level \(item.tier + 1) · " : ""
@@ -834,6 +844,7 @@ class MergeBoardViewModel {
         quests.capture(into: &s)
         adoptionBoardCoordinator.capture(into: &s)
         progression.capture(into: &s)
+        dogTagStore.capture(into: &s)
         return s
     }
 
@@ -908,6 +919,8 @@ class MergeBoardViewModel {
         quests.restore(from: s)
         adoptionBoardCoordinator.restore(from: s)
         progression.restore(from: s)
+        dogTagStore.restore(from: s)
+        kibbleEngine.rollOverExchangeDayIfNeeded()
 
         recalcBoardIsFull()
         recalcActiveBonuses()
@@ -1072,24 +1085,23 @@ class MergeBoardViewModel {
 
         if producer.level == .familySpawner, let species = producer.species {
             // Family spawner — kibble-based, unlimited, species-specific animal chain
+            let chainID = ContentRegistry.animalChainID(species)
+            let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
+            // Task 2.1: the multiplier picks the tier, and the tier sets the price
+            // at 2^tier — energy-neutral at every level.
+            var spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             // Bask (Reptiles .turtle): half kibble cost.
-            let baseCost = progression.spawnMultiplier
+            let baseCost = spawnCost(forTier: spawnTier)
             let baskActive = species == .turtle && unlockedSuperpowerSpecies.contains(AnimalSpecies.turtle.rawValue)
             let cost = baskActive ? max(1, baseCost / 2) : baseCost
             guard kibbleEngine.kibble >= cost else {
-                let blockedChainID = ContentRegistry.animalChainID(species)
-                let blockedMaxTier = ContentRegistry.shared.chain(blockedChainID)?.maxTier ?? 0
-                recordWallEvent(chainID: blockedChainID,
-                                tier: min(progression.spawnMultiplier - 1, blockedMaxTier))
+                recordWallEvent(chainID: chainID, tier: spawnTier)
                 triggerToast(.noKibble); selectedCell = pos; return
             }
             let empty = emptyUnlockedCells
             guard let target = empty.randomElement() else {
                 triggerToast(.boardFull); selectedCell = pos; return
             }
-            let chainID = ContentRegistry.animalChainID(species)
-            let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
-            var spawnTier = min(progression.spawnMultiplier - 1, maxTier)
 
             // High-Tier Drop guarantee: force tier ≥ 2 and consume the buff.
             if producer.nextDropGuaranteedHighTier {
@@ -1110,15 +1122,14 @@ class MergeBoardViewModel {
                 species: species,
                 pityState: &pityState,
                 spawnTier: spawnTier,
-                dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus,
-                pityTimerReduction: cachedActiveBonuses.pityTimerReduction
+                dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus
             )
             pityStates[species.rawValue] = pityState
             let spawnedItem: BoardItem
             switch dropResult {
             case .animal(let tier):
                 spawnedItem = BoardItem(chainID: chainID, tier: tier)
-            case .subObject(let subChainID, _):
+            case .subObject(let subChainID):
                 // Hoard (Rodents .hamster): sub-objects spawn at tier 1 (Stage 2) instead of tier 0.
                 let hoardActive = species == .hamster && unlockedSuperpowerSpecies.contains(AnimalSpecies.hamster.rawValue)
                 let subTier = hoardActive ? min(1, ContentRegistry.shared.chain(subChainID)?.maxTier ?? 0) : 0
@@ -1131,8 +1142,7 @@ class MergeBoardViewModel {
                     species: species,
                     pityState: &pityForPreview,
                     spawnTier: spawnTier,
-                    dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus,
-                    pityTimerReduction: cachedActiveBonuses.pityTimerReduction
+                    dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus
                 )
                 if var p = board[pos.row][pos.col].producer {
                     if case .subObject = preview { p.scoutPreviewIsSubObject = true }
@@ -1143,7 +1153,8 @@ class MergeBoardViewModel {
             finishSpawn(item: spawnedItem, at: target, cost: cost)
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
-            let cost = progression.spawnMultiplier
+            // Task 2.1: priced from the selected tier, same as the family spawner.
+            let cost = spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
             guard kibbleEngine.kibble >= cost else {
                 // Which chain would be picked is randomized below and never reached —
                 // nothing specific was actually blocked, so record no chain/tier.
@@ -1158,7 +1169,7 @@ class MergeBoardViewModel {
                 ?? progression.unlockedAnimalChainIDs.first
                 ?? ContentRegistry.animalChainID(.dog)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
-            let spawnTier = min(progression.spawnMultiplier - 1, maxTier)
+            let spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             finishSpawn(item: BoardItem(chainID: chainID, tier: spawnTier), at: target, cost: cost)
         } else {
             if producer.isReady {
@@ -1224,8 +1235,37 @@ class MergeBoardViewModel {
         recalcBoardIsFull()
     }
 
-    func exchangeTagsForKibble(_ exchange: DogTagKibbleExchange) {
-        kibbleEngine.exchangeTagsForKibble(exchange)
+    // MARK: Dog Tag store (Task 2.3c)
+
+    /// Refreshes the day's stock. Safe to call whenever the store is shown.
+    func refreshDogTagStore() {
+        dogTagStore.rotateIfNeeded(deepestUnlockedTier: deepestUnlockedTier,
+                                   unlockedChainIDs: progression.unlockedChainIDs)
+    }
+
+    /// Buys one stock-limited board item. Returns false if it's already sold,
+    /// unaffordable, or there's nowhere to put it.
+    @discardableResult
+    func purchaseDogTagStoreSlot(_ slot: DogTagStoreSlot) -> Bool {
+        guard !slot.purchased,
+              kibbleEngine.dogTags >= slot.priceDogTags else { return false }
+        let maxTier = ContentRegistry.shared.chain(slot.chainID)?.maxTier ?? 0
+        let item = BoardItem(chainID: slot.chainID, tier: min(slot.tier, maxTier))
+        // Deduct only once the item has somewhere to land.
+        guard placeOrBankItem(item) else { return false }
+        kibbleEngine.dogTags -= slot.priceDogTags
+        dogTagStore.markPurchased(slotID: slot.id)
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        return true
+    }
+
+    /// Today's rung of the escalating Dog Tag ladder (Task 2.4).
+    var currentTagExchange: DogTagKibbleExchange { kibbleEngine.currentTagExchange }
+
+    @discardableResult
+    func exchangeTagsForKibble() -> Bool {
+        kibbleEngine.exchangeTagsForKibble()
     }
 
     private func placeProducerReward(_ level: ProducerLevel) {
@@ -1320,6 +1360,54 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Rolls the effect for a sub-object that has just been merged to its top
+    /// tier, consuming that family's accumulated pity (Task 2.2).
+    /// `chainID` is the sub-object chain, e.g. `subobject.hamster`.
+    private func rollRarityForCompletedSubObject(chainID: ChainID) -> SubObjectRarity {
+        let speciesRaw = chainID.replacingOccurrences(of: "subobject.", with: "")
+        var pityState = pityStates[speciesRaw] ?? PityState()
+        let rarity = SubObjectSystem.rollPowerUpRarity(
+            pityState: &pityState,
+            pityTimerReduction: cachedActiveBonuses.pityTimerReduction
+        )
+        pityStates[speciesRaw] = pityState
+        return rarity
+    }
+
+    /// Puts `item` on a free board cell, falling back to inventory when the board
+    /// is full. Returns false only if both are full, in which case the player is told.
+    @discardableResult
+    func placeOrBankItem(_ item: BoardItem) -> Bool {
+        if let target = emptyUnlockedCells.randomElement() {
+            board[target.position.row][target.position.col].item = item
+            recalcBoardIsFull()
+            return true
+        }
+        if inventoryStore.addItem(item) { return true }
+        triggerToast(.inventoryFull)
+        return false
+    }
+
+    /// Places one recirculated board item: a random unlocked animal chain at
+    /// `deepestUnlockedTier - tierOffset`, floored at 0.
+    ///
+    /// This is the payload behind the Board Item Grant power-up (Task 2.2) and the
+    /// chest rewards (Task 2.3b) — deliberately *items*, not kibble, so the payout
+    /// can't be farmed against the per-tap spawn price the way the old +20 kibble
+    /// Spawner Refill could.
+    @discardableResult
+    func grantRecirculatedBoardItem(tierOffset: Int = recirculationTierOffset) -> BoardItem? {
+        let chainID = ContentRegistry.randomChainID(in: .animal, from: progression.unlockedChainIDs)
+            ?? progression.unlockedAnimalChainIDs.first
+            ?? ContentRegistry.animalChainID(.dog)
+        let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
+        let tier = min(max(0, deepestUnlockedTier - tierOffset),
+                       recirculationMaxItemTier,
+                       maxTier)
+        let item = BoardItem(chainID: chainID, tier: tier)
+        return placeOrBankItem(item) ? item : nil
+    }
+
     /// Applies the currently selected power-up to the family spawner at `pos`.
     /// Consumes the power-up from inventory and shows a toast.
     func applyPowerUpToSpawner(at pos: GridPosition) {
@@ -1347,10 +1435,10 @@ class MergeBoardViewModel {
 
         let message: String
         switch effect {
-        case .speedBurst:     message = "⚡ Speed Burst activated!"
-        case .spawnerRefill:  message = "🐾 Bonus kibble added!"
-        case .highTierDrop:   message = "⭐ High-Tier Drop guaranteed!"
-        case .mapSupplies:    message = "🪵 Map Supplies added!"
+        case .speedBurst:      message = "⚡ Speed Burst activated!"
+        case .boardItemGrant:  message = "🐾 Board item delivered!"
+        case .highTierDrop:    message = "⭐ High-Tier Drop guaranteed!"
+        case .mapSupplies:     message = "🪵 Map Supplies added!"
         }
         enqueueToast(Toast(kind: .info(message)))
     }
@@ -1419,15 +1507,24 @@ class MergeBoardViewModel {
                 let isCompletedSubObject = mergedChain?.category == .subObject
                     && next == mergedChain?.maxTier
                 if mergedChain?.category == .powerUp || isCompletedSubObject {
-                    if let powerUpItem = board[to.row][to.col].item {
+                    if var powerUpItem = board[to.row][to.col].item {
+                        // Task 2.2: the effect is rolled here, once, consuming the
+                        // family's accumulated pity — not chosen by the player
+                        // stopping at a particular tier.
+                        if isCompletedSubObject {
+                            powerUpItem.rarity = rollRarityForCompletedSubObject(chainID: srcItem.chainID)
+                        }
                         board[to.row][to.col].item = nil
                         inventoryStore.addItem(powerUpItem)
                         recalcBoardIsFull()
                         SoundManager.shared.playQuestClaim()
                         HapticManager.shared.successPattern()
-                        let msg = isCompletedSubObject
-                            ? "Consumable ready! Check your Supplies."
-                            : "Power-up earned! Check your Supplies."
+                        let msg: String
+                        if let rolled = powerUpItem.rarity {
+                            msg = "\(rolled.displayName) ready! Check your Supplies."
+                        } else {
+                            msg = "Power-up earned! Check your Supplies."
+                        }
                         enqueueToast(Toast(kind: .info(msg)))
                     }
                 }
@@ -1881,6 +1978,10 @@ class MergeBoardViewModel {
     // MARK: Update systems after merge / rescue
 
     func updateAllAfterMerge(chainID: ChainID, tier: Int) {
+        // Recirculation scales with how deep the player has actually got (Phase 2).
+        if ContentRegistry.shared.chain(chainID)?.category == .animal {
+            deepestUnlockedTier = max(deepestUnlockedTier, tier)
+        }
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
         quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)
         // Memory (Pachyderms .hedgehog): quest/challenge progress counts double.
@@ -2317,8 +2418,16 @@ class MergeBoardViewModel {
             case .xp:       grantXP(reward.amount)
             case .cardPack:
                 if let raw = reward.payloadID, let pack = CardPackType(rawValue: raw) { earnCardPack(pack) }
-            case .boardItem, .material, .eventToken:
-                break   // Phase 2 / Phase 6 — intentionally unhandled for now
+            case .boardItem:
+                // Recirculation (Task 2.3a) — place the paid-out item on the board,
+                // or bank it to inventory when there's no free cell.
+                guard let chainID = reward.payloadID else { break }
+                let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
+                let item = BoardItem(chainID: chainID,
+                                     tier: min(max(0, reward.payloadTier ?? 0), maxTier))
+                for _ in 0..<max(1, reward.amount) { placeOrBankItem(item) }
+            case .material, .eventToken:
+                break   // Phase 6 — intentionally unhandled for now
             }
         }
         adoptionBoardCoordinator.markClaimed(at: index)
@@ -2594,6 +2703,10 @@ class MergeBoardViewModel {
         kibbleEngine.dogTags += tier.dogTagReward
         grantXP(tier.xpReward)
         for _ in 0..<tier.toolboxCount { placeToolbox() }
+        // Recirculation (Task 2.3b): chests pay board items, richer the higher the tier.
+        for _ in 0..<tier.boardItemCount {
+            grantRecirculatedBoardItem(tierOffset: tier.boardItemTierOffset)
+        }
     }
 
     func claimMonthlyGoal() {
@@ -2603,6 +2716,8 @@ class MergeBoardViewModel {
         kibbleEngine.dogTags += 20
         grantXP(200)
         for _ in 0..<3 { placeToolbox() }
+        // The month's chest is the single richest recirculation payout (Task 2.3b).
+        for _ in 0..<2 { grantRecirculatedBoardItem(tierOffset: 1) }
     }
 
     // MARK: Active bonuses

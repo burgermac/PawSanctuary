@@ -1156,34 +1156,40 @@ private struct KibbleRefillSheet: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Exchange Dog Tags").font(.subheadline.bold())
                             .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        ForEach(DogTagKibbleExchange.all, id: \.dogTagCost) { exchange in
-                            let canAfford = viewModel.dogTags >= exchange.dogTagCost
-                            Button(action: {
-                                viewModel.exchangeTagsForKibble(exchange)
-                                dismiss()
-                            }) {
-                                HStack {
-                                    Image(systemName: "tag.fill")
-                                        .font(.system(size: 14))
-                                    Text("\(exchange.dogTagCost) Dog Tags")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Spacer()
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "pawprint.fill")
-                                            .font(.system(size: 11))
-                                        Text("+\(exchange.kibbleGain) Kibble")
-                                            .font(.system(size: 14, weight: .bold))
-                                    }
+                        // One rung at a time: each exchange makes the next dearer,
+                        // and the ladder resets tomorrow (Task 2.4).
+                        let exchange = viewModel.currentTagExchange
+                        let canAfford = viewModel.dogTags >= exchange.dogTagCost
+                        Button(action: {
+                            viewModel.exchangeTagsForKibble()
+                            dismiss()
+                        }) {
+                            HStack {
+                                Image(systemName: "tag.fill")
+                                    .font(.system(size: 14))
+                                Text("\(exchange.dogTagCost) Dog Tags")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Spacer()
+                                HStack(spacing: 3) {
+                                    Image(systemName: "pawprint.fill")
+                                        .font(.system(size: 11))
+                                    Text("+\(exchange.kibbleGain) Kibble")
+                                        .font(.system(size: 14, weight: .bold))
                                 }
-                                .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
-                                .padding(.horizontal, 16).padding(.vertical, 12)
-                                .background(RoundedRectangle(cornerRadius: 12)
-                                    .fill(canAfford
-                                          ? Color(red: 0.20, green: 0.40, blue: 0.65)
-                                          : Color(red: 0.92, green: 0.88, blue: 0.78)))
                             }
-                            .disabled(!canAfford)
+                            .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(canAfford
+                                      ? Color(red: 0.20, green: 0.40, blue: 0.65)
+                                      : Color(red: 0.92, green: 0.88, blue: 0.78)))
                         }
+                        .disabled(!canAfford)
+                        Text(exchange.isAtFlatRate
+                             ? "Today's discounts are used up — the rate is flat until tomorrow."
+                             : "Today's price. The next exchange costs more; resets tomorrow.")
+                            .font(.caption)
+                            .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
                         if viewModel.dogTags == 0 {
                             Text("Earn Dog Tags by merging animals to the Ambassador tier.")
                                 .font(.caption)
@@ -1263,8 +1269,8 @@ private struct WatchAdStripView: View {
 
 /// Cycles the global spawn multiplier (1X → 2X → 4X → 8X → 1X).
 /// Higher tiers unlock at player levels 5 / 10 / 20.
-/// Each tap of a board animal-spawner costs `spawnMultiplier` kibble
-/// and produces a piece at tier `spawnMultiplier - 1`.
+/// The multiplier selects the tier produced (1/2/4/8 → tier 0/1/2/3); each tap
+/// costs `2^tier` kibble, which is energy-neutral against merging it by hand.
 private struct SpawnMultiplierButton: View {
     let viewModel: MergeBoardViewModel
 

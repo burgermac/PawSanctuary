@@ -657,6 +657,115 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(loaded.commerce.lastWallTier)
     }
 
+    // MARK: v26 → v27 (Phase 2, economy correction)
+
+    /// Builds a v26 blob whose board holds a completed sub-object, a mid-merge
+    /// sub-object, and a deep animal — then checks the three things the migration
+    /// has to get right.
+    private func makeV26Blob() throws -> [String: Any] {
+        var state = makeSampleState()
+        state.board[0][0].item = BoardItem(chainID: "subobject.dog", tier: subObjectTopTier)
+        state.board[0][1].item = BoardItem(chainID: "subobject.cat", tier: 1)
+        state.board[1][0].item = BoardItem(chainID: ContentRegistry.animalChainID(.dog), tier: 9)
+        state.board[1][1].item = BoardItem(chainID: ContentRegistry.animalChainID(.cat), tier: 4)
+
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        for key in ["deepestUnlockedTier", "dogTagExchangesToday", "lastExchangeResetDate",
+                    "dogTagStoreSlots", "lastDogTagStoreRotation", "powerUpInventory"] {
+            obj.removeValue(forKey: key)
+        }
+        // Strip the rarity the current encoder writes — a real v26 save has none.
+        var board = try XCTUnwrap(obj["board"] as? [[[String: Any]]])
+        for r in board.indices {
+            for c in board[r].indices {
+                guard var item = board[r][c]["item"] as? [String: Any] else { continue }
+                item.removeValue(forKey: "rarity")
+                board[r][c]["item"] = item
+            }
+        }
+        obj["board"] = board
+        obj["version"] = 26
+        return obj
+    }
+
+    func testV26toV27MigrationAssignsSpeedBurstToExistingCompletedSubObjects() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV26Blob()))
+        let loaded = try XCTUnwrap(GameStore.load(), "v26 save should migrate to v27")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+
+        // A saved top-tier sub-object predates the roll: it gets the most common
+        // effect rather than a re-roll, so nobody is handed a rare one retroactively.
+        XCTAssertEqual(loaded.board[0][0].item?.rarity, .speed)
+
+        // A mid-merge sub-object is an inert intermediate and must stay unusable.
+        XCTAssertNil(loaded.board[0][1].item?.rarity)
+        let inert = try XCTUnwrap(loaded.board[0][1].item)
+        XCTAssertNil(SubObjectSystem.powerUpEffect(for: inert))
+    }
+
+    func testV26toV27MigrationSeedsDeepestTierFromTheBoard() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV26Blob()))
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.deepestUnlockedTier, 9,
+                       "should seed from the deepest animal actually present, not 0")
+    }
+
+    func testV26toV27MigrationInjectsDefaultsForNewFields() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV26Blob()))
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.dogTagExchangesToday, 0)
+        XCTAssertNil(loaded.lastExchangeResetDate)
+        XCTAssertEqual(loaded.dogTagStoreSlots, [])
+        XCTAssertNil(loaded.lastDogTagStoreRotation)
+        XCTAssertEqual(loaded.powerUpInventory.count, 6)
+        XCTAssertTrue(loaded.powerUpInventory.allSatisfy { $0 == nil })
+    }
+
+    /// The power-up inventory was never persisted before v27 — earned power-ups
+    /// silently vanished on every relaunch. Task 2.2 needs the rolled effect to
+    /// survive save/load, which requires its container to survive too.
+    func testPowerUpInventoryRoundTripsWithItsRolledRarity() throws {
+        var state = makeSampleState()
+        var powerUp = BoardItem(chainID: "subobject.hamster", tier: subObjectTopTier)
+        powerUp.rarity = .boardItemGrant
+        state.powerUpInventory[2] = powerUp
+        state.version = GameStore.currentVersion
+
+        try writeMainFile(try XCTUnwrap(JSONEncoder().encode(state)))
+        let loaded = try XCTUnwrap(GameStore.load())
+
+        XCTAssertEqual(loaded.powerUpInventory[2]?.chainID, "subobject.hamster")
+        XCTAssertEqual(loaded.powerUpInventory[2]?.rarity, .boardItemGrant,
+                       "the rolled effect must survive a save/load round trip")
+    }
+
+    /// The migration table is flat: every version dispatches straight to the current
+    /// schema without passing through the intervening steps. A save several versions
+    /// back must still pick up every field added since, or it decodes to nil and is
+    /// discarded as corrupt.
+    func testOlderSavesStillMigrateAfterTheV27Additions() throws {
+        for version in [12, 19, 23, 24, 25, 26] {
+            let data = try JSONEncoder().encode(makeSampleState())
+            var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            // Strip everything added after v8 — the worst case for a flat chain.
+            for key in ["commerce", "pityStates", "unlockedSuperpowerSpecies",
+                        "superpowerCooldownEnds", "lagomorphMergeCount", "lastMergeTimestamp",
+                        "equineSprintRemaining", "pouchItems", "pouchExpiryTimestamp",
+                        "ambassadorQuestProgress", "pendingMaterialLots",
+                        "deepestUnlockedTier", "dogTagExchangesToday", "dogTagStoreSlots",
+                        "powerUpInventory"] {
+                obj.removeValue(forKey: key)
+            }
+            obj["version"] = version
+            try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+            let loaded = GameStore.load()
+            XCTAssertNotNil(loaded, "a v\(version) save must still migrate, not be discarded")
+            XCTAssertEqual(loaded?.version, GameStore.currentVersion)
+        }
+    }
+
     func testV15toV16MigrationInjectsDefaultEventProgress() throws {
         let data = try JSONEncoder().encode(makeSampleState())
         var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -936,20 +1045,25 @@ final class PersistenceTests: XCTestCase {
         // level-1 band below is genuinely 2). Assert the literal band boundaries
         // from the switch in maxAchievableOrderTier(forPlayerLevel:) directly;
         // testMaxAchievableOrderTierIsNonDecreasing separately locks in monotonicity.
+        //
+        // Retuned in Phase 2 (Task 2.5). Under neutral pricing an item costs 2^tier,
+        // so the old table (reaching tier 14 by level 19) implied an average order
+        // cost of 2,526 kibble against ~745 daily income — a demand/supply ratio of
+        // 54. These bands are what put the curve on target; EconomyTests asserts it.
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 1),  2)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 3),  2)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 4),  5)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 6),  5)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 7),  8)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 9),  8)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 10), 10)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 12), 10)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 13), 12)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 15), 12)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 16), 12)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 18), 12)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 19), 14)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), 14)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 4),  3)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 6),  3)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 7),  4)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 9),  4)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 10), 5)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 30), 5)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 31), 7)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 40), 7)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 41), 8)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), 8)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 51), 9)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 99), 9)
     }
 
     func testMaxAchievableOrderTierIsNonDecreasing() {
@@ -979,11 +1093,15 @@ final class PersistenceTests: XCTestCase {
                        "Top-tier order roll at level 1 must clamp to the level's max achievable tier")
         XCTAssertEqual(maxTier, 2, "Level 1 max achievable tier")
 
-        // At level 19+ the cap itself reaches the top tier, so clamping is a no-op.
-        let maxTierHigh = maxAchievableOrderTier(forPlayerLevel: 19)
-        XCTAssertEqual(min(topTierRoll, maxTierHigh), topTierRoll,
-                       "Top-tier order roll at level 19 must not be clamped")
-        XCTAssertEqual(maxTierHigh, 14, "Level 19 max achievable tier reaches the top")
+        // Phase 2 (Task 2.5) lowered the cap curve so that orders stay affordable
+        // under neutral pricing, so a top-tier roll now clamps at EVERY level —
+        // tiers 10-14 are reached through recirculation, not by being ordered.
+        let maxTierHigh = maxAchievableOrderTier(forPlayerLevel: 99)
+        XCTAssertEqual(min(topTierRoll, maxTierHigh), maxTierHigh,
+                       "Top-tier order roll clamps to the endgame cap")
+        XCTAssertEqual(maxTierHigh, 9, "Endgame cap after the Phase 2 retune")
+        XCTAssertLessThan(maxTierHigh, topTierRoll,
+                          "no level should order a tier that costs 22 days of income")
     }
 
     // MARK: Phase 5 — Coins, weekly/monthly goals, area upgrades
