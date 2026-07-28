@@ -122,83 +122,74 @@ enum AnimalSpecies: String, CaseIterable, Codable {
         }
     }
 
-    /// The 15 unique tier names for this family, index 0 (smallest) through 14 (top tier).
+    /// The 12 unique tier names for this family, index 0 (smallest) through 11 (top tier).
+    ///
+    /// Four conceptual eras of three. Phase 2b dropped the fourth era of five
+    /// (old indices 9–11) because Phase 2's tuning capped order tiers at 9 against
+    /// a 15-tier chain, leaving the top six stages outside the order economy
+    /// entirely. At 12 tiers the top item costs 2,048 kibble rather than 16,384 —
+    /// about 2.7 days of total income instead of 22 — so it is orderable again.
     var tierNames: [String] {
         switch self {
         case .dog:       return ["Pup", "Kit", "Houndling",
                                  "Terrier", "Spaniel", "Scout",
                                  "Retriever", "Shepherd", "Husky",
-                                 "Alpha", "Guardian", "Sentinel",
                                  "Dire Wolf", "Mythic", "Primordial"]
         case .cat:       return ["Kitten", "Tabby", "Kit",
                                  "Ocelot", "Bobcat", "Lynx",
                                  "Puma", "Jaguar", "Leopard",
-                                 "Panther", "Tiger", "Lion",
                                  "Sabertooth", "Sovereign", "Apex"]
         case .rabbit:    return ["Bunny", "Cottontail", "Rex",
                                  "Angora", "Lop", "Harlequin",
                                  "Hare", "Jackrabbit", "Snow",
-                                 "Flemish", "Belgian", "Giant",
                                  "Desert", "Patagonian", "Mara"]
         case .bird:      return ["Hatchling", "Chick", "Fluff",
                                  "Sparrow", "Finch", "Starling",
                                  "Pigeon", "Magpie", "Jay",
-                                 "Falcon", "Hawk", "Owl",
                                  "Eagle", "Vulture", "Condor"]
         case .hamster:   return ["Mouse", "Hamster", "Gerbil",
                                  "Chipmunk", "Squirrel", "Rat",
                                  "Chinchilla", "Degu", "Beaver",
-                                 "Prairie Dog", "Marmot", "Nutria",
                                  "Muskrat", "Porcupine", "Capybara"]
         case .turtle:    return ["Hatch", "Gecko", "Anole",
                                  "Skink", "Racer", "Whiptail",
                                  "Iguana", "Monitor", "Tegu",
-                                 "Gila", "Spiny", "Python",
                                  "Boa", "Caiman", "Komodo Dragon"]
         case .fox:       return ["Fawn", "Muntjac", "Roe",
                                  "Fallow", "Chital", "Sika",
                                  "Caribou", "Reindeer", "Deer",
-                                 "Red", "Wapiti", "Elk",
                                  "Sambar", "Pere David", "Moose"]
         case .owl:       return ["Cub", "Sun", "Sloth",
                                  "Spectacled", "Moon", "Black",
                                  "Panda", "Cinnamon", "Glacier",
-                                 "Brown", "Kodiak", "Grizzly",
                                  "Polar", "Ancient", "Behemoth"]
         case .fish:      return ["Guppy", "Tetra", "Minnow",
                                  "Clown", "Perch", "Bass",
                                  "Mackerel", "Tuna", "Salmon",
-                                 "Sword", "Sail", "Marlin",
                                  "Shark", "Hammerhead", "Whale Shark"]
         case .lizard:    return ["Tadpole", "Froglet", "Newt",
                                  "Tree Frog", "Poison", "Reed",
                                  "Bullfrog", "Toad", "Horned",
-                                 "Salamander", "Axolotl", "Mud",
                                  "Hellbender", "Giant", "Goliath"]
         case .ferret:    return ["Joey", "Quokka", "Honey",
                                  "Potoroo", "Bandicoot", "Bilby",
                                  "Wallaby", "Pademelon", "Tree",
-                                 "Devil", "Quoll", "Wombat",
                                  "Koala", "Macropod", "Red Kangaroo"]
         case .parrot:    return ["Marmoset", "Tamarin", "Pygmy",
                                  "Squirrel", "Capuchin", "Owl",
                                  "Macaque", "Langur", "Guenon",
-                                 "Baboon", "Mandrill", "Gibbon",
                                  "Chimpanzee", "Orangutan", "Gorilla"]
         case .pony:      return ["Foal", "Pony", "Shetland",
                                  "Donkey", "Mule", "Burro",
                                  "Mustang", "Arabian", "Paint",
-                                 "Thoroughbred", "Shire", "Clydesdale",
                                  "Zebra", "Quagga", "Giraffe"]
         case .hedgehog:  return ["Piglet", "Warthog", "Peccary",
                                  "Tapir", "Boar", "Babirusa",
                                  "Hippo", "Pygmy", "Rhino",
-                                 "White Rhino", "Black", "Indian",
                                  "Seal", "African", "Mammoth"]
         case .guineaPig: return ["Calf", "Heifer", "Oxen",
                                  "Steer", "Bull", "Zebu",
                                  "Bison", "Yak", "Muskox",
-                                 "Highland", "Longhorn", "Gaur",
                                  "Buffalo", "Aurochs", "Titan"]
         }
     }
@@ -592,9 +583,13 @@ enum QuestGoal: Codable {
         }
     }
 
-    // MARK: Animal tier appearance — covers all 15 tiers (0–14).
-    // Tiers 0–8 preserve the original RescueStage colors/symbols; tiers 9–14 use
-    // higher-prestige purple/gold tones for the extended chain.
+    // MARK: Animal tier appearance — covers all 12 tiers (0–11).
+    // Tiers 0–8 preserve the original RescueStage colors/symbols; tiers 9–11 use
+    // higher-prestige gold tones for the top era.
+    //
+    // Phase 2b: the era that survived the 15→12 cut is the old top era (indices
+    // 12–14), so its appearance moved down with it. Elite/Champion/Legendary went
+    // with the dropped era.
     static func animalTierAppearance(tier: Int) -> (label: String, symbol: String, color: Color) {
         switch tier {
         case 0:  return ("Rescued",       "heart.fill",            .orange)
@@ -606,11 +601,8 @@ enum QuestGoal: Codable {
         case 6:  return ("Bonded",        "person.2.fill",         Color(red: 0.90, green: 0.35, blue: 0.60))
         case 7:  return ("Community Fav", "crown.fill",            Color(red: 0.95, green: 0.50, blue: 0.10))
         case 8:  return ("Ambassador",    "medal.fill",            Color(red: 0.95, green: 0.80, blue: 0.10))
-        case 9:  return ("Elite",         "bolt.circle.fill",      Color(red: 0.60, green: 0.20, blue: 0.90))
-        case 10: return ("Champion",      "sparkles",              Color(red: 0.50, green: 0.18, blue: 0.82))
-        case 11: return ("Legendary",     "seal.fill",             Color(red: 0.70, green: 0.50, blue: 0.90))
-        case 12: return ("Mythic",        "trophy.fill",           Color(red: 0.85, green: 0.68, blue: 0.10))
-        case 13: return ("Ancient",       "crown.circle.fill",     Color(red: 0.90, green: 0.75, blue: 0.08))
+        case 9:  return ("Mythic",        "trophy.fill",           Color(red: 0.85, green: 0.68, blue: 0.10))
+        case 10: return ("Ancient",       "crown.circle.fill",     Color(red: 0.90, green: 0.75, blue: 0.08))
         default: return ("Primordial",    "flame.fill",            Color(red: 0.95, green: 0.82, blue: 0.05))
         }
     }
@@ -1060,10 +1052,11 @@ func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
     case 1...3:   return 2
     case 4...6:   return 3
     case 7...9:   return 4
-    case 10...30: return 5    // holds through L30 — ratio stays near 0.60
-    case 31...40: return 7    // tightening; ratio ~0.86
-    case 41...50: return 8    // the ratio crosses 1.00 here — Phase 3's offer moment
-    default:      return 9    // persistent ~1.16, never punitive
+    case 10...20: return 5
+    case 21...30: return 6    // holds through L30 — ratio ~0.56
+    case 31...40: return 9    // tightening; ratio ~0.83
+    case 41...50: return 10   // the ratio crosses 1.00 here — Phase 3's offer moment
+    default:      return 11   // the top of the chain is orderable; ratio ~1.18
     }
 }
 
@@ -1078,12 +1071,12 @@ func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
 /// (20/20/20/20/10/10 across tiers 0-14) the average order cost 2,526 kibble
 /// against a daily income of ~745 — a ratio of 54.
 let orderTierBands: [(probability: Double, tiers: [Int])] = [
-    (0.38, [0, 1, 2]),
-    (0.28, [3, 4]),
-    (0.24, [5, 6]),
-    (0.06, [7, 8]),
-    (0.02, [9, 10]),
-    (0.02, [11]),
+    (0.460, [0, 1, 2]),
+    (0.300, [3, 4]),
+    (0.180, [5, 6]),
+    (0.040, [7, 8]),
+    (0.015, [9, 10]),
+    (0.005, [11]),
 ]
 
 // ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
@@ -1130,10 +1123,11 @@ let recirculationTierOffset = 2
 /// total daily income of ~745 — the same unbounded-faucet shape Task 2.2 removed from
 /// Spawner Refill, just denominated in items.
 ///
-/// Capping at tier 7 (128 kibble, ~17% of a day's income per grant) keeps the channel
-/// meaningful for shallow players — where `deepest − 2` is the binding term — while
-/// stopping it outrunning demand in the endgame.
-let recirculationMaxItemTier = 7
+/// Re-derived in Phase 2b against the 12-tier chain, where the top item costs 2,048
+/// rather than 16,384. Tier 6 (64 kibble) keeps the channel meaningful for shallow
+/// players — where `deepest − 2` is the binding term — while stopping it outrunning
+/// demand in the endgame.
+let recirculationMaxItemTier = 6
 
 /// How far below an order's own `wantedTier` its board-item reward lands.
 /// Always a fraction of what the order asked for, never the whole thing.
@@ -1153,6 +1147,21 @@ let dogTagStoreMaxOffset   = 1   // deepest − 1 is the dearest
 /// Anchored against the measured reference band of ~9–70 gems per item.
 let dogTagStoreBasePrice   = 15
 let dogTagStorePriceStep   = 18
+
+// ── Selling animals for coins (Phase 2b) ──────────────────────
+
+/// Coins paid for selling an animal at each 0-based tier — one entry per tier,
+/// a smooth ~2.5× geometric series.
+///
+/// Re-derived in Phase 2b rather than spliced: deleting old indices 9–11 from the
+/// previous 15-entry table left a 500 → 10,000 jump.
+///
+/// The shape that matters is `sellValue / 2^tier` — coins returned per kibble the
+/// item cost to build. That ratio climbs monotonically from 1.0 at tier 0 to ~8.8
+/// at tier 11, so selling is a late-game liquidity option and never an early-game
+/// grind. (Coins and kibble are not interchangeable — there is no coins→kibble
+/// path — so the absolute comparison is a design signal, not an arbitrage check.)
+let animalSellValues = [1, 2, 5, 12, 30, 75, 180, 450, 1100, 2800, 7000, 18000]
 
 // ── XP constants ──────────────────────────────────────────────
 let xpPerMergeBase     = 5    // multiplied by srcItem.stage.rawValue in code

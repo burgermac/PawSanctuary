@@ -707,8 +707,13 @@ final class PersistenceTests: XCTestCase {
     func testV26toV27MigrationSeedsDeepestTierFromTheBoard() throws {
         try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV26Blob()))
         let loaded = try XCTUnwrap(GameStore.load())
-        XCTAssertEqual(loaded.deepestUnlockedTier, 9,
-                       "should seed from the deepest animal actually present, not 0")
+        // The board's deepest animal is at old tier 9, so v27 seeds 9 — and then the
+        // v28 remap collapses the dropped era onto 8, for both the item and the
+        // scalar. The two steps composing correctly is the point of this assertion.
+        XCTAssertEqual(loaded.deepestUnlockedTier, 8,
+                       "should seed from the deepest animal present, then follow the remap")
+        XCTAssertEqual(loaded.board[1][0].item?.tier, 8,
+                       "the item it was seeded from must land on the same tier")
     }
 
     func testV26toV27MigrationInjectsDefaultsForNewFields() throws {
@@ -763,6 +768,116 @@ final class PersistenceTests: XCTestCase {
             let loaded = GameStore.load()
             XCTAssertNotNil(loaded, "a v\(version) save must still migrate, not be discarded")
             XCTAssertEqual(loaded?.version, GameStore.currentVersion)
+        }
+    }
+
+    // MARK: v27 → v28 (Phase 2b, 15-tier chains become 12)
+
+    func testTierRemapCollapsesTheDroppedEraAndShiftsTheTop() {
+        // Eras 1-3 survive untouched.
+        for old in 0...8 { XCTAssertEqual(GameStore.remappedAnimalTier(old), old) }
+        // The dropped era collapses onto the last surviving tier.
+        for old in 9...11 { XCTAssertEqual(GameStore.remappedAnimalTier(old), 8) }
+        // The old top era shifts down by three.
+        XCTAssertEqual(GameStore.remappedAnimalTier(12), 9)
+        XCTAssertEqual(GameStore.remappedAnimalTier(13), 10)
+        XCTAssertEqual(GameStore.remappedAnimalTier(14), 11)
+        // Nothing may land outside the new chain.
+        for old in 0...20 {
+            XCTAssertLessThanOrEqual(GameStore.remappedAnimalTier(old), 11)
+            XCTAssertGreaterThanOrEqual(GameStore.remappedAnimalTier(old), 0)
+        }
+    }
+
+    /// A v27 save carrying old tiers 8/10/13/14 in every tier-bearing field.
+    private func makeV27BlobWithOldTiers() throws -> [String: Any] {
+        let dog = ContentRegistry.animalChainID(.dog)
+        var state = makeSampleState()
+
+        state.board[0][0].item = BoardItem(chainID: dog, tier: 8)
+        state.board[0][1].item = BoardItem(chainID: dog, tier: 10)
+        state.board[1][0].item = BoardItem(chainID: dog, tier: 13)
+        state.board[1][1].item = BoardItem(chainID: dog, tier: 14)
+        state.inventory[0]     = BoardItem(chainID: dog, tier: 13)
+        state.powerUpInventory[0] = BoardItem(chainID: dog, tier: 14)
+        state.pouchItems[0]    = BoardItem(chainID: dog, tier: 10)
+        state.deepestUnlockedTier = 14
+        state.commerce.lastWallTier = 13
+
+        state.adoptionOrders = [AdoptionOrder(
+            familyIndex: 0, wantedChainID: dog, wantedTier: 13, wantedCount: 1,
+            timeRemaining: 900,
+            rewards: [OrderReward(kind: .boardItem, amount: 1, payloadID: dog, payloadTier: 10)])]
+        state.activeQuests = [Quest(goal: .reachTier(.animal, tier: 14, count: 1),
+                                    difficulty: .hard, dogTagReward: 5, kibbleReward: 0)]
+        state.dogTagStoreSlots = [DogTagStoreSlot(chainID: dog, tier: 13, priceDogTags: 40)]
+
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj["version"] = 27
+        return obj
+    }
+
+    func testV27toV28RemapsEveryTierBearingField() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV27BlobWithOldTiers()))
+        let loaded = try XCTUnwrap(GameStore.load(), "v27 save should migrate to v28")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+
+        // The mapping under test: old 8/10/13/14 → new 8/8/10/11.
+        XCTAssertEqual(loaded.board[0][0].item?.tier, 8,  "board: unchanged era")
+        XCTAssertEqual(loaded.board[0][1].item?.tier, 8,  "board: dropped era collapses")
+        XCTAssertEqual(loaded.board[1][0].item?.tier, 10, "board: top era shifts")
+        XCTAssertEqual(loaded.board[1][1].item?.tier, 11, "board: old top becomes new top")
+
+        XCTAssertEqual(loaded.inventory[0]?.tier, 10,        "animal inventory")
+        XCTAssertEqual(loaded.powerUpInventory[0]?.tier, 11, "power-up inventory")
+        XCTAssertEqual(loaded.pouchItems[0]?.tier, 8,        "Marsupials pouch")
+
+        XCTAssertEqual(loaded.adoptionOrders[0].wantedTier, 10, "order demand")
+        XCTAssertEqual(loaded.adoptionOrders[0].rewards.first?.payloadTier, 8, "order board-item payout")
+
+        if case let .reachTier(_, tier, _) = loaded.activeQuests[0].goal {
+            XCTAssertEqual(tier, 11, "quest goal")
+        } else {
+            XCTFail("quest goal should still be reachTier")
+        }
+
+        XCTAssertEqual(loaded.dogTagStoreSlots[0].tier, 10, "Dog Tag store stock")
+        XCTAssertEqual(loaded.deepestUnlockedTier, 11,      "deepestUnlockedTier")
+        XCTAssertEqual(loaded.commerce.lastWallTier, 10,    "commerce.lastWallTier")
+    }
+
+    /// Every migrated tier must resolve to a real item in the 12-tier registry —
+    /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
+    func testEveryMigratedTierResolvesInTheRegistry() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV27BlobWithOldTiers()))
+        let loaded = try XCTUnwrap(GameStore.load())
+        let items = loaded.board.flatMap { $0.compactMap(\.item) }
+            + loaded.inventory.compactMap { $0 }
+            + loaded.powerUpInventory.compactMap { $0 }
+            + loaded.pouchItems.compactMap { $0 }
+        XCTAssertFalse(items.isEmpty)
+        for item in items {
+            XCTAssertNotNil(ContentRegistry.shared.tier(item.chainID, item.tier),
+                            "\(item.chainID) tier \(item.tier) does not resolve")
+        }
+    }
+
+    /// The dispatch table is flat, so a pre-v28 save of ANY version has to receive
+    /// the tier remap — not just one that happened to be at v27.
+    func testOlderSavesAlsoGetTheTierRemap() throws {
+        let dog = ContentRegistry.animalChainID(.dog)
+        for version in [19, 23, 25, 26] {
+            var state = makeSampleState()
+            state.board[0][0].item = BoardItem(chainID: dog, tier: 14)
+            let data = try JSONEncoder().encode(state)
+            var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            obj["version"] = version
+            try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+            let loaded = try XCTUnwrap(GameStore.load(), "v\(version) save should migrate")
+            XCTAssertLessThanOrEqual(loaded.board[0][0].item?.tier ?? 99, 11,
+                                     "a v\(version) save must not arrive holding a 15-tier index")
         }
     }
 
@@ -1057,13 +1172,24 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 7),  4)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 9),  4)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 10), 5)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 30), 5)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 31), 7)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 40), 7)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 41), 8)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), 8)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 51), 9)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 99), 9)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 20), 5)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 21), 6)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 30), 6)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 31), 9)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 40), 9)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 41), 10)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), 10)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 51), 11)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 99), 11)
+    }
+
+    /// Phase 2b's whole purpose: the top of the chain must be inside the order
+    /// economy. At 15 tiers the cap stopped at 9, stranding stages 10-15.
+    func testEndgameOrdersCanReachTheTopOfTheChain() {
+        let topTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(.dog))?.maxTier
+        XCTAssertEqual(topTier, 11, "animal chains are 12 tiers as of Phase 2b")
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 60), topTier,
+                       "the endgame must be able to order the top tier")
     }
 
     func testMaxAchievableOrderTierIsNonDecreasing() {
@@ -1085,7 +1211,7 @@ final class PersistenceTests: XCTestCase {
         // (RescueStage's 9-stage system predates the per-family 15-tier chains;
         // see its doc comment). This test previously simulated a RescueStage-based
         // formula that no longer exists in production.
-        let topTierRoll = 14   // highest possible animal tier index (e.g. Cervids' Moose)
+        let topTierRoll = 11   // highest animal tier index (e.g. Cervids' Moose) after Phase 2b
 
         // At level 1-3 a top-tier roll must clamp down to the level's cap.
         let maxTier = maxAchievableOrderTier(forPlayerLevel: 1)
@@ -1093,15 +1219,13 @@ final class PersistenceTests: XCTestCase {
                        "Top-tier order roll at level 1 must clamp to the level's max achievable tier")
         XCTAssertEqual(maxTier, 2, "Level 1 max achievable tier")
 
-        // Phase 2 (Task 2.5) lowered the cap curve so that orders stay affordable
-        // under neutral pricing, so a top-tier roll now clamps at EVERY level —
-        // tiers 10-14 are reached through recirculation, not by being ordered.
+        // Phase 2b brought the top of the chain back inside the order economy:
+        // at 12 tiers the top item costs 2,048 kibble rather than 16,384, so the
+        // endgame cap reaches it and a top-tier roll is no longer clamped.
         let maxTierHigh = maxAchievableOrderTier(forPlayerLevel: 99)
-        XCTAssertEqual(min(topTierRoll, maxTierHigh), maxTierHigh,
-                       "Top-tier order roll clamps to the endgame cap")
-        XCTAssertEqual(maxTierHigh, 9, "Endgame cap after the Phase 2 retune")
-        XCTAssertLessThan(maxTierHigh, topTierRoll,
-                          "no level should order a tier that costs 22 days of income")
+        XCTAssertEqual(maxTierHigh, 11, "Endgame cap after the Phase 2b retune")
+        XCTAssertEqual(min(topTierRoll, maxTierHigh), topTierRoll,
+                       "a top-tier roll at max level must not be clamped")
     }
 
     // MARK: Phase 5 — Coins, weekly/monthly goals, area upgrades

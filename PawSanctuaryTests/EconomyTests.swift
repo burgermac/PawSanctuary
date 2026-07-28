@@ -39,6 +39,74 @@ final class EconomyTests: XCTestCase {
         XCTAssertEqual(spawnCost(forTier: 14), 16384)
     }
 
+    // MARK: Phase 2b — 12-tier chains
+
+    func testEveryFamilyHasTwelveTiers() {
+        for species in AnimalSpecies.allCases {
+            XCTAssertEqual(species.tierNames.count, 12, "\(species.name) should have 12 tiers")
+            XCTAssertEqual(Set(species.tierNames).count, 12, "\(species.name) has duplicate names")
+        }
+        XCTAssertEqual(AnimalSpecies.allCases.count * 12, 180)
+    }
+
+    func testDroppedEraIsGoneAndSurvivingErasKeptTheirNames() {
+        // Canines, the spec's worked example.
+        XCTAssertEqual(AnimalSpecies.dog.tierNames,
+                       ["Pup", "Kit", "Houndling",
+                        "Terrier", "Spaniel", "Scout",
+                        "Retriever", "Shepherd", "Husky",
+                        "Dire Wolf", "Mythic", "Primordial"])
+        for dropped in ["Alpha", "Guardian", "Sentinel"] {
+            XCTAssertFalse(AnimalSpecies.dog.tierNames.contains(dropped))
+        }
+    }
+
+    func testEveryAnimalChainRegistersTwelveTiersWithABadgedTop() {
+        for species in AnimalSpecies.allCases {
+            let chain = ContentRegistry.shared.chain(ContentRegistry.animalChainID(species))
+            XCTAssertEqual(chain?.maxTier, 11, "\(species.name)")
+            XCTAssertNotNil(chain?.tiers.last?.badge, "\(species.name) top tier should carry the medal")
+            XCTAssertNil(chain?.tiers[10].badge, "\(species.name) only the top tier is badged")
+        }
+    }
+
+    func testTopTierItemIsReachableWithinAFewDaysOfIncome() {
+        // The reason for Phase 2b: at 15 tiers the top item cost 16,384 kibble,
+        // about 22 days of total income, so it could never be ordered.
+        let topCost = spawnCost(forTier: 11)
+        XCTAssertEqual(topCost, 2048)
+        let daysOfIncome = Double(topCost) / Double(EconomySimulation.dailySupply(level: 55))
+        XCTAssertLessThan(daysOfIncome, 3.0, "top tier should be ~2.7 days of total income")
+    }
+
+    /// Sell value must climb faster than build cost, so selling is a late-game
+    /// liquidity option rather than something to farm early.
+    func testSellValueRatioClimbsWithTier() {
+        XCTAssertEqual(animalSellValues.count, 12)
+        let ratios = animalSellValues.enumerated().map { Double($1) / Double(spawnCost(forTier: $0)) }
+        for (a, b) in zip(ratios, ratios.dropFirst()) {
+            XCTAssertLessThanOrEqual(a, b, "coins-per-kibble must never fall as tier rises")
+        }
+        XCTAssertGreaterThan(ratios.last! / ratios.first!, 5.0,
+                             "the top tier should be worth substantially more per kibble")
+    }
+
+    func testSellValuesAreStrictlyIncreasingAndSmooth() {
+        for (a, b) in zip(animalSellValues, animalSellValues.dropFirst()) {
+            XCTAssertGreaterThan(b, a)
+            let step = Double(b) / Double(a)
+            XCTAssertGreaterThan(step, 1.8, "no flat spot in the series")
+            XCTAssertLessThan(step, 3.2, "no splice-shaped jump in the series")
+        }
+    }
+
+    func testSuperpowerUnlockTierSurvivesTheCut() {
+        // Unlock sits at the start of Era 3, which was not the era removed.
+        XCTAssertEqual(Superpower.unlockTier, 6)
+        XCTAssertEqual(AnimalSpecies.dog.tierNames[Superpower.unlockTier], "Retriever")
+        XCTAssertLessThan(Superpower.unlockTier, 12)
+    }
+
     // MARK: Task 2.2 — rarity-selected effects, no kibble
 
     /// The whole point of Task 2.2: no sub-object outcome pays kibble.

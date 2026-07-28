@@ -349,11 +349,13 @@ struct ContentRegistry {
         )
     }
 
-    /// Builds a 15-tier animal chain from a species.
+    /// Builds an animal chain from a species — one tier per entry in `tierNames`
+    /// (12 as of Phase 2b).
     /// scoreValue = (index + 1) * 25, xpValue = (index + 1) * xpPerMergeBase (1-based).
-    /// Badge ("medal.fill") is on the top tier (index 14). Colors come from
-    /// QuestGoal.animalTierAppearance so all 15 tiers have distinct hues.
+    /// Badge ("medal.fill") is on the top tier. Colors come from
+    /// QuestGoal.animalTierAppearance so every tier has a distinct hue.
     private static func makeAnimalChain(_ s: AnimalSpecies) -> MergeChain {
+        let topIndex = s.tierNames.count - 1
         let tiers = s.tierNames.enumerated().map { (index, tierName) -> ChainTier in
             ChainTier(
                 name: tierName,
@@ -361,7 +363,7 @@ struct ContentRegistry {
                 symbol: s.sfSymbol,
                 color: QuestGoal.animalTierAppearance(tier: index).color,
                 tint: s.tintColor,
-                badge: index == 14 ? "medal.fill" : nil,
+                badge: index == topIndex ? "medal.fill" : nil,
                 scoreValue: (index + 1) * 25,
                 xpValue: (index + 1) * xpPerMergeBase
             )

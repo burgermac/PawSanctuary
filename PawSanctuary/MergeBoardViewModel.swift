@@ -467,9 +467,9 @@ class MergeBoardViewModel {
 
     /// Coin reward for selling an animal at the given tier index (0 = base, 14 = top tier).
     func sellValue(forTier tier: Int) -> Int {
-        let scale = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 25000, 100000]
-        guard tier >= 0 && tier < scale.count else { return tier < 0 ? 1 : scale.last! }
-        return scale[tier]
+        guard tier >= 0 else { return animalSellValues[0] }
+        guard tier < animalSellValues.count else { return animalSellValues[animalSellValues.count - 1] }
+        return animalSellValues[tier]
     }
 
     var selectedItemInfo: (text: String, chainID: ChainID?)? {
