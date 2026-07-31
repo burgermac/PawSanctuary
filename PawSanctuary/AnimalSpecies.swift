@@ -1073,6 +1073,14 @@ let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 2 rows start lock
 /// Level at which each board row (by index) unlocks. Rows 0–6 start unlocked.
 let boardRowUnlockLevels: [Int: Int] = [7: 3, 8: 8]
 
+/// Phase 4, Task 4.2: every cell in a locked row is pre-seeded with a visible
+/// Kibble-chain cache at this tier, released (made interactive) the instant
+/// the row unlocks — `checkLevelUnlock` only flips `isUnlocked`; the cache is
+/// already sitting there. Authored per row, not derived: deeper unlocks get a
+/// richer cache, and there's no principled formula worth inventing for two
+/// data points.
+let lockedRowCacheTier: [Int: Int] = [7: 2, 8: 3]
+
 // ── Gameplay scaling helpers (package-internal so tests can reach them) ──────
 
 /// Maximum material tier that drops from a Toolbox at `level`.

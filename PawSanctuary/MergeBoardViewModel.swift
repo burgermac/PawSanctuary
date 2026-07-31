@@ -761,14 +761,22 @@ class MergeBoardViewModel {
 
     private func buildEmptyBoard() {
         board = (0..<boardRows).map { row in
-            (0..<cols).map { col in
-                // Rows listed in boardRowUnlockLevels start locked; all others start unlocked.
-                let isLocked = boardRowUnlockLevels[row] != nil
-                return BoardCell(position: GridPosition(row: row, col: col),
-                                 item: nil, isUnlocked: !isLocked)
-            }
+            (0..<cols).map { col in freshBoardCell(row: row, col: col) }
         }
         rows = boardRows
+    }
+
+    /// A cell for `row`/`col` respecting the row's lock state. Rows listed in
+    /// `boardRowUnlockLevels` start locked and pre-seeded with a visible Kibble
+    /// cache (Phase 4, Task 4.2) — `checkLevelUnlock` only flips `isUnlocked`
+    /// when the row unlocks, so the cache just becomes interactive in place.
+    private func freshBoardCell(row: Int, col: Int) -> BoardCell {
+        guard boardRowUnlockLevels[row] != nil else {
+            return BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+        }
+        let tier = lockedRowCacheTier[row] ?? 0
+        let cache = BoardItem(chainID: ContentRegistry.kibbleCurrencyChainID, tier: tier)
+        return BoardCell(position: GridPosition(row: row, col: col), item: cache, isUnlocked: false)
     }
 
     func setupQuests() {
@@ -880,21 +888,14 @@ class MergeBoardViewModel {
         let savedCols = board.first.map(\.count) ?? cols
         if savedCols < cols {
             for r in 0..<rows {
-                let extras = (savedCols..<cols).map { c in
-                    BoardCell(position: GridPosition(row: r, col: c), item: nil,
-                              isUnlocked: boardRowUnlockLevels[r] == nil)
-                }
+                let extras = (savedCols..<cols).map { c in freshBoardCell(row: r, col: c) }
                 board[r].append(contentsOf: extras)
             }
         }
         // Migration: if saved board has fewer than 9 rows, pad to full size.
         if board.count < boardRows {
             for r in board.count..<boardRows {
-                let isLocked = boardRowUnlockLevels[r] != nil
-                board.append((0..<cols).map { c in
-                    BoardCell(position: GridPosition(row: r, col: c),
-                              item: nil, isUnlocked: !isLocked)
-                })
+                board.append((0..<cols).map { c in freshBoardCell(row: r, col: c) })
             }
         }
         rows = boardRows
@@ -1365,7 +1366,7 @@ class MergeBoardViewModel {
         // DragGesture in MergeBoardView, which calls attemptMergeOrMove directly).
         if let sel = selectedCell, sel == pos {
             selectedCell = nil
-        } else if board[pos.row][pos.col].item != nil {
+        } else if board[pos.row][pos.col].item != nil, board[pos.row][pos.col].isUnlocked {
             inventoryStore.selectedInventorySlot = nil
             selectedCell = pos
             maybeShowSellVsOrderNudge(at: pos)
@@ -1502,6 +1503,7 @@ class MergeBoardViewModel {
     func attemptMergeOrMove(from: GridPosition, to: GridPosition) {
         guard from != to,
               to.row >= 0, to.row < rows, to.col >= 0, to.col < cols,
+              board[from.row][from.col].isUnlocked,
               board[to.row][to.col].isUnlocked else { return }
 
         if let srcProducer = board[from.row][from.col].producer {
@@ -2400,9 +2402,11 @@ class MergeBoardViewModel {
     /// reaches a richer tier first — tapping is the "collect now" half of the
     /// tradeoff. Returns `false` (no-op) for anything that isn't a currency item,
     /// so callers can chain it into their own tap-dispatch without a separate guard.
+    /// Also `false` for a locked cache (Task 4.2) — visible, but not yet collectible.
     @discardableResult
     func collectCurrencyItem(at pos: GridPosition) -> Bool {
-        guard let item = board[pos.row][pos.col].item,
+        guard board[pos.row][pos.col].isUnlocked,
+              let item = board[pos.row][pos.col].item,
               ContentRegistry.shared.chain(item.chainID)?.category == .currency else { return false }
         board[pos.row][pos.col].item = nil
         if selectedCell == pos { selectedCell = nil }
