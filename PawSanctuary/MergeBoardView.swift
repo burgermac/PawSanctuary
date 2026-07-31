@@ -541,18 +541,21 @@ struct MergeBoardView: View {
                               ? Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.12)
                               : Color(red: 0.92, green: 0.95, blue: 1.0)))
 
-                    // Shop button
-                    Button(action: { activeRoute = .shop }) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "cart.fill")
-                                .font(.system(size: 18))
-                            Text("Shop")
-                                .font(.system(size: 9, weight: .semibold))
+                    // Shop button — hidden until the D7 monetization gate flips
+                    // (Task 3.4): a fresh account sees no store push at all.
+                    if viewModel.isMonetizationUnlocked {
+                        Button(action: { activeRoute = .shop }) {
+                            VStack(spacing: 2) {
+                                Image(systemName: "cart.fill")
+                                    .font(.system(size: 18))
+                                Text("Shop")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
                     }
                 }
                 .padding(.horizontal)
@@ -659,7 +662,7 @@ struct MergeBoardView: View {
                 #endif
             }
         case .kibbleRefill:
-            KibbleRefillSheet(viewModel: viewModel)
+            KibbleRefillSheet(viewModel: viewModel, storeManager: storeManager)
         case .mergeProgression(let chainID):
             MergeProgressionView(chainID: chainID)
         }
@@ -1083,119 +1086,40 @@ private struct PassDailyClaimView: View {
 // MARK: - KIBBLE REFILL SHEET
 // ============================================================
 
-/// Shown when a player tries to spawn without enough kibble.
-/// Offers a rewarded-ad top-up (+25, up to 4x/day) and dog-tag exchanges.
+/// The designed wall moment (Phase 3, Tasks 3.1/3.3/3.4): shown when a player
+/// tries to spawn without enough kibble. Pre-gate (D7 session-one silence)
+/// it's just the status card and the nearest unfinished order — no ad, no
+/// exchange, no bundle. Post-gate it's the full ladder: rewarded ad first
+/// (free, capped), then the Dog Tag exchange, then a paid bundle — followed
+/// by the nearest unfinished order either way, so the player leaves seeing
+/// what's still open rather than just what they bought.
 private struct KibbleRefillSheet: View {
     let viewModel: MergeBoardViewModel
+    let storeManager: StoreManager
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Current kibble status
-                    HStack(spacing: 10) {
-                        Image(systemName: "pawprint.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(Color(red: 0.28, green: 0.15, blue: 0.02))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("You're out of kibble")
-                                .font(.headline)
-                                .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
-                            Text("\(viewModel.kibble) / \(kibbleRegenCap) — refills 1 every 2 min")
-                                .font(.caption)
-                                .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
-                        }
-                        Spacer()
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 14)
-                        .fill(Color(red: 1.0, green: 0.97, blue: 0.90)))
+                    kibbleStatusCard
 
-                    // Watch Ad section
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Watch an Ad").font(.subheadline.bold())
-                            .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        if viewModel.remainingAdWatches > 0 {
-                            Button(action: {
-                                viewModel.watchRewardedAd()
-                                dismiss()
-                            }) {
-                                HStack {
-                                    Image(systemName: "play.rectangle.fill")
-                                        .font(.system(size: 16))
-                                    Text("Watch Ad for +\(viewModel.effectiveAdKibble) Kibble")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Spacer()
-                                    Text("\(viewModel.remainingAdWatches) left today")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.white.opacity(0.85))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16).padding(.vertical, 12)
-                                .background(RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(red: 0.25, green: 0.55, blue: 0.35)))
-                            }
-                        } else {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
-                                Text("No more ads available today")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.gray.opacity(0.12)))
-                        }
-                    }
-
-                    Divider()
-
-                    // Dog Tag exchange section
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Exchange Dog Tags").font(.subheadline.bold())
-                            .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        // One rung at a time: each exchange makes the next dearer,
-                        // and the ladder resets tomorrow (Task 2.4).
-                        let exchange = viewModel.currentTagExchange
-                        let canAfford = viewModel.dogTags >= exchange.dogTagCost
-                        Button(action: {
-                            viewModel.exchangeTagsForKibble()
-                            dismiss()
-                        }) {
-                            HStack {
-                                Image(systemName: "tag.fill")
-                                    .font(.system(size: 14))
-                                Text("\(exchange.dogTagCost) Dog Tags")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Spacer()
-                                HStack(spacing: 3) {
-                                    Image(systemName: "pawprint.fill")
-                                        .font(.system(size: 11))
-                                    Text("+\(exchange.kibbleGain) Kibble")
-                                        .font(.system(size: 14, weight: .bold))
-                                }
-                            }
-                            .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
-                            .padding(.horizontal, 16).padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 12)
-                                .fill(canAfford
-                                      ? Color(red: 0.20, green: 0.40, blue: 0.65)
-                                      : Color(red: 0.92, green: 0.88, blue: 0.78)))
-                        }
-                        .disabled(!canAfford)
-                        Text(exchange.isAtFlatRate
-                             ? "Today's discounts are used up — the rate is flat until tomorrow."
-                             : "Today's price. The next exchange costs more; resets tomorrow.")
-                            .font(.caption)
+                    if viewModel.isMonetizationUnlocked {
+                        watchAdSection
+                        Divider()
+                        dogTagExchangeSection
+                        Divider()
+                        KibbleRefillBundleRow(viewModel: viewModel, storeManager: storeManager)
+                    } else {
+                        Text("Kibble refills on its own — check back in a bit!")
+                            .font(.subheadline)
                             .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
-                        if viewModel.dogTags == 0 {
-                            Text("Earn Dog Tags by merging animals to the Ambassador tier.")
-                                .font(.caption)
-                                .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
-                                .padding(.top, 2)
-                        }
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    if let order = viewModel.nearestIncompleteOrder {
+                        nearestOrderFooter(order)
                     }
                 }
                 .padding()
@@ -1212,54 +1136,161 @@ private struct KibbleRefillSheet: View {
         }
         .presentationDetents([.medium, .large])
     }
+
+    private var kibbleStatusCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: 28))
+                .foregroundColor(Color(red: 0.28, green: 0.15, blue: 0.02))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("You're out of kibble")
+                    .font(.headline)
+                    .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                Text("\(viewModel.kibble) / \(kibbleRegenCap) — refills 1 every 2 min")
+                    .font(.caption)
+                    .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+            }
+            Spacer()
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color(red: 1.0, green: 0.97, blue: 0.90)))
+    }
+
+    @ViewBuilder
+    private var watchAdSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Watch an Ad").font(.subheadline.bold())
+                .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
+            if viewModel.remainingAdWatches > 0 {
+                Button(action: {
+                    viewModel.watchRewardedAd()
+                    dismiss()
+                }) {
+                    HStack {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 16))
+                        Text("Watch Ad for +\(viewModel.effectiveAdKibble) Kibble")
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                        Text("\(viewModel.remainingAdWatches) left today")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(red: 0.25, green: 0.55, blue: 0.35)))
+                }
+            } else {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
+                    Text("No more ads available today")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.12)))
+            }
+        }
+    }
+
+    private var dogTagExchangeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Exchange Dog Tags").font(.subheadline.bold())
+                .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
+            // One rung at a time: each exchange makes the next dearer,
+            // and the ladder resets tomorrow (Task 2.4).
+            let exchange = viewModel.currentTagExchange
+            let canAfford = viewModel.dogTags >= exchange.dogTagCost
+            Button(action: {
+                viewModel.exchangeTagsForKibble()
+                dismiss()
+            }) {
+                HStack {
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 14))
+                    Text("\(exchange.dogTagCost) Dog Tags")
+                        .font(.system(size: 14, weight: .semibold))
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 11))
+                        Text("+\(exchange.kibbleGain) Kibble")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                }
+                .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(canAfford
+                          ? Color(red: 0.20, green: 0.40, blue: 0.65)
+                          : Color(red: 0.92, green: 0.88, blue: 0.78)))
+            }
+            .disabled(!canAfford)
+            Text(exchange.isAtFlatRate
+                 ? "Today's discounts are used up — the rate is flat until tomorrow."
+                 : "Today's price. The next exchange costs more; resets tomorrow.")
+                .font(.caption)
+                .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+            if viewModel.dogTags == 0 {
+                Text("Earn Dog Tags by merging animals to the Ambassador tier.")
+                    .font(.caption)
+                    .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    private func nearestOrderFooter(_ order: AdoptionOrder) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: order.iconSymbol)
+                .font(.system(size: 18))
+                .foregroundColor(order.iconTint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(order.family.name) is still waiting for \(order.orderDescription)")
+                    .font(.caption.bold())
+                    .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                Text("\(order.timeText) left")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 0.98, green: 0.94, blue: 0.90)))
+    }
 }
 
-// ============================================================
-// MARK: - WATCH AD STRIP (legacy — kept for potential reuse)
-// ============================================================
-
-private struct WatchAdStripView: View {
+/// The "bundle" rung of the Task 3.1 ladder: the Starter Bundle framed as a
+/// welcome offer before the player's first purchase (Task 3.4's first-purchase
+/// offer), the smallest Energy Pack afterward.
+private struct KibbleRefillBundleRow: View {
     let viewModel: MergeBoardViewModel
+    let storeManager: StoreManager
 
     var body: some View {
-        Button(action: { viewModel.watchRewardedAd() }) {
-            HStack(spacing: 8) {
-                if viewModel.isWatchingAd {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.8)
-                    Text("Loading ad...")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
+        VStack(alignment: .leading, spacing: 8) {
+            if viewModel.commerce.hasEverPurchased {
+                Text("Or Refill With a Bundle").font(.subheadline.bold())
+                    .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
+                if let contents = IAPProduct.energySmall.energyPackContents {
+                    EnergyPackRow(iap: .energySmall, contents: contents, storeManager: storeManager)
+                }
+            } else {
+                Label("Welcome Offer", systemImage: "gift.fill")
+                    .font(.subheadline.bold())
+                    .foregroundColor(Color(red: 0.75, green: 0.35, blue: 0.15))
+                if let product = storeManager.products.first(where: { $0.id == IAPProduct.starterBundle.rawValue }) {
+                    ShopItemRow(product: product, iap: .starterBundle, storeManager: storeManager)
                 } else {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white)
-                    Text("Watch Ad")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                    HStack(spacing: 2) {
-                        Image(systemName: "pawprint.fill")
-                            .font(.system(size: 10))
-                        Text("+\(adKibbleReward)")
-                            .font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundColor(.white.opacity(0.9))
-                    Spacer()
-                    Text("\(viewModel.remainingAdWatches) left today")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.8))
+                    ShopItemPreviewRow(product: .starterBundle)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 10)
-                .fill(viewModel.isWatchingAd
-                      ? Color(red: 0.45, green: 0.45, blue: 0.45)
-                      : Color(red: 0.25, green: 0.55, blue: 0.35)))
         }
-        .disabled(viewModel.isWatchingAd)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isWatchingAd)
     }
 }
 

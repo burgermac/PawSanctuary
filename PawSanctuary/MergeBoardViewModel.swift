@@ -241,6 +241,13 @@ class MergeBoardViewModel {
     // Phase 3 uses this to gate monetization surfaces.
     var commerce: PlayerCommerceState = PlayerCommerceState()
 
+    /// D7 / Phase 3, Task 3.4: gates every monetization surface (the Shop button,
+    /// the kibble-refill ladder's ad/exchange/bundle rungs) until the player has
+    /// both felt a genuine wall and reached `monetizationUnlockLevel`.
+    var isMonetizationUnlocked: Bool {
+        commerce.hasReachedFirstWall && progression.playerLevel >= monetizationUnlockLevel
+    }
+
     // Superpower session-only state (not persisted).
     var preMoveSnapshot: BoardSnapshot? = nil
     var leapMode: Bool = false
@@ -393,6 +400,15 @@ class MergeBoardViewModel {
     var adoptionOrders: [AdoptionOrder] {
         get { adoptionBoardCoordinator.adoptionOrders }
         set { adoptionBoardCoordinator.adoptionOrders = newValue }
+    }
+
+    /// Phase 3, Task 3.3: the soonest-expiring order still worth fulfilling —
+    /// surfaced on the kibble-refill sheet so the player leaves seeing what's
+    /// unfinished, rather than just what they bought.
+    var nearestIncompleteOrder: AdoptionOrder? {
+        adoptionOrders
+            .filter { !$0.isClaimed && !$0.isComplete && $0.timeRemaining > 0 }
+            .min { $0.timeRemaining < $1.timeRemaining }
     }
 
     // PlayerProgression forwards
@@ -1080,8 +1096,8 @@ class MergeBoardViewModel {
     }
 
     /// Task 1.4 (Phase 1) — records a kibble-wall event (hit zero kibble while
-    /// trying to act). Record only; Phase 3 will use this (with player level) to
-    /// gate monetization surfaces — no behaviour changes based on it yet.
+    /// trying to act). `hasReachedFirstWall` gates `isMonetizationUnlocked`
+    /// (Phase 3, Task 3.4) together with player level.
     private func recordWallEvent(chainID: String?, tier: Int?) {
         commerce.wallEventsTotal += 1
         commerce.lastWallDate = Date()

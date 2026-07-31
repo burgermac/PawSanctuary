@@ -1035,6 +1035,15 @@ let adoptionSkipCost       = 2   // kibble cost to skip an order you don't want
 let maxDailyAdWatches      = 4   // ads available per day (resets at 09:00 UTC)
 let adKibbleReward         = 25  // kibble granted per completed ad watch
 
+// ── Monetization gate (D7 / Phase 3, Task 3.4) ──────────────────
+//
+// "Session-one monetization silence": no offer, no ad, no store push until
+// the player has both felt a genuine wall AND reached this level — whichever
+// of the two happens later. A level-1 player who empties their starting
+// kibble in the first few minutes hasn't earned a "genuine" wall yet; a
+// level-5 player who's never run dry hasn't felt scarcity yet either.
+let monetizationUnlockLevel = 5
+
 // ── Loyalty Club ─────────────────────────────────────────────
 let loyaltyClubLevelRequirement = 20
 
