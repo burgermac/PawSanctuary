@@ -1096,6 +1096,24 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Phase 4, Task 4.3: rolls for a bonus extra spawn on a boosted tap —
+    /// always an animal of the species just tapped, regardless of what that
+    /// tap's own drop resolved to. Silently does nothing at ×1 or when the
+    /// board has no room; a bonus should never itself trigger a "Board Full"
+    /// complaint. Free (cost: 0) and routed through `finishSpawn` so it still
+    /// counts as a rescue, grants XP, and can fulfil a matching order.
+    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int) {
+        let chance = bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
+        guard chance > 0, Double.random(in: 0..<1) < chance,
+              let target = emptyUnlockedCells.randomElement() else { return }
+        let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? spawnTier
+        let isLegendary = Double.random(in: 0..<1) < legendaryBonusShare
+        let bonusTier = isLegendary ? min(spawnTier + 1, maxTier) : spawnTier
+        let label = ContentRegistry.shared.tier(chainID, bonusTier)?.name ?? species.name
+        enqueueToast(Toast(kind: .info(isLegendary ? "✨ Legendary! +1 \(label)" : "🍀 Lucky! +1 \(label)")))
+        finishSpawn(item: BoardItem(chainID: chainID, tier: bonusTier), at: target, cost: 0)
+    }
+
     /// Task 1.4 (Phase 1) — records a kibble-wall event (hit zero kibble while
     /// trying to act). `hasReachedFirstWall` gates `isMonetizationUnlocked`
     /// (Phase 3, Task 3.4) together with player level.
@@ -1180,6 +1198,7 @@ class MergeBoardViewModel {
                 }
             }
             finishSpawn(item: spawnedItem, at: target, cost: cost)
+            maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier)
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
             // Task 2.1: priced from the selected tier, same as the family spawner.

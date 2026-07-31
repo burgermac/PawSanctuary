@@ -1153,6 +1153,29 @@ func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
     }
 }
 
+// ── Bonus spawn layer (Phase 4, Task 4.3) ────────────────────
+//
+// "The bonus layer is an accelerant dressed as a reward" (Merge2_Reference_
+// Blueprint.md §4, measured [M]): "Lucky!"/"Legendary!" bonus spawns fire
+// only on boosted taps (×2/×4/×8), never at ×1. Gating the bonus behind the
+// multiplier pushes players toward bigger, faster-draining taps — the
+// generosity is real, but so is the acceleration.
+
+/// Chance of a bonus extra spawn, keyed by the multiplier's tier index
+/// (0/1/2/3 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
+func bonusSpawnChance(forMultiplierTier tierIndex: Int) -> Double {
+    switch tierIndex {
+    case 0:  return 0.00
+    case 1:  return 0.10
+    case 2:  return 0.25
+    default: return 0.40
+    }
+}
+
+/// Share of triggered bonuses that roll "Legendary!" (one tier richer) rather
+/// than the common "Lucky!" (matches the tap's own tier).
+let legendaryBonusShare = 0.15
+
 /// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
 func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
 
