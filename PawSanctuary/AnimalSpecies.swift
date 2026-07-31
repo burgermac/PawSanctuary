@@ -1142,6 +1142,12 @@ func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
 /// Top 0-based tier of every animal chain (12 tiers as of Phase 2b).
 let animalChainTopTier = 11
 
+/// Phase 2c §5: the "mid-tier" band for the sell-vs-order contextual nudge —
+/// low enough to exclude the starter tiers (trivially cheap either way), high
+/// enough to exclude the top-tier Ambassador zone (already surfaced via the
+/// trio exchange).
+let sellVsOrderNudgeTierRange = 3...8
+
 // ── Recirculation (Phase 2, Task 2.3) ─────────────────────────
 //
 // Under neutral pricing a Stage-15 item costs 16,384 kibble — roughly 22 days of

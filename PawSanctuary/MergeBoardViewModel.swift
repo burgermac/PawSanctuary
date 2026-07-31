@@ -1347,9 +1347,34 @@ class MergeBoardViewModel {
         } else if board[pos.row][pos.col].item != nil {
             inventoryStore.selectedInventorySlot = nil
             selectedCell = pos
+            maybeShowSellVsOrderNudge(at: pos)
         } else {
             selectedCell = nil
         }
+    }
+
+    private static let sellVsOrderNudgeShownKey = "hasShownSellVsOrderNudge"
+
+    /// Phase 2c §5: the first time the player selects a mid-tier item with no
+    /// matching order, surface the sell-vs-order tradeoff via toast — the sell
+    /// button already shows both numbers (§5's other requirement), but a player
+    /// who never opens the info panel could otherwise miss the choice entirely.
+    private func maybeShowSellVsOrderNudge(at pos: GridPosition) {
+        guard !UserDefaults.standard.bool(forKey: Self.sellVsOrderNudgeShownKey) else { return }
+        guard let item = board[pos.row][pos.col].item,
+              item.chain?.category == .animal,
+              sellVsOrderNudgeTierRange.contains(item.tier) else { return }
+        let hasMatchingOrder = adoptionOrders.contains {
+            !$0.isClaimed && !$0.isComplete && $0.timeRemaining > 0
+                && $0.wantedChainID == item.chainID && $0.wantedTier == item.tier
+        }
+        guard !hasMatchingOrder else { return }
+        UserDefaults.standard.set(true, forKey: Self.sellVsOrderNudgeShownKey)
+        let sell = sellValue(forTier: item.tier)
+        let order = orderValue(forTier: item.tier)
+        enqueueToast(Toast(kind: .info(
+            "No order wants this yet — sell for +\(sell), or hold out for an order (+\(order))"
+        )))
     }
 
     // MARK: Power-up selection and application
