@@ -1,5 +1,7 @@
 # Paw Sanctuary — Game Design Document
-**Version 3.0 | July 2026**
+**Version 4.0 | 27 July 2026**
+
+> **Economy sections rewritten from source, 27 July 2026.** Sections 3, 4, 5 and 7 drifted across the Phase 2 / 2b / 2c economy work and are now re-read from the codebase rather than extended. For the authoritative current numbers and the variance analysis against Gossip Harbor / Travel Town / Tasty Travels, see **`specs/Economy_State_and_Variance.md`** — where that document and this one disagree, that one is right.
 
 > **This is a full refresh, not an incremental edit.** Versions up to 2.1 had drifted far from the actual implementation — most of the "Not built" items in the old Feature Status Tracker were in fact shipped, the board dimensions were wrong throughout, and several systems that exist in the live game (Coins, the card collection/trading layer, the Sanctuary Map, the Loyalty Club, weekly/monthly goals) weren't documented at all. This version was written by reading the current codebase directly, not by extending the previous draft. Section 15 (Technical Architecture) and Section 16 (Status & Remaining Work) are the ones most worth re-reading if you only skim one thing.
 >
@@ -101,7 +103,7 @@ Collect cards across 6 albums → album-completion rewards; trade duplicates via
 | Drag off bottom of board | Send to inventory / material accumulator, by item category |
 
 ### Spawn Rules
-- **Family spawner tap:** costs Kibble (`spawnMultiplier` — 1/2/4/8, unlocked at levels 1/5/10/20), spawns at a tier proportional to the multiplier, or a sub-object per the drop table in Section 5
+- **Family spawner tap:** the multiplier (1/2/4/8, unlocked at levels 1/5/10/20) selects a **tier** (0/1/2/3) and the tier sets the price at `2^tier` kibble — exactly what that item is worth in merge inputs, so no multiplier level buys progress at a discount. 20% of activations yield a sub-object instead (Section 5).
 - **Legacy rescue-tier producers** (Rescue Crate / Shelter Pod / Foster Home): finite-charge producers bought from the shop with Dog Tags; spawn a random *unlocked* animal chain. Superseded in practice by family spawners, which are earned via the Sanctuary Map, but the legacy path still exists in code for the shop.
 - **Supply producers** (Grooming Box / Feed Station / Supply Crate): unlock automatically at levels 15/20/25, produce Grooming/Food/Shelter supply-chain items on a cooldown, no charges consumed by kibble
 - **Board full:** rescue/spawn actions show a "Board Full" toast instead of spawning
@@ -116,7 +118,9 @@ Collect cards across 6 albums → album-completion rewards; trade duplicates via
 ## 4. Animal System
 
 ### Overview
-**15 animal families**, each with **15 merge tiers** (indices 0–14) arranged into 5 conceptual eras of 3 tiers each. All 15 families and all 225 tier names are fully authored in `AnimalSpecies.tierNames` — this is done, not aspirational.
+**15 animal families**, each with **12 merge tiers** (indices 0–11) arranged into 4 conceptual eras of 3 tiers each. All 15 families and all 180 tier names are authored in `AnimalSpecies.tierNames`.
+
+> **Reduced from 15 tiers to 12 in Phase 2b** (commit `f646ae9`). At 15 tiers the top-tier item cost 16,384 kibble — about 22 days of a player's entire income — so Phase 2's tuning had to cap order tiers at 9, leaving Stages 10–15 (90 named items) permanently outside the order economy. Dropping Era 4 (`Alpha / Guardian / Sentinel`) from every family brings the top-tier cost to **2,048 kibble** and puts the whole chain back inside the loop. Saved games remap old tiers 0–8 → 0–8, 9–11 → 8, 12–14 → 9–11.
 
 ### Family List (internal case → display family)
 | Case | Family | | Case | Family |
@@ -134,13 +138,13 @@ Collect cards across 6 albums → album-completion rewards; trade duplicates via
 Only **Canines** are available on day one (`startingChainIDs`). Every other family is unlocked by building its Sanctuary Map area — see Section 11. This replaces the old "5 starter families + stage-milestone unlocks" design; it never shipped that way. There is no dual unlock path anymore: the one early plan to also unlock Aquatics via a 50-Ambassador milestone was retired in favor of the map-area path (see Section 8).
 
 ### Animal Tier Progression (15 tiers per family, index 0→14)
-All 15×15 = 225 stage names are defined verbatim in `AnimalSpecies.tierNames`, matching the reference table from earlier design drafts (e.g. Canines: Pup, Kit, Houndling, Terrier, Spaniel, Scout, Retriever, Shepherd, Husky, Alpha, Guardian, Sentinel, Dire Wolf, Mythic, Primordial). Tier 14 (top tier) triggers the Ambassador celebration.
+All 15×12 = 180 stage names are defined verbatim in `AnimalSpecies.tierNames` (e.g. Canines: Pup, Kit, Houndling, Terrier, Spaniel, Scout, Retriever, Shepherd, Husky, Dire Wolf, Mythic, Primordial). **Tier 11** (top tier, `animalChainTopTier`) triggers the Ambassador celebration.
 
 ### Tier Score & XP Values
-`scoreValue = (index + 1) × 25`, `xpValue = (index + 1) × 5`, so tier 0 = 25 score / 5 XP and tier 14 = 375 score / 75 XP. Weekly spotlight gives **2× score** on the featured family's merges.
+`scoreValue = (index + 1) × 25`, `xpValue = (index + 1) × 5`, so tier 0 = 25 score / 5 XP and tier 11 = 300 score / 60 XP. Weekly spotlight gives **2× score** on the featured family's merges.
 
 ### Sell Values
-`sellValue(forTier:)` is a 15-entry table in `MergeBoardViewModel`, geometric from tier 0 up through 100,000 coins at the top tier.
+`animalSellValues` is **derived, not authored** — `round(2.75 × 2^tier)`, so it cannot drift from the rate or from the chain length. Tier 0 → 3 coins, tier 11 → 5,632. Always strictly below what an order pays for the same item (6.5 × build cost), asserted in the test suite.
 
 ---
 
@@ -152,18 +156,25 @@ Each family spawner has a **20% base chance** per activation of producing a sub-
 ### Sub-Object Chains
 All 15 families have a named 4-stage chain (e.g. Canines: Biscuit → Bone → Chew Toy → Golden Ball), fully authored in `ItemChain.makeSubObjectChain`.
 
-### Power-Up Rarity & Drop Rates
-When a sub-object drops, its rarity is resolved by `SubObjectSystem.resolveSpawnerDrop`:
+### Power-Up Effects — selected by rarity roll at tier 3
 
-| Rarity | Effect | Weight |
+> **Rewritten 27 July 2026 (second time that day).** An earlier draft described a rarity-weighted table the code did not implement; that was corrected to describe tier-keyed selection; Phase 2 (`a36faed`) then restored rarity-keyed selection deliberately. This section now matches the code. **It has drifted four times — verify against source before relying on it.**
+
+Sub-objects spawn at tier 0 (tier 1 for Rodents with Hoard) and merge through a 4-tier chain. **Only tier 3 is a usable power-up**; tiers 0–2 are inert intermediates.
+
+When a sub-object reaches tier 3, its effect is rolled via `weightedRarityRoll()`, honouring that family's accumulated `PityState`. The rolled rarity is **stored on the item** and persisted.
+
+| Effect | Weight | Payload |
 |---|---|---|
-| Speed Burst | 2× spawner speed for 30s (+ any `powerUpDurationBonus` from area upgrades) | 60% |
-| Map Supplies | 4 random wood/metal/cement items (tier 0–2), direct to material storage | 25% |
-| Spawner Refill | +20 Kibble (family spawners have unlimited charges, so this substitutes) | 10% |
-| High-Tier Drop Guarantee | Forces the *next* spawn to tier ≥ 2 | 5% |
+| Speed Burst | 60% | 2× spawner speed for 30s (+ `powerUpDurationBonus`) |
+| Map Supplies | 25% | 4 random wood/metal/cement items, tier 0–2 |
+| **Board Item Grant** | 10% | One board item from a random unlocked animal chain at `min(recirculationMaxItemTier, max(0, deepestUnlockedTier - 2))`. The absolute ceiling exists because a fixed offset below the player's frontier is exponential in tenure — item worth is 2^tier, so an uncapped rule delivers ~7,600 kibble-equivalent/day at deepest tier 14 against a ~745 supply. |
+| High-Tier Drop | 5% | Forces the next spawn to tier ≥ 2 |
+
+Replaced the former "Spawner Refill" (+20 Kibble), which under Phase 2's neutral spawn pricing returned 1.00 kibble per spawner activation at base drop rate — exactly self-funding — rising to 6.5× with full upgrades and the Hoard superpower.
 
 ### Pity Timers
-Per-family `PityState` tracks spawns since the last Rare/Epic drop. **30 spawns** guarantees a Spawner Refill; **60 spawns** guarantees a High-Tier Drop Guarantee. Both thresholds can be reduced by an area-upgrade bonus (`pityTimerReduction`).
+Per-family `PityState` tracks spawns since the last Rare/Epic outcome and guarantees one after a threshold. Thresholds are reduced by the `pityTimerReduction` area-upgrade bonus, which was inert until Phase 2 wired rarity through to effect selection.
 
 ### Power-Up Inventory
 6 dedicated slots (`InventoryStore.powerUpInventory`), separate from the animal inventory. Players drag a power-up onto any spawner to apply it.
@@ -201,29 +212,81 @@ A collapsible button strip shows one button per family with an unlocked *active*
 
 ## 7. Economy & Currencies
 
-Four currencies exist, not two.
+> Rewritten from source 27 July 2026 after Phases 2 / 2b / 2c. Tuning constants live at the bottom of `AnimalSpecies.swift` with rationale comments; those comments are the primary source, this section summarises them.
+
+### The identity everything derives from
+
+```
+Kibble cost of a tier-n item  =  2^n         (neutral spawn pricing)
+An order pays                 =  6.50 coins per kibble of build cost
+Selling pays                  =  2.75 coins per kibble of build cost
+```
+
+Both coin channels and the spawn price are denominated in the same unit — the kibble an item costs to build — so ratios hold at every tier and a re-sweep of the order tier distribution cannot invalidate them.
 
 ### 🦴 Kibble (energy)
+
 | Property | Value |
 |---|---|
-| Starting amount | 20 |
-| Regen rate | 1 per 120 seconds |
-| Regen cap | 100 (rises to **150 at player level 10**) |
-| Cost per rescue | `spawnMultiplier` (1/2/4/8) |
+| Regen | 1 per 120 s |
+| Cap | 100, rising to 150 at player level 10 |
+| Starting | 20 |
+| Cost per spawn | `2^tier` — multiplier ×1/×2/×4/×8 selects tier 0/1/2/3 |
+| Rewarded ads | 4/day × 25, resets 09:00 UTC |
+| Dog Tag exchange | 15 / 30 / 60 tags per 100 kibble — escalates within the day, resets daily |
+| Sanctuary Pass | +20/day, ×1.5 on claimed kibble |
 
-Sources: timer regen, quests, daily challenges, daily login, adoption order rewards, rewarded ads (+25, up to 4/day, resets 09:00 UTC), Sanctuary Pass (+20/day × 1.5 multiplier on all claimed kibble), IAP.
+**The multiplier is exactly energy-neutral.** ×8 costs 8 kibble and yields a tier-3 item worth 8 kibble of merge inputs. It sells taps and board space, never progress. Before Phase 2 it was `tier = multiplier − 1` at `cost = multiplier`, a 16× arbitrage that opened at level 20.
 
-### 🪪 Dog Tags (premium, earned not bought-to-progress)
-Sources: quests (1–15 depending on difficulty), daily challenge streak bonus (+2, or +8 every 7th day), weekly spotlight milestone (+5), daily login, adoption order rewards, IAP.
-Spend on: inventory row unlocks (10 / 25 tags), the Dog-Tag→Kibble exchange (40→100, 80→240, 120→480), the shop's legacy producer tier (Rescue Crate/Shelter Pod/Foster Home).
+Measured daily supply for an engaged L20+ player: **~695 (cap 100) · ~745 (cap 150) · ~800 with the Pass.**
 
-### 🪙 Coins
-Introduced for the map-building and card-album economy — **not in earlier GDD drafts at all**. Earned from Ambassador merges (+10, more with area upgrades), adoption order fulfillment, album completion, weekly/monthly goal chests, and quest claims. Spent on Sanctuary Map area builds/upgrades alongside materials.
+### 🪙 Coins — gates the Sanctuary Map (291,900 total)
+
+Two channels, both proportional to build cost:
+
+| Channel | Rate | Role |
+|---|---|---|
+| Fulfil an adoption order | **6.50 coins/kibble** | Efficient path — needs a matching order, so costs patience |
+| Sell an animal | **2.75 coins/kibble** | Instant liquidity, ~2.4× worse, always available |
+
+A flat ratio at every tier is deliberate: no tier is relatively better to sell, so there is no farming incentive anywhere on the chain.
+
+Other faucets: Ambassador merge 500 · all three daily challenges 400 · quest claims 50/150/400/1,000 · album completions 6,250 total · Ambassador trio exchange = combined sell value × 1.25.
+
+Weekly goal thresholds: Bronze 2,500 · Silver 6,000 · Gold 12,000.
+
+**Projected full map build-out: ~60 days of engaged play.**
+
+### 🪪 Dog Tags (premium)
+
+Earned from quests, daily-challenge streaks, spotlight milestones, login, and orders. Spent on inventory rows (10 / 25), the daily kibble ladder, and the Dog Tag item store (3 slots, daily rotation, stock 1, tiers `deepest−4 … deepest−1`, priced 15 + 18/tier).
 
 ### ⭐ Stars
-Earned from duplicate cards (1 for a common dupe, 5 for a rare dupe) or by converting all duplicates at once. Spent in the Star Shop on 1★–3★ card packs and joker cards (see Section 12).
 
----
+From duplicate cards. Spent in the Star Shop on 1★–3★ packs and jokers.
+
+### Recirculation
+
+Deep tiers cannot be reached by tapping — a top-tier item is 2,048 kibble — so items must also arrive as rewards:
+
+| Channel | Rule |
+|---|---|
+| Order board-item reward | 1 order in 3, at `wantedTier − 3` |
+| Board Item Grant (power-up, 10%) | `deepest − 2`, **capped at tier 6** |
+| Dog Tag store | 3 slots daily, `deepest−4 … deepest−1` |
+
+The tier-6 cap exists because a `deepest − n` rule is exponential in tenure: item worth is `2^tier`, so a fixed offset doubles every stage the player advances.
+
+### The wall curve
+
+| Band | Max order tier | Demand / supply |
+|---|---|---|
+| L1–30 | 2 → 6 | 0.09 → 0.56 |
+| L31–40 | 9 | 0.83 |
+| **L41–50** | **10** | **1.02** — first genuine wall |
+| L51+ | 11 | 1.18 |
+
+Enforced by `EconomySimulation` in the test target; the build fails if the curve drifts.
 
 ## 8. Progression Systems
 
