@@ -3,7 +3,7 @@
 ## Pending
 
 ### Xcode capability toggles (Signing & Capabilities — not code changes)
-- [ ] Enable **Push Notifications** capability. Required for `UNUserNotificationCenter` permission prompt to work on device — the scheduling logic in `NotificationManager.swift` is already fully implemented and just needs this to actually fire. (Works on a free/Personal Team.)
+- [ ] **Phase 3, Task 3.5.** Enable **Push Notifications** capability. Required for `UNUserNotificationCenter` permission prompt to work on device — the scheduling logic in `NotificationManager.swift` is already fully implemented and just needs this to actually fire. (Works on a free/Personal Team.) Blocks nothing else in Phase 3 — 3.1–3.4 are done and don't depend on it.
 - [ ] **Re-enable Game Center capability — REGRESSED.** Enabled once in commit `adf1be4`, but `PawSanctuary/PawSanctuary.entitlements` is now an empty `<dict/>` with no `com.apple.developer.game-center` key, and `project.pbxproj` has no Game Center references. `CardTrading.swift` still imports GameKit and `authenticateGameCenter` runs at launch, so the code expects a capability the app no longer declares. Restore via Xcode → Signing & Capabilities → `+ Capability` → Game Center (**not** by hand-editing the plist — that skips App ID registration and causes signing failures). Works on a free/Personal Team. Commit on its own, noting it as a regression. Card trading also needs CloudKit, which remains blocked on paid enrolment.
 - [ ] **BLOCKED on paid Apple Developer Program enrollment ($99/yr):** the Xcode account for this project (team `H2QZGDY8UN`) is currently a free/Personal Team, and Apple does not expose the **iCloud** capability at all for Personal Teams — it's missing from the `+ Capability` list, not just greyed out. Confirmed 2026-07-23. Both of the following are blocked on enrolling first:
   - [ ] Enable **iCloud** capability → check **Key-Value Storage**. The sync code in `GameStore.swift` is wired and degrades gracefully without it, but cross-device save sync won't actually happen until this is provisioned.
@@ -11,7 +11,7 @@
 - [ ] In the CloudKit Dashboard, confirm the `CardTrade` record type has fields `cardID`, `fromPlayerID`, `fromDisplayName`, `toPlayerID`, `toDisplayName`, `sentAt`, `status` — mark `toPlayerID`, `fromPlayerID`, and `status` **Queryable** (the trading queries in `CardTradeBackend` filter on these and CloudKit rejects predicates on non-queryable fields). Deploy the schema from Development to Production before release. Depends on iCloud/CloudKit above.
 
 ### Real integrations still stubbed
-- [ ] **Rewarded ads:** `AdProvider.swift`'s `StubAdProvider` just waits 1.5s and always succeeds. Swap in a real SDK (AdMob, AppLovin, etc.) before launch — the reward logic and daily-cap bookkeeping around it are already correct.
+- [ ] **Phase 3, Task 3.6 — now load-bearing, not just pre-launch polish.** `AdProvider.swift`'s `StubAdProvider` just waits 1.5s and always succeeds. Swap in a real SDK (AdMob, AppLovin, etc.) — the reward logic and daily-cap bookkeeping around it are already correct. The rebuilt `KibbleRefillSheet` (3.1) is built around a real ad actually being available as the first rung of the ladder, so this blocks Phase 3 from being fully closed even though 3.1–3.4 are done. Needs an SDK/account decision before work can start.
 - [ ] When ready for final audio assets, replace `AudioServicesPlaySystemSound(XXXX)` calls in `SoundManager.swift` with `AVAudioPlayer` instances pointed at the real asset files.
 
 ### App Store submission blockers (not code)
