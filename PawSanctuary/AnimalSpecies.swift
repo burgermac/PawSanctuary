@@ -1259,6 +1259,31 @@ func animalSellValue(tier: Int) -> Int {
 /// or from the chain length. Tier 0 → 3 coins, tier 11 → 5,632.
 let animalSellValues: [Int] = (0...animalChainTopTier).map { animalSellValue(tier: $0) }
 
+// ── Currency chains (Phase 4, Task 4.1) ──────────────────────────
+//
+// Kibble and Coin merge chains that spawn on the board via family spawners —
+// tap to collect the current tier's value, or merge two for a richer one.
+// Value pattern follows the measured reference (Merge2_Reference_Blueprint.md
+// §21): "Coin (Lvl 1) collects 1; Coin (Lvl 3) collects 7" — tier t (0-indexed)
+// collects 2^(t+1) - 1, not a clean doubling. Every merge is worth strictly
+// more than the sum of its two inputs, which is what makes "merge for a
+// better rate, or collect now for liquidity" a genuine decision rather than
+// a wash.
+let currencyChainTierCount = 6
+
+func currencyChainBaseValue(tier: Int) -> Int { (1 << (max(0, tier) + 1)) - 1 }
+
+/// Kibble granted when a Kibble-chain item at `tier` is collected.
+/// Tier 0 → 1, tier 5 (top) → 63 — roughly two hours of passive regen at cap.
+func kibbleCurrencyValue(tier: Int) -> Int { currencyChainBaseValue(tier: tier) }
+
+/// Coins granted when a Coin-chain item at `tier` is collected. Scaled by the
+/// same per-kibble sell rate as animals (Phase 2c) so this reads as a small
+/// side faucet, not a rival to orders/selling. Tier 0 → 3, tier 5 (top) → 173.
+func coinCurrencyValue(tier: Int) -> Int {
+    max(1, Int((Double(currencyChainBaseValue(tier: tier)) * coinsPerKibbleOfSale).rounded()))
+}
+
 // ── XP constants ──────────────────────────────────────────────
 let xpPerMergeBase     = 5    // multiplied by srcItem.stage.rawValue in code
 let xpPerRescue        = 2    // player-initiated rescue (kibble spend)

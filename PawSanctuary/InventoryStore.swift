@@ -127,9 +127,11 @@ class InventoryStore {
         case .powerUp:
             return addToPowerUpInventory(item)
         case .currency:
-            // Currency items (kibble / coin chains) are collected by tapping them on the
-            // board - they never enter inventory. Phase 4 implements tap-to-collect;
-            // until then nothing can produce one, so this path is unreachable.
+            // Phase 4, Task 4.1: currency items are collected by tapping them on the
+            // board (MergeBoardViewModel.collectCurrencyItem), which every path that
+            // could reach here (drag-to-storage, sell) intercepts first. This is a
+            // defensive fallback only — reaching it means the value was already lost
+            // upstream, so it just no-ops rather than silently discarding again.
             return true
         default:
             return addToAnimalInventory(item)

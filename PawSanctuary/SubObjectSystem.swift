@@ -55,6 +55,7 @@ enum PowerUpEffect: Codable {
 enum SpawnDropResult {
     case animal(tier: Int)
     case subObject(chainID: String)
+    case currency(chainID: ChainID, tier: Int)
 }
 
 // MARK: — Pity State
@@ -71,6 +72,11 @@ struct PityState: Codable {
 struct SubObjectDropConfig {
     static let baseSubObjectChance: Double = 0.20   // 20% of spawns produce a sub-object
 }
+
+/// Phase 4, Task 4.1: a slice of spawns produce a currency item (kibble or coin
+/// chain) instead of an animal. Independent of `dropRateBonus` — that dial is
+/// specifically tuned for sub-object recirculation, not this.
+let baseCurrencyChance: Double = 0.10   // 10% of spawns produce a currency item
 
 /// Top tier of every per-family sub-object chain. Only an item at this tier
 /// carries a rolled effect and counts as a usable power-up (Task 2.2).
@@ -93,16 +99,22 @@ enum SubObjectSystem {
         spawnTier: Int,
         dropRateBonus: Int = 0
     ) -> SpawnDropResult {
-        let effectiveChance = SubObjectDropConfig.baseSubObjectChance + Double(dropRateBonus) / 100.0
+        let subObjectChance = SubObjectDropConfig.baseSubObjectChance + Double(dropRateBonus) / 100.0
 
         // Every activation counts toward pity, whatever it produces.
         pityState.spawnsSinceLastRare += 1
         pityState.spawnsSinceLastEpic += 1
 
-        guard Double.random(in: 0..<1) < effectiveChance else {
-            return .animal(tier: spawnTier)
+        let roll = Double.random(in: 0..<1)
+        if roll < subObjectChance {
+            return .subObject(chainID: "subobject.\(species.rawValue)")
         }
-        return .subObject(chainID: "subobject.\(species.rawValue)")
+        if roll < subObjectChance + baseCurrencyChance {
+            let chainID = Bool.random() ? ContentRegistry.kibbleCurrencyChainID
+                                         : ContentRegistry.coinCurrencyChainID
+            return .currency(chainID: chainID, tier: 0)
+        }
+        return .animal(tier: spawnTier)
     }
 
     /// Rolls the effect a just-completed sub-object will carry, consuming the

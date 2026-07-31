@@ -1160,6 +1160,8 @@ class MergeBoardViewModel {
                 let hoardActive = species == .hamster && unlockedSuperpowerSpecies.contains(AnimalSpecies.hamster.rawValue)
                 let subTier = hoardActive ? min(1, ContentRegistry.shared.chain(subChainID)?.maxTier ?? 0) : 0
                 spawnedItem = BoardItem(chainID: subChainID, tier: subTier)
+            case .currency(let currencyChainID, let tier):
+                spawnedItem = BoardItem(chainID: currencyChainID, tier: tier)
             }
             // Scout (Avians .bird): after spawning, pre-roll next drop and cache it.
             if unlockedSuperpowerSpecies.contains(AnimalSpecies.bird.rawValue) {
@@ -1349,6 +1351,9 @@ class MergeBoardViewModel {
 
         if board[pos.row][pos.col].item?.chainID == ContentRegistry.toolboxChainID {
             absorbToolbox(at: pos)
+            return
+        }
+        if collectCurrencyItem(at: pos) {
             return
         }
         if board[pos.row][pos.col].producer != nil {
@@ -1598,6 +1603,9 @@ class MergeBoardViewModel {
     func sendBoardItemToInventory(from pos: GridPosition) {
         guard board[pos.row][pos.col].producer == nil else { return }
         guard let item = board[pos.row][pos.col].item else { return }
+        // A currency item dragged to storage collects instead of vanishing
+        // into a category that never actually holds one (Phase 4, Task 4.1).
+        if collectCurrencyItem(at: pos) { return }
         if inventoryStore.addItem(item) {
             board[pos.row][pos.col].item = nil
             recalcBoardIsFull()
@@ -1608,6 +1616,7 @@ class MergeBoardViewModel {
 
     func storeSelectedItemToInventory() {
         guard let pos = selectedCell, let item = board[pos.row][pos.col].item else { return }
+        if collectCurrencyItem(at: pos) { return }
         if inventoryStore.addItem(item) {
             board[pos.row][pos.col].item = nil
             selectedCell = nil
@@ -1663,17 +1672,21 @@ class MergeBoardViewModel {
 
     // MARK: Top-tier celebration
 
+    /// "Sanctuary Ambassador!" is an animal-chain milestone — reaching the top tier
+    /// of a family. Guarded here (not just internally) because completing a
+    /// sub-object or, as of Phase 4, a currency item also fires the generic
+    /// `next == maxTier` check at the merge call site; neither should show this
+    /// banner or grant its rewards on top of their own completion handling.
     func triggerTopTierCelebration(chainID: ChainID) {
-        if ContentRegistry.shared.chain(chainID)?.category == .animal {
-            ambassadors += 1
-            ambassadorQuestProgress += 1
-            earnCoins(coinsPerAmbassadorMerge + cachedActiveBonuses.coinsPerAmbassador)
-            // Drop a toolbox so reaching ambassador tier feeds building materials —
-            // kibble is earned via the regen timer, dog tags, quests, and IAP only.
-            placeToolbox()
-            // Check whether the new ambassador count triggers a Sanctuary Star milestone.
-            MilestoneManager.shared.checkMilestones(stars: ambassadors)
-        }
+        guard ContentRegistry.shared.chain(chainID)?.category == .animal else { return }
+        ambassadors += 1
+        ambassadorQuestProgress += 1
+        earnCoins(coinsPerAmbassadorMerge + cachedActiveBonuses.coinsPerAmbassador)
+        // Drop a toolbox so reaching ambassador tier feeds building materials —
+        // kibble is earned via the regen timer, dog tags, quests, and IAP only.
+        placeToolbox()
+        // Check whether the new ambassador count triggers a Sanctuary Star milestone.
+        MilestoneManager.shared.checkMilestones(stars: ambassadors)
         kibbleEngine.dogTags += 5
         grantXP(100)
         ambassadorBannerChainID = chainID
@@ -2380,6 +2393,37 @@ class MergeBoardViewModel {
         SoundManager.shared.playButtonTap()
         recalcBoardIsFull()
         persist()
+    }
+
+    /// Tap a currency-chain tile (Phase 4, Task 4.1) to instantly collect its
+    /// kibble/coin value and remove it. Merging (drag) is still how the player
+    /// reaches a richer tier first — tapping is the "collect now" half of the
+    /// tradeoff. Returns `false` (no-op) for anything that isn't a currency item,
+    /// so callers can chain it into their own tap-dispatch without a separate guard.
+    @discardableResult
+    func collectCurrencyItem(at pos: GridPosition) -> Bool {
+        guard let item = board[pos.row][pos.col].item,
+              ContentRegistry.shared.chain(item.chainID)?.category == .currency else { return false }
+        board[pos.row][pos.col].item = nil
+        if selectedCell == pos { selectedCell = nil }
+        let message: String
+        switch item.chainID {
+        case ContentRegistry.kibbleCurrencyChainID:
+            let amount = kibbleCurrencyValue(tier: item.tier)
+            kibbleEngine.kibble += amount
+            message = "+\(amount) Kibble"
+        case ContentRegistry.coinCurrencyChainID:
+            let amount = coinCurrencyValue(tier: item.tier)
+            earnCoins(amount)
+            message = "+\(amount) Coins"
+        default:
+            message = ""
+        }
+        if !message.isEmpty { enqueueToast(Toast(kind: .info(message))) }
+        SoundManager.shared.playButtonTap()
+        recalcBoardIsFull()
+        persist()
+        return true
     }
 
     private func buildToolboxLot() -> [BoardItem] {
