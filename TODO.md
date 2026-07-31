@@ -90,7 +90,7 @@ Note the sell table currently satisfies a defensible internal property (coins-pe
 
 ### Open items from the economy trilogy (Phases 2 / 2b / 2c)
 
-- [ ] **Ambassador trio exchange was a trap — verify the fix in play.** It consumed three top-tier tiles for a flat 50 coins while each sold for 5,632, destroying ~16,850 coins per use, presented as a reward. Now pays combined sell value plus 25%. Worth confirming on screen that it reads as the best option for three matching Ambassadors, not just that the number is right.
+- [x] **RESOLVED.** ~~Ambassador trio exchange was a trap — verify the fix in play.~~ Verified on screen 31 July 2026: with 3 matching Canines Ambassador tiles on the board, the Trio Exchange task card correctly reads "+21,120 coins" (3 × 5,632 sell value × 1.25 premium) with a single obvious Claim affordance — reads clearly as the best option for three matching Ambassadors.
 - [ ] **Selling may still read as the default.** Phase 2c §5 asked for a contextual prompt the first time a player holds a mid-tier item with no matching order; the simpler branch was taken (a tutorial hint naming both channels) because the prompt needs new trigger state. Revisit if playtesting shows players sell reflexively rather than weighing the 2.4x premium.
 - [x] **RESOLVED.** ~~GDD is now stale in three sections~~ — section 5 (power-up selection, Phase 2), section 4's tier tables (Phase 2b), and section 7 (economy, Phase 2c) have all been rewritten from source and carry dated rewrite notes matching the current code (`PawSanctuary_GDD.md` v4.0).
 
