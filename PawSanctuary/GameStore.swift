@@ -47,6 +47,11 @@ struct GameState: Codable {
     var dailyChallengeStreak: Int
     var dailyChallengeBonusClaimed: Bool
     var adoptionOrders: [AdoptionOrder]
+    // Urgent order (v29, Phase 5 Task 5.2) — separate from the persistent slots
+    // above. `nil` while `urgentOrderCooldownRemaining` counts down after a miss.
+    var urgentOrder: AdoptionOrder? = nil
+    var urgentOrderTimeRemaining: Double = 0
+    var urgentOrderCooldownRemaining: Double = 0
 
     // Spotlight
     var spotlightMergesThisWeek: Int
@@ -227,7 +232,12 @@ enum GameStore {
     ///      is remapped: 0–8 unchanged, 9–11 collapse to 8, 12–14 shift to 9–11.
     ///      Applied at the shared migration exit rather than only in the v27 step,
     ///      because the dispatch table is flat — see `finishMigration(_:from:)`.
-    static let currentVersion = 28
+    /// v29: order roles split (Phase 5, Task 5.2). `AdoptionOrder.timeRemaining` is
+    ///      gone — the persistent slots no longer expire. A single separate urgent
+    ///      order (urgentOrder / urgentOrderTimeRemaining / urgentOrderCooldownRemaining)
+    ///      now carries the short fuse. Structural: the old per-order key is
+    ///      removed, not just superseded.
+    static let currentVersion = 29
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -391,6 +401,7 @@ enum GameStore {
         if version == 25 { return migrateV25toV26(data) }
         if version == 26 { return migrateV26toV27(data) }
         if version == 27 { return migrateV27toV28(data) }
+        if version == 28 { return migrateV28toV29(data) }
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -454,6 +465,9 @@ enum GameStore {
         "deepestUnlockedTier": 0, "dogTagExchangesToday": 0,
         "dogTagStoreSlots": [Any](),
         "powerUpInventory": [NSNull(), NSNull(), NSNull(), NSNull(), NSNull(), NSNull()],
+        // v29 — urgent order timer/cooldown (Phase 5, Task 5.2). `urgentOrder`
+        // itself is Optional and needs no entry here.
+        "urgentOrderTimeRemaining": 0.0, "urgentOrderCooldownRemaining": 0.0,
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space
@@ -482,6 +496,22 @@ enum GameStore {
     private static func migrateV27toV28(_ data: Data) -> GameState? {
         guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return finishMigration(&json, from: 27)
+    }
+
+    /// v28 → v29: order roles split (Phase 5, Task 5.2). Every persistent order's
+    /// `timeRemaining` key is dropped — it's no longer a field on `AdoptionOrder`
+    /// (structural, so removed rather than left to linger as unused JSON, matching
+    /// the v24→v25 precedent). The new urgent-order fields are purely additive and
+    /// come from `additiveDefaultsSinceV8` via `finishMigration`: old saves start
+    /// with `urgentOrder == nil` and `urgentOrderCooldownRemaining == 0`, which
+    /// `AdoptionBoard.ensureUrgentOrder` reads as "spawn one now."
+    private static func migrateV28toV29(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if var orders = json["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices { orders[i].removeValue(forKey: "timeRemaining") }
+            json["adoptionOrders"] = orders
+        }
+        return finishMigration(&json, from: 28)
     }
 
     /// Maps a stored animal tier from the old 15-tier space into the new 12-tier one.

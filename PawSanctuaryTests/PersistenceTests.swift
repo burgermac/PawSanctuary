@@ -83,7 +83,7 @@ final class PersistenceTests: XCTestCase {
             dailyChallengeStreak: 5, dailyChallengeBonusClaimed: true,
             adoptionOrders: [
                 AdoptionOrder(familyIndex: 2, wantedChainID: aid(.turtle), wantedTier: 5,  // tier 5 = Adopted (9-tier chain)
-                              wantedCount: 2, timeRemaining: 312,
+                              wantedCount: 2,
                               rewards: [OrderReward(kind: .kibble, amount: 56),
                                         OrderReward(kind: .dogTags, amount: 4),
                                         OrderReward(kind: .coins, amount: 10)]),
@@ -806,7 +806,6 @@ final class PersistenceTests: XCTestCase {
 
         state.adoptionOrders = [AdoptionOrder(
             familyIndex: 0, wantedChainID: dog, wantedTier: 13, wantedCount: 1,
-            timeRemaining: 900,
             rewards: [OrderReward(kind: .boardItem, amount: 1, payloadID: dog, payloadTier: 10)])]
         state.activeQuests = [Quest(goal: .reachTier(.animal, tier: 14, count: 1),
                                     difficulty: .hard, dogTagReward: 5, kibbleReward: 0)]
@@ -845,6 +844,36 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.dogTagStoreSlots[0].tier, 10, "Dog Tag store stock")
         XCTAssertEqual(loaded.deepestUnlockedTier, 11,      "deepestUnlockedTier")
         XCTAssertEqual(loaded.commerce.lastWallTier, 10,    "commerce.lastWallTier")
+    }
+
+    /// A v28 save whose adoptionOrders still carry the removed `timeRemaining`
+    /// key (Phase 5, Task 5.2 dropped that field from `AdoptionOrder`).
+    private func makeV28BlobWithLegacyOrderTimer() throws -> [String: Any] {
+        let state = makeSampleState()
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj["version"] = 28
+        if var orders = obj["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices { orders[i]["timeRemaining"] = 312 }
+            obj["adoptionOrders"] = orders
+        }
+        return obj
+    }
+
+    func testV28toV29DropsLegacyOrderTimerAndSeedsUrgentOrderDefaults() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV28BlobWithLegacyOrderTimer()))
+        let loaded = try XCTUnwrap(GameStore.load(), "v28 save should migrate to v29")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+
+        // The old per-order timer key is gone; the order itself survives untouched.
+        XCTAssertEqual(loaded.adoptionOrders.count, 1)
+        XCTAssertEqual(loaded.adoptionOrders[0].wantedChainID, aid(.turtle))
+
+        // Pre-Task-5.2 saves have no urgent order yet — these defaults are what
+        // AdoptionBoard.ensureUrgentOrder reads as "spawn one on the next load."
+        XCTAssertNil(loaded.urgentOrder)
+        XCTAssertEqual(loaded.urgentOrderTimeRemaining, 0)
+        XCTAssertEqual(loaded.urgentOrderCooldownRemaining, 0)
     }
 
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
@@ -1260,7 +1289,7 @@ final class PersistenceTests: XCTestCase {
 
     func testAdoptionOrderRewardCoinsRoundTrips() throws {
         let order = AdoptionOrder(familyIndex: 0, wantedChainID: aid(.dog), wantedTier: 3,
-                                  wantedCount: 1, timeRemaining: 500,
+                                  wantedCount: 1,
                                   rewards: [OrderReward(kind: .kibble, amount: 30),
                                             OrderReward(kind: .dogTags, amount: 3),
                                             OrderReward(kind: .coins, amount: 8)])

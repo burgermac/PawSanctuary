@@ -401,14 +401,25 @@ class MergeBoardViewModel {
         get { adoptionBoardCoordinator.adoptionOrders }
         set { adoptionBoardCoordinator.adoptionOrders = newValue }
     }
+    var urgentOrder: AdoptionOrder?        { adoptionBoardCoordinator.urgentOrder }
+    var urgentOrderTimeRemaining: Double   { adoptionBoardCoordinator.urgentOrderTimeRemaining }
+    var urgentOrderCooldownRemaining: Double { adoptionBoardCoordinator.urgentOrderCooldownRemaining }
 
-    /// Phase 3, Task 3.3: the soonest-expiring order still worth fulfilling —
-    /// surfaced on the kibble-refill sheet so the player leaves seeing what's
-    /// unfinished, rather than just what they bought.
-    var nearestIncompleteOrder: AdoptionOrder? {
-        adoptionOrders
-            .filter { !$0.isClaimed && !$0.isComplete && $0.timeRemaining > 0 }
-            .min { $0.timeRemaining < $1.timeRemaining }
+    /// Phase 3, Task 3.3 / Phase 5, Task 5.2: what to surface on the kibble-refill
+    /// sheet so the player leaves seeing what's unfinished. The urgent order (if
+    /// active) takes priority — it's the only order with a real clock. The
+    /// persistent slots never expire, so any one of them is equally "nearest";
+    /// `timeText` is `nil` for those, telling the footer not to show a countdown.
+    var nearestIncompleteOrder: (order: AdoptionOrder, timeText: String?)? {
+        if let urgent = urgentOrder, !urgent.isComplete {
+            let s = Int(urgentOrderTimeRemaining)
+            let text = s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60 > 0 ? "\(s % 60)s" : "")"
+            return (urgent, text)
+        }
+        if let order = adoptionOrders.first(where: { !$0.isClaimed && !$0.isComplete }) {
+            return (order, nil)
+        }
+        return nil
     }
 
     // PlayerProgression forwards
@@ -697,6 +708,10 @@ class MergeBoardViewModel {
         updateWeeklySpotlight()
         if quests.activeQuests.isEmpty   { setupQuests() }
         if adoptionBoardCoordinator.adoptionOrders.isEmpty { setupAdoptionOrders() }
+        // Self-guarding — no-ops if a save already carries an active/cooling-down
+        // urgent order; spawns one for a fresh game or a pre-Task-5.2 save.
+        adoptionBoardCoordinator.ensureUrgentOrder(unlockedChainIDs: progression.unlockedAnimalChainIDs,
+                                                   playerLevel: progression.playerLevel)
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
         startTimer()
@@ -811,8 +826,10 @@ class MergeBoardViewModel {
         if pouchExpiryTimestamp > 0 && Date().timeIntervalSince1970 >= pouchExpiryTimestamp {
             returnPouchItems()
         }
-        adoptionBoardCoordinator.tick(unlockedChainIDs: progression.unlockedAnimalChainIDs,
-                                      playerLevel: progression.playerLevel)
+        let urgentOrderChanged = adoptionBoardCoordinator.tickUrgentOrder(
+            unlockedChainIDs: progression.unlockedAnimalChainIDs,
+            playerLevel: progression.playerLevel)
+        if urgentOrderChanged { rescheduleRescueExpiring() }
         tickProducers()
         saveTickCounter = (saveTickCounter + 1) % 5
         if saveTickCounter == 0 { save() }
@@ -1409,9 +1426,12 @@ class MergeBoardViewModel {
               item.chain?.category == .animal,
               sellVsOrderNudgeTierRange.contains(item.tier) else { return }
         let hasMatchingOrder = adoptionOrders.contains {
-            !$0.isClaimed && !$0.isComplete && $0.timeRemaining > 0
+            !$0.isClaimed && !$0.isComplete
                 && $0.wantedChainID == item.chainID && $0.wantedTier == item.tier
-        }
+        } || {
+            guard let urgent = urgentOrder, !urgent.isClaimed, !urgent.isComplete else { return false }
+            return urgent.wantedChainID == item.chainID && urgent.wantedTier == item.tier
+        }()
         guard !hasMatchingOrder else { return }
         UserDefaults.standard.set(true, forKey: Self.sellVsOrderNudgeShownKey)
         let sell = sellValue(forTier: item.tier)
@@ -2589,6 +2609,10 @@ class MergeBoardViewModel {
     func updateOrdersAfterMerge(chainID: ChainID, tier: Int) {
         let completedIndices = adoptionBoardCoordinator.updateAfterMerge(chainID: chainID, tier: tier)
         for idx in completedIndices { autoClaimOrder(at: idx) }
+
+        if adoptionBoardCoordinator.updateUrgentOrderAfterMerge(chainID: chainID, tier: tier) {
+            autoClaimUrgentOrder()
+        }
     }
 
     func autoClaimOrder(at index: Int) {
@@ -2620,8 +2644,9 @@ class MergeBoardViewModel {
                 break   // Phase 6 — intentionally unhandled for now
             }
         }
+        // Persistent slots have no timer, so claiming one doesn't touch the
+        // rescue-expiring notification — that's the urgent order's job now.
         adoptionBoardCoordinator.markClaimed(at: index)
-        NotificationManager.shared.cancelRescueExpiring()
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             self.adoptionBoardCoordinator.replaceOrder(
@@ -2629,33 +2654,65 @@ class MergeBoardViewModel {
                 unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
                 playerLevel: self.progression.playerLevel
             )
+        }
+    }
+
+    /// The urgent order's completion path (Task 5.2) — mirrors `autoClaimOrder`,
+    /// but there's exactly one slot and no index: mark it claimed (reusing
+    /// `AdoptionOrder.isClaimed` so the card renders the same "Adopted!" state),
+    /// grant rewards, then respawn a fresh urgent order after the same 2-second
+    /// claim-animation pause the persistent slots use.
+    func autoClaimUrgentOrder() {
+        guard var order = adoptionBoardCoordinator.urgentOrder,
+              order.isComplete, !order.isClaimed else { return }
+        SoundManager.shared.playRescueClaim()
+        grantXP(xpPerOrderFulfil)
+        for reward in order.rewards {
+            switch reward.kind {
+            case .dogTags:  kibbleEngine.dogTags += reward.amount
+            case .coins:    earnCoins(reward.amount + cachedActiveBonuses.coinsPerOrderFulfil)
+            case .kibble:   kibbleEngine.kibble += reward.amount
+            case .xp:       grantXP(reward.amount)
+            case .cardPack:
+                if let raw = reward.payloadID, let pack = CardPackType(rawValue: raw) { earnCardPack(pack) }
+            case .boardItem:
+                guard let chainID = reward.payloadID else { break }
+                let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
+                let item = BoardItem(chainID: chainID,
+                                     tier: min(max(0, reward.payloadTier ?? 0), maxTier))
+                for _ in 0..<max(1, reward.amount) { placeOrBankItem(item) }
+            case .material, .eventToken:
+                break   // Phase 6 — intentionally unhandled for now
+            }
+        }
+        order.isClaimed = true
+        adoptionBoardCoordinator.urgentOrder = order
+        NotificationManager.shared.cancelRescueExpiring()
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            self.adoptionBoardCoordinator.urgentOrder = nil
+            self.adoptionBoardCoordinator.ensureUrgentOrder(
+                unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
+                playerLevel: self.progression.playerLevel
+            )
             self.rescheduleRescueExpiring()
         }
     }
 
-    /// Schedules (or cancels) the rescue-expiring notification based on the
-    /// soonest-expiring active order that still has > 2 minutes remaining.
+    /// Schedules (or cancels) the rescue-expiring notification against the
+    /// urgent order — the only order left with a real countdown (Task 5.2).
     private func rescheduleRescueExpiring() {
-        let now = Date()
-        let earliest = adoptionBoardCoordinator.adoptionOrders
-            .filter { !$0.isClaimed && !$0.isComplete && $0.timeRemaining > 120 }
-            .map { now.addingTimeInterval($0.timeRemaining) }
-            .min()
-        if let expiresAt = earliest {
-            NotificationManager.shared.scheduleRescueExpiring(expiresAt: expiresAt)
-        } else {
+        guard let order = adoptionBoardCoordinator.urgentOrder, !order.isComplete,
+              adoptionBoardCoordinator.urgentOrderTimeRemaining > 120 else {
             NotificationManager.shared.cancelRescueExpiring()
+            return
         }
+        let expiresAt = Date().addingTimeInterval(adoptionBoardCoordinator.urgentOrderTimeRemaining)
+        NotificationManager.shared.scheduleRescueExpiring(expiresAt: expiresAt)
     }
 
-    func generateAdoptionOrder() -> AdoptionOrder {
-        adoptionBoardCoordinator.generateOrder(
-            unlockedChainIDs: progression.unlockedAnimalChainIDs,
-            playerLevel: progression.playerLevel,
-            forSlot: 0
-        )
-    }
-
+    // Persistent slots have no timer, so skipping one doesn't touch the
+    // rescue-expiring notification — that's the urgent order's job now.
     func skipOrder(at index: Int) {
         guard adoptionBoardCoordinator.canSkip(at: index,
                                                kibbleCost: adoptionSkipCost,
@@ -2664,7 +2721,6 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.skipOrder(at: index,
                                            unlockedChainIDs: progression.unlockedAnimalChainIDs,
                                            playerLevel: progression.playerLevel)
-        rescheduleRescueExpiring()
     }
 
     // MARK: Weekly spotlight

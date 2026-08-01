@@ -42,8 +42,10 @@ struct EconomySimulation {
     /// Login bonus, Loyalty Club, quests, daily challenges, weekly goals.
     static let miscKibblePerDay = 75
 
-    /// Order cycles an engaged player actually engages with per day.
-    /// Orders run `adoptionOrderDuration` (900 s), so 8 cycles ≈ 2 h of play.
+    /// Order cycles an engaged player actually engages with per day — how often
+    /// a slot is completed and replaced, not a timer (Phase 5, Task 5.2 made the
+    /// 4 persistent slots timerless; this was always a claim-cadence assumption,
+    /// unaffected by that split). 8 cycles ≈ 2 h of active play.
     static let orderCyclesPerDay = 8
 
     // MARK: Row
@@ -84,20 +86,25 @@ struct EconomySimulation {
     }
 
     /// Every (tier, probability) pair an order can be generated with at `level`,
-    /// averaged across every active slot's fixed difficulty. Mirrors
+    /// averaged across every active persistent slot's fixed difficulty plus the
+    /// single urgent order (Task 5.2), which always rolls `.medium` — see
+    /// `AdoptionBoard.generateUrgentOrder`. Mirrors
     /// `AdoptionBoard.difficulty(forSlot:)` + `rollTier(difficulty:)` — keep in step.
     static func tierDistribution(level: Int) -> [(tier: Int, p: Double)] {
         let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
-        let slots = slotCount(level: level)
+        let persistentSlots = slotCount(level: level)
+        let totalSlots = persistentSlots + 1   // + the urgent order
         var weights: [Int: Double] = [:]
-        for slotIndex in 0..<slots {
-            let difficulty = AdoptionBoard.difficulty(forSlot: slotIndex)
-            let bands = orderDifficultyBands[difficulty] ?? []
+        func add(_ bands: [(probability: Double, tiers: [Int])]) {
             for (bandProbability, tiers) in bands {
-                let each = bandProbability / Double(tiers.count) / Double(slots)
+                let each = bandProbability / Double(tiers.count) / Double(totalSlots)
                 for t in tiers { weights[min(t, maxTier), default: 0] += each }
             }
         }
+        for slotIndex in 0..<persistentSlots {
+            add(orderDifficultyBands[AdoptionBoard.difficulty(forSlot: slotIndex)] ?? [])
+        }
+        add(orderDifficultyBands[.medium] ?? [])
         return weights.map { (tier: $0.key, p: $0.value) }.sorted { $0.tier < $1.tier }
     }
 
@@ -111,7 +118,7 @@ struct EconomySimulation {
     }
 
     static func ordersPerDay(level: Int) -> Double {
-        Double(slotCount(level: level)) * Double(orderCyclesPerDay)
+        Double(slotCount(level: level) + 1) * Double(orderCyclesPerDay)   // + the urgent order
     }
 
     static func grossDemand(level: Int) -> Double {

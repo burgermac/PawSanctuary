@@ -16,7 +16,15 @@ class AdoptionBoard {
 
     // MARK: Stored state
 
+    /// Persistent — no timer. Sits until fulfilled (Phase 5, Task 5.2).
     var adoptionOrders: [AdoptionOrder] = []
+
+    /// The one order that carries real urgency. `nil` while waiting out
+    /// `urgentOrderCooldownRemaining` after a miss — that empty gap is the
+    /// consequence; nothing about it silently regenerates.
+    var urgentOrder: AdoptionOrder? = nil
+    var urgentOrderTimeRemaining: Double = 0
+    var urgentOrderCooldownRemaining: Double = 0
 
     // MARK: Setup
 
@@ -113,25 +121,61 @@ class AdoptionBoard {
             wantedChainID: chainID,
             wantedTier: tier,
             wantedCount: count,
-            timeRemaining: adoptionOrderDuration,
             rewards: rewards
         )
     }
 
-    // MARK: Timer tick
+    // MARK: Urgent order (Task 5.2)
 
-    /// Called every second by MergeBoardViewModel's timer.
-    func tick(unlockedChainIDs: [ChainID], playerLevel: Int) {
-        for i in adoptionOrders.indices {
-            guard !adoptionOrders[i].isClaimed else { continue }
-            if adoptionOrders[i].isComplete { continue }
-            if adoptionOrders[i].timeRemaining > 0 {
-                adoptionOrders[i].timeRemaining -= 1
-            } else {
-                adoptionOrders[i] = generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                                  playerLevel: playerLevel, forSlot: i)
+    /// Rolls a `.medium`-difficulty order (slot 1 of the fixed spread — an
+    /// achievable-in-a-session target, not the rare top-of-chain ask) and scales
+    /// its guaranteed currency rewards up, so the urgent order both carries the
+    /// stakes and is worth rushing for.
+    private func generateUrgentOrder(unlockedChainIDs: [ChainID], playerLevel: Int) -> AdoptionOrder {
+        var order = generateOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel, forSlot: 1)
+        order.rewards = order.rewards.map { reward in
+            guard reward.kind == .dogTags || reward.kind == .coins else { return reward }
+            var scaled = reward
+            scaled.amount = Int((Double(reward.amount) * urgentOrderRewardMultiplier).rounded())
+            return scaled
+        }
+        return order
+    }
+
+    /// Spawns a fresh urgent order if none is active and no cooldown is pending.
+    /// Covers a brand-new game and an existing save loading for the first time
+    /// after this feature shipped (both start with `urgentOrder == nil` and
+    /// `urgentOrderCooldownRemaining == 0`).
+    func ensureUrgentOrder(unlockedChainIDs: [ChainID], playerLevel: Int) {
+        guard urgentOrder == nil, urgentOrderCooldownRemaining <= 0 else { return }
+        urgentOrder = generateUrgentOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel)
+        urgentOrderTimeRemaining = urgentOrderDuration
+    }
+
+    /// Called every second by MergeBoardViewModel's timer. Returns `true` when
+    /// the urgent order's identity just changed (missed, or respawned after
+    /// cooldown) so the caller knows to reschedule its expiry notification.
+    @discardableResult
+    func tickUrgentOrder(unlockedChainIDs: [ChainID], playerLevel: Int) -> Bool {
+        if let order = urgentOrder {
+            guard !order.isComplete else { return false }
+            if urgentOrderTimeRemaining > 0 {
+                urgentOrderTimeRemaining -= 1
+                return false
+            }
+            // Missed: no partial credit, rewards forfeited, real cooldown before
+            // a new one appears — this is the stakes the persistent slots lack.
+            urgentOrder = nil
+            urgentOrderCooldownRemaining = urgentOrderRespawnCooldown
+            return true
+        } else if urgentOrderCooldownRemaining > 0 {
+            urgentOrderCooldownRemaining -= 1
+            if urgentOrderCooldownRemaining <= 0 {
+                ensureUrgentOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel)
+                return true
             }
         }
+        return false
     }
 
     // MARK: Merge updates
@@ -141,9 +185,7 @@ class AdoptionBoard {
     func updateAfterMerge(chainID: ChainID, tier: Int) -> [Int] {
         var completedIndices: [Int] = []
         for i in adoptionOrders.indices {
-            guard !adoptionOrders[i].isClaimed,
-                  !adoptionOrders[i].isComplete,
-                  adoptionOrders[i].timeRemaining > 0 else { continue }
+            guard !adoptionOrders[i].isClaimed, !adoptionOrders[i].isComplete else { continue }
             if adoptionOrders[i].wantedChainID == chainID &&
                adoptionOrders[i].wantedTier    == tier {
                 adoptionOrders[i].fulfilled += 1
@@ -153,6 +195,17 @@ class AdoptionBoard {
             }
         }
         return completedIndices
+    }
+
+    /// Advances the urgent order's progress for a matching merge. Returns `true`
+    /// if it just became complete.
+    func updateUrgentOrderAfterMerge(chainID: ChainID, tier: Int) -> Bool {
+        guard var order = urgentOrder,
+              !order.isComplete, urgentOrderTimeRemaining > 0,
+              order.wantedChainID == chainID, order.wantedTier == tier else { return false }
+        order.fulfilled += 1
+        urgentOrder = order
+        return order.isComplete
     }
 
     /// Marks an order as claimed. MergeBoardViewModel queues the replacement.
@@ -186,27 +239,54 @@ class AdoptionBoard {
 
     // MARK: Offline progress
 
+    /// Persistent orders need no offline handling — they have no timer. Only the
+    /// urgent order's timer/cooldown advances, potentially cycling through
+    /// several miss-then-respawn rounds if the player was away a long time.
+    /// Bounded to guard against a runaway loop; each round consumes at least
+    /// `min(urgentOrderDuration, urgentOrderRespawnCooldown)` seconds, so a
+    /// month-long gap is only a few thousand iterations.
     func applyOfflineProgress(elapsed: TimeInterval, unlockedChainIDs: [ChainID],
                               playerLevel: Int) {
-        let secs = Int(elapsed)
-        for i in adoptionOrders.indices {
-            guard !adoptionOrders[i].isClaimed, !adoptionOrders[i].isComplete else { continue }
-            adoptionOrders[i].timeRemaining -= elapsed
-            if adoptionOrders[i].timeRemaining <= 0 {
-                adoptionOrders[i] = generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                                  playerLevel: playerLevel, forSlot: i)
+        var remaining = elapsed
+        var iterations = 0
+        while remaining > 0 && iterations < 10_000 {
+            iterations += 1
+            if let order = urgentOrder {
+                guard !order.isComplete else { return }   // waiting to be claimed
+                if urgentOrderTimeRemaining > remaining {
+                    urgentOrderTimeRemaining -= remaining
+                    return
+                }
+                remaining -= urgentOrderTimeRemaining
+                urgentOrder = nil
+                urgentOrderCooldownRemaining = urgentOrderRespawnCooldown
+            } else if urgentOrderCooldownRemaining > 0 {
+                if urgentOrderCooldownRemaining > remaining {
+                    urgentOrderCooldownRemaining -= remaining
+                    return
+                }
+                remaining -= urgentOrderCooldownRemaining
+                urgentOrderCooldownRemaining = 0
+                ensureUrgentOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel)
+            } else {
+                ensureUrgentOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel)
             }
         }
-        _ = secs  // suppress unused warning
     }
 
     // MARK: Persistence
 
     func restore(from s: GameState) {
         adoptionOrders = s.adoptionOrders
+        urgentOrder = s.urgentOrder
+        urgentOrderTimeRemaining = s.urgentOrderTimeRemaining
+        urgentOrderCooldownRemaining = s.urgentOrderCooldownRemaining
     }
 
     func capture(into s: inout GameState) {
         s.adoptionOrders = adoptionOrders
+        s.urgentOrder = urgentOrder
+        s.urgentOrderTimeRemaining = urgentOrderTimeRemaining
+        s.urgentOrderCooldownRemaining = urgentOrderCooldownRemaining
     }
 }

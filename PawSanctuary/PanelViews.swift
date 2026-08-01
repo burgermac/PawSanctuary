@@ -146,7 +146,28 @@ struct AdoptionOrderPanelView: View {
     var viewModel: MergeBoardViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
+            // Urgent order (Task 5.2) — the one slot with a real clock and real
+            // stakes; shown above the persistent board so it's never missed.
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Urgent Order", systemImage: "bolt.fill")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.orange)
+                if let urgent = viewModel.urgentOrder {
+                    AdoptionOrderCard(
+                        order: urgent,
+                        canSkip: false,
+                        onSkip: {},
+                        showSkip: false,
+                        timer: (viewModel.urgentOrderTimeRemaining, urgentOrderDuration)
+                    )
+                } else {
+                    UrgentOrderCooldownCard(remaining: viewModel.urgentOrderCooldownRemaining)
+                }
+            }
+
+            Divider()
+
             // Panel header
             HStack {
                 Label("Adoption Board", systemImage: "heart.fill")
@@ -172,14 +193,61 @@ struct AdoptionOrderPanelView: View {
     }
 }
 
+/// Shown in the urgent-order slot while it waits out its post-miss cooldown
+/// (Task 5.2) — the visible consequence of letting one expire unfulfilled.
+struct UrgentOrderCooldownCard: View {
+    let remaining: Double
+
+    private var timeText: String {
+        let s = max(0, Int(remaining))
+        return s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60)s"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hourglass")
+                .font(.system(size: 18))
+                .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Missed it — a new urgent order is on its way")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("in \(timeText)")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.gray.opacity(0.08)))
+    }
+}
+
 struct AdoptionOrderCard: View {
     let order: AdoptionOrder
     let canSkip: Bool
     let onSkip: () -> Void
+    /// `nil` for a persistent order (no expiry, no bar shown). Populated for the
+    /// urgent order with `(remaining, duration)` so the bar/countdown render.
+    var showSkip: Bool = true
+    var timer: (remaining: Double, duration: Double)? = nil
+
+    private var timeFraction: Double {
+        guard let timer else { return 1 }
+        return timer.remaining / timer.duration
+    }
+    private var isUrgentCountdown: Bool {
+        guard let timer else { return false }
+        return timer.remaining < 120 && !order.isComplete
+    }
+    private var timeText: String {
+        guard let timer else { return "" }
+        let s = Int(timer.remaining)
+        return s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60 > 0 ? "\(s % 60)s" : "")"
+    }
 
     private var timerColor: Color {
         if order.isComplete { return .green }
-        if order.isUrgent   { return .red }
+        if isUrgentCountdown { return .red }
         return Color(red: 0.7, green: 0.25, blue: 0.35)
     }
 
@@ -209,7 +277,7 @@ struct AdoptionOrderCard: View {
                 Spacer()
 
                 // Skip button — only shown when order is active; greyed out when unaffordable
-                if !order.isClaimed && !order.isComplete {
+                if showSkip && !order.isClaimed && !order.isComplete {
                     Button(action: { SoundManager.shared.playButtonTap(); HapticManager.shared.lightTap(); onSkip() }) {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.clockwise")
@@ -302,27 +370,38 @@ struct AdoptionOrderCard: View {
             }
             .padding(.top, 8)
 
-            // ── Timer bar ─────────────────────────────────────────
-            VStack(spacing: 3) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.15))
-                        RoundedRectangle(cornerRadius: 3).fill(timerColor.opacity(0.6))
-                            .frame(width: geo.size.width * (order.isComplete ? 1.0 : order.timeFraction))
-                            .animation(.linear(duration: 1.0), value: order.timeFraction)
-                    }
-                }.frame(height: 4)
+            // ── Timer bar — only for the urgent order; persistent slots have
+            // no timer at all (Task 5.2), so they just state their status ──
+            if timer != nil {
+                VStack(spacing: 3) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.15))
+                            RoundedRectangle(cornerRadius: 3).fill(timerColor.opacity(0.6))
+                                .frame(width: geo.size.width * (order.isComplete ? 1.0 : timeFraction))
+                                .animation(.linear(duration: 1.0), value: timeFraction)
+                        }
+                    }.frame(height: 4)
 
+                    HStack {
+                        Text(order.isComplete
+                             ? "Ready for pickup!"
+                             : isUrgentCountdown ? "Hurrying! \(timeText) left" : "\(timeText) remaining")
+                            .font(.system(size: 9, weight: isUrgentCountdown ? .bold : .regular))
+                            .foregroundColor(timerColor)
+                        Spacer()
+                    }
+                }
+                .padding(.top, 6)
+            } else {
                 HStack {
-                    Text(order.isComplete
-                         ? "Ready for pickup!"
-                         : order.isUrgent ? "Hurrying! \(order.timeText) left" : "\(order.timeText) remaining")
-                        .font(.system(size: 9, weight: order.isUrgent ? .bold : .regular))
-                        .foregroundColor(timerColor)
+                    Text(order.isComplete ? "Ready for pickup!" : "Open — no rush")
+                        .font(.system(size: 9))
+                        .foregroundColor(order.isComplete ? .green : .secondary)
                     Spacer()
                 }
+                .padding(.top, 6)
             }
-            .padding(.top, 6)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)

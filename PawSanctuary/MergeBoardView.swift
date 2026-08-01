@@ -439,12 +439,13 @@ struct MergeBoardView: View {
         // 2. Daily rewards (persistent daily — schedule once, keeps firing)
         NotificationManager.shared.scheduleDailyRewards()
 
-        // 3. Adoption order expiry warnings
-        for order in viewModel.adoptionOrders where !order.isComplete && !order.isClaimed {
+        // 3. Urgent order expiry warning — the persistent slots have no timer
+        // (Phase 5, Task 5.2), so there's exactly one order left that can expire.
+        if let urgent = viewModel.urgentOrder, !urgent.isComplete && !urgent.isClaimed {
             NotificationManager.shared.scheduleOrderExpiry(
-                orderID:       order.id.uuidString,
-                timeRemaining: order.timeRemaining,
-                summary:       order.orderDescription)
+                orderID:       urgent.id.uuidString,
+                timeRemaining: viewModel.urgentOrderTimeRemaining,
+                summary:       urgent.orderDescription)
         }
 
         // 4. Re-engagement nudge (48 hours)
@@ -1126,8 +1127,8 @@ private struct KibbleRefillSheet: View {
                             .frame(maxWidth: .infinity)
                     }
 
-                    if let order = viewModel.nearestIncompleteOrder {
-                        nearestOrderFooter(order)
+                    if let (order, timeText) = viewModel.nearestIncompleteOrder {
+                        nearestOrderFooter(order, timeText: timeText)
                     }
                 }
                 .padding()
@@ -1252,7 +1253,7 @@ private struct KibbleRefillSheet: View {
         }
     }
 
-    private func nearestOrderFooter(_ order: AdoptionOrder) -> some View {
+    private func nearestOrderFooter(_ order: AdoptionOrder, timeText: String?) -> some View {
         HStack(spacing: 10) {
             Image(systemName: order.iconSymbol)
                 .font(.system(size: 18))
@@ -1261,7 +1262,7 @@ private struct KibbleRefillSheet: View {
                 Text("\(order.family.name) is still waiting for \(order.orderDescription)")
                     .font(.caption.bold())
                     .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
-                Text("\(order.timeText) left")
+                Text(timeText.map { "\($0) left" } ?? "Open — no rush")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

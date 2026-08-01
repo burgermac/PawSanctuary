@@ -668,8 +668,17 @@ let adoptionFamilies: [AdoptionFamily] = [
     AdoptionFamily(name: "The Singh Seniors", sfSymbol: "figure.walk.motion",              color: Color(red: 0.65, green: 0.45, blue: 0.20)),
 ]
 
-/// Duration (seconds) before an unfulfilled order expires and is replaced.
-let adoptionOrderDuration: Double = 900
+/// Duration (seconds) an active urgent order stays open before it's missed
+/// (Phase 5, Task 5.2). The 4 persistent order slots have no timer at all — this
+/// is now the only order-side countdown in the game.
+let urgentOrderDuration: Double = 900
+/// How long the urgent-order slot sits empty after a miss before a new one
+/// spawns. This is the "real stakes" the persistent slots never had: nothing is
+/// silently replaced, the player waits.
+let urgentOrderRespawnCooldown: Double = 1800
+/// Reward bonus on top of a normal order's payout — the urgent order should feel
+/// worth rushing for, not just risky.
+let urgentOrderRewardMultiplier: Double = 1.5
 
 /// The kind of payload a single `OrderReward` carries.
 enum RewardKind: String, Codable, CaseIterable {
@@ -697,6 +706,12 @@ struct OrderReward: Codable, Equatable {
 }
 
 /// A specific adoption request from a named family for a particular animal type.
+///
+/// Carries no timer of its own (Phase 5, Task 5.2) — the 4 board slots this
+/// backs are persistent, sitting until fulfilled. The one place a countdown
+/// still applies is the separate urgent order (`AdoptionBoard.urgentOrder`),
+/// which reuses this same struct for its descriptive/reward data and tracks
+/// `urgentOrderTimeRemaining` alongside it rather than on the struct itself.
 struct AdoptionOrder: Identifiable, Codable {
     var id = UUID()
     /// Index into the fixed `adoptionFamilies` roster (persisted instead of the
@@ -706,7 +721,6 @@ struct AdoptionOrder: Identifiable, Codable {
     var wantedTier: Int              // was wantedStage (0-based)
     var wantedCount: Int             // 1 or 2
     var fulfilled: Int = 0
-    var timeRemaining: Double
     var rewards: [OrderReward] = []
     var isClaimed: Bool = false
 
@@ -723,12 +737,6 @@ struct AdoptionOrder: Identifiable, Codable {
 
     var isComplete: Bool         { fulfilled >= wantedCount }
     var progressFraction: Double { min(Double(fulfilled) / Double(wantedCount), 1.0) }
-    var timeFraction: Double     { timeRemaining / adoptionOrderDuration }
-    var isUrgent: Bool           { timeRemaining < 120 && !isComplete }
-    var timeText: String {
-        let s = Int(timeRemaining)
-        return s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60 > 0 ? "\(s % 60)s" : "")"
-    }
 
     /// Human-readable request line shown on the card, e.g. "a Tabby" or "a Pup".
     var orderDescription: String {
