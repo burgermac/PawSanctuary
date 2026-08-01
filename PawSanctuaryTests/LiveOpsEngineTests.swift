@@ -259,3 +259,48 @@ final class ProgressTrackTests: XCTestCase {
         XCTAssertEqual(captured.progressTracks["t"]?.claimedFree, [0])
     }
 }
+
+@MainActor
+final class RewardTableRegistryTests: XCTestCase {
+
+    func testUnregisteredTableIDRollsEmptyRatherThanTrapping() {
+        let registry = RewardTableRegistry(tables: [:])
+        XCTAssertEqual(registry.roll(tableID: "nope"), [])
+        XCTAssertEqual(registry.table("nope"), [])
+    }
+
+    func testEmptyTableRollsEmpty() {
+        let registry = RewardTableRegistry(tables: ["t": []])
+        XCTAssertEqual(registry.roll(tableID: "t"), [])
+    }
+
+    func testTableLookupReturnsWhatWasRegistered() {
+        let entries = [WeightedReward(weight: 1, rewards: [OrderReward(kind: .coins, amount: 5)])]
+        let registry = RewardTableRegistry(tables: ["t": entries])
+        XCTAssertEqual(registry.table("t"), entries)
+    }
+
+    /// Statistical: roll a known-weight table many times and check each entry's
+    /// observed frequency lands within a generous tolerance of weight/total.
+    /// No injected RNG in this codebase's convention (see SubObjectSystem), so
+    /// this is inherently probabilistic — the tolerance is wide enough to keep
+    /// it non-flaky at 20,000 trials.
+    func testRollDistributionMatchesDeclaredWeights() {
+        let common = OrderReward(kind: .coins, amount: 1)
+        let rare   = OrderReward(kind: .coins, amount: 100)
+        let table: [WeightedReward] = [
+            WeightedReward(weight: 90, rewards: [common]),
+            WeightedReward(weight: 10, rewards: [rare]),
+        ]
+        let registry = RewardTableRegistry(tables: ["t": table])
+
+        let trials = 20_000
+        var commonCount = 0
+        for _ in 0..<trials {
+            if registry.roll(tableID: "t") == [common] { commonCount += 1 }
+        }
+        let observed = Double(commonCount) / Double(trials)
+        XCTAssertEqual(observed, 0.9, accuracy: 0.03,
+                       "expected ~90% common rolls, observed \(observed * 100)%")
+    }
+}

@@ -184,3 +184,45 @@ final class ProgressTrack: ProgressTracking {
         s.progressTracks = states
     }
 }
+
+// ============================================================
+// MARK: - 4. Reward table
+// ============================================================
+
+/// Weighted-random reward payloads, keyed by table ID. No persisted state —
+/// a roll is consumed immediately by the caller, same as
+/// `SubObjectSystem.weightedRarityRoll`, whose weight-bucket pattern this
+/// mirrors. `tables` defaults to an empty static registry — no table is
+/// authored until content needs one (Phase 6b, or migrating the existing
+/// hardcoded chest payout — see specs/Spec_Phase6a_Primitives.md §5).
+///
+/// An instantiable type rather than the enum-of-statics shape
+/// `OrderRewardRegistry` uses: `RewardTabling`'s requirements are instance
+/// methods, and an enum can't satisfy those with `static func`s.
+@MainActor
+final class RewardTableRegistry: RewardTabling {
+    static let defaultTables: [String: [WeightedReward]] = [:]
+
+    private let tables: [String: [WeightedReward]]
+
+    init(tables: [String: [WeightedReward]] = RewardTableRegistry.defaultTables) {
+        self.tables = tables
+    }
+
+    func table(_ id: String) -> [WeightedReward] {
+        tables[id] ?? []
+    }
+
+    func roll(tableID: String) -> [OrderReward] {
+        let entries = table(tableID)
+        let total = entries.reduce(0) { $0 + $1.weight }
+        guard total > 0 else { return [] }
+
+        var roll = Double.random(in: 0..<Double(total))
+        for entry in entries {
+            roll -= Double(entry.weight)
+            if roll < 0 { return entry.rewards }
+        }
+        return entries.last?.rewards ?? []
+    }
+}
