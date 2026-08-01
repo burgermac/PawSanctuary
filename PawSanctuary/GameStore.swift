@@ -169,6 +169,13 @@ struct GameState: Codable {
     /// Wall-clock time the snapshot was taken, used to advance timers for the
     /// span the app was closed. Optional so pre-existing saves still decode.
     var lastActiveDate: Date?
+
+    // Live-ops primitives (v30, Phase 6a) — nothing writes to these yet; see
+    // LiveOpsEngine.swift's TokenWallet / ProgressTrack.
+    /// Named-currency balances, keyed by token ID.
+    var eventTokenWallets: [String: Int] = [:]
+    /// Per-track claimed-milestone state, keyed by track ID.
+    var progressTracks: [String: TrackState] = [:]
 }
 
 // ============================================================
@@ -237,7 +244,10 @@ enum GameStore {
     ///      order (urgentOrder / urgentOrderTimeRemaining / urgentOrderCooldownRemaining)
     ///      now carries the short fuse. Structural: the old per-order key is
     ///      removed, not just superseded.
-    static let currentVersion = 29
+    /// v30: live-ops primitives (Phase 6a). GameState gains eventTokenWallets
+    ///      (token ID -> balance) and progressTracks (track ID -> TrackState).
+    ///      Purely additive; nothing writes to either yet.
+    static let currentVersion = 30
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -402,6 +412,7 @@ enum GameStore {
         if version == 26 { return migrateV26toV27(data) }
         if version == 27 { return migrateV27toV28(data) }
         if version == 28 { return migrateV28toV29(data) }
+        if version == 29 { return migrateByInjecting(from: 29, defaults: [:], into: data) }   // eventTokenWallets/progressTracks covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -468,6 +479,8 @@ enum GameStore {
         // v29 — urgent order timer/cooldown (Phase 5, Task 5.2). `urgentOrder`
         // itself is Optional and needs no entry here.
         "urgentOrderTimeRemaining": 0.0, "urgentOrderCooldownRemaining": 0.0,
+        // v30 — live-ops primitives (Phase 6a): token wallet + progress track state.
+        "eventTokenWallets": [String: Int](), "progressTracks": [String: Any](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

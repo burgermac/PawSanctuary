@@ -87,3 +87,101 @@ final class EventSchedulerTests: XCTestCase {
         XCTAssertNil(scheduler.contestedSlotWinner(at: day("2026-08-02"), playerLevel: 99))
     }
 }
+
+/// A bare-minimum, valid `GameState` — empty collections, zero counters — for
+/// tests that only care about round-tripping one or two fields and don't need
+/// PersistenceTests.swift's fully-populated `makeSampleState()`.
+private func emptyGameState() -> GameState {
+    GameState(
+        board: [],
+        kibble: 0, dogTags: 0, score: 0,
+        rescueCount: 0, ambassadors: 0, mergeCount: 0,
+        secondsUntilNextKibble: 0,
+        playerLevel: 1, playerXP: 0,
+        unlockedChainIDs: [],
+        inventory: [],
+        inventoryRow1Unlocked: false, inventoryRow2Unlocked: false,
+        activeQuests: [],
+        dailyChallenges: [],
+        dailyChallengeStreak: 0, dailyChallengeBonusClaimed: false,
+        adoptionOrders: [],
+        spotlightMergesThisWeek: 0,
+        materialCounts: [:],
+        producerStorage: [:],
+        overflowProducerStorage: [],
+        completedAreaIDs: [],
+        areaUpgradeLevels: [:],
+        spawnMultiplier: 1,
+        cardInventory: [:],
+        starCount: 0,
+        completedAlbumIDs: [],
+        pendingCardPacks: [],
+        jokerCards: 0,
+        rareJokerCards: 0,
+        pendingOutgoingTrades: [],
+        pendingIncomingTrades: [],
+        cardsSentToday: 0,
+        lastCardSendDate: nil,
+        coins: 0, coinsEarnedThisWeek: 0,
+        weeklyGoalBronzeClaimed: false, weeklyGoalSilverClaimed: false, weeklyGoalGoldClaimed: false,
+        lastWeeklyGoalReset: nil,
+        weeklyGoldCompletions: 0, monthlyGoalClaimed: false, lastMonthlyGoalReset: nil,
+        lastLoginDate: nil,
+        loginStreak: 0, loginDayIndex: 0,
+        lastDailyChallengeReset: nil,
+        lastSpotlightWeek: 0,
+        adsWatchedToday: 0, lastAdWatchDate: nil,
+        passLastClaimDate: nil,
+        loyaltyClubDayIndex: 0, loyaltyClubLastClaimDate: nil, loyaltyClubStreak: 0,
+        eventProgress: EventProgress(),
+        inviteProgress: InviteProgress(),
+        lastActiveDate: nil
+    )
+}
+
+@MainActor
+final class TokenWalletTests: XCTestCase {
+
+    func testCreditAndDebitRoundTrip() {
+        let wallet = TokenWallet()
+        wallet.credit("rescue_rush_jun2026", 100)
+        XCTAssertEqual(wallet.balance("rescue_rush_jun2026"), 100)
+        XCTAssertTrue(wallet.debit("rescue_rush_jun2026", 40))
+        XCTAssertEqual(wallet.balance("rescue_rush_jun2026"), 60)
+    }
+
+    func testDebitBelowZeroIsRejectedAndBalanceUnchanged() {
+        let wallet = TokenWallet()
+        wallet.credit("t", 10)
+        XCTAssertFalse(wallet.debit("t", 11))
+        XCTAssertEqual(wallet.balance("t"), 10)
+    }
+
+    func testBalanceForUnknownTokenIsZero() {
+        let wallet = TokenWallet()
+        XCTAssertEqual(wallet.balance("nope"), 0)
+    }
+
+    func testPurgeRemovesTheKeyEntirelyNotJustZeroesIt() {
+        let wallet = TokenWallet()
+        wallet.credit("t", 5)
+        wallet.purge(tokensFor: "t")
+        XCTAssertEqual(wallet.balance("t"), 0)
+        XCTAssertFalse(wallet.wallets.keys.contains("t"), "purge should drop the key, not leave a 0 entry")
+    }
+
+    func testRestoreAndCaptureRoundTripThroughGameState() {
+        var state = emptyGameState()
+        state.eventTokenWallets = ["a": 3, "b": 7]
+
+        let wallet = TokenWallet()
+        wallet.restore(from: state)
+        XCTAssertEqual(wallet.balance("a"), 3)
+        XCTAssertEqual(wallet.balance("b"), 7)
+
+        wallet.credit("c", 1)
+        var captured = state
+        wallet.capture(into: &captured)
+        XCTAssertEqual(captured.eventTokenWallets, ["a": 3, "b": 7, "c": 1])
+    }
+}

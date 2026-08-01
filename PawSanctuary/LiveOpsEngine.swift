@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import Observation
 
 // ============================================================
 // MARK: - 1. Scheduler
@@ -50,4 +51,65 @@ final class EventScheduler: EventScheduling {
                 return lhs.event.startDate > rhs.event.startDate   // earlier start wins on a priority tie
             }?.id
     }
+}
+
+// ============================================================
+// MARK: - 2. Token wallet
+// ============================================================
+
+/// Arbitrary named currencies with an end-of-event lifecycle. Owns its state
+/// directly and round-trips through `GameState.eventTokenWallets` via
+/// restore(from:)/capture(into:) — the same shape `KibbleEngine` uses for
+/// kibble/dogTags. Not yet wired into `MergeBoardViewModel` (Phase 6a is
+/// machinery only); a future caller instantiates one, calls `restore(from:)`
+/// after load and `capture(into:)` before save.
+@Observable
+@MainActor
+final class TokenWallet: TokenWalleting {
+    private(set) var wallets: [String: Int] = [:]
+
+    func balance(_ token: String) -> Int { wallets[token] ?? 0 }
+
+    func credit(_ token: String, _ amount: Int) {
+        wallets[token, default: 0] += amount
+    }
+
+    @discardableResult
+    func debit(_ token: String, _ amount: Int) -> Bool {
+        guard balance(token) >= amount else { return false }
+        wallets[token, default: 0] -= amount
+        return true
+    }
+
+    /// Removes the token's entry entirely — not just zeroes it, so an expired
+    /// event's currency stops existing rather than lingering as a visible `0`.
+    func purge(tokensFor eventID: String) {
+        wallets.removeValue(forKey: eventID)
+    }
+
+    // MARK: Persistence
+
+    func restore(from s: GameState) {
+        wallets = s.eventTokenWallets
+    }
+
+    func capture(into s: inout GameState) {
+        s.eventTokenWallets = wallets
+    }
+}
+
+// ============================================================
+// MARK: - 3. Progress track
+// ============================================================
+//
+// TrackState is declared here (backing GameState.progressTracks, added in the
+// same v30 migration as the token wallet above); ProgressTrack itself — the
+// ProgressTracking conformance — lands in the next commit.
+
+/// Per-track claimed-milestone state. `claimedFree`/`claimedPaid` hold
+/// `TrackMilestone.index` values already claimed on that lane.
+struct TrackState: Codable, Equatable {
+    var progress: Int = 0
+    var claimedFree: [Int] = []
+    var claimedPaid: [Int] = []
 }

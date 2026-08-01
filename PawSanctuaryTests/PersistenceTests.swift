@@ -876,6 +876,36 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.urgentOrderCooldownRemaining, 0)
     }
 
+    // MARK: v29 → v30 (Phase 6a, live-ops primitives)
+
+    func testV29toV30MigrationInjectsEmptyLiveOpsPrimitiveState() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "eventTokenWallets")
+        obj.removeValue(forKey: "progressTracks")
+        obj["version"] = 29
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v29 save should migrate to v30")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.eventTokenWallets.isEmpty)
+        XCTAssertTrue(loaded.progressTracks.isEmpty)
+    }
+
+    /// A fresh v30 save with real data round-trips exactly — not just the
+    /// migration-from-older-save path above.
+    func testEventTokenWalletsAndProgressTracksRoundTripOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.eventTokenWallets = ["rescue_rush_jun2026": 340]
+        state.progressTracks = [
+            "founders_track": TrackState(progress: 12, claimedFree: [0, 1], claimedPaid: [0]),
+        ]
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertEqual(decoded.eventTokenWallets, state.eventTokenWallets)
+        XCTAssertEqual(decoded.progressTracks, state.progressTracks)
+    }
+
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
     /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
     func testEveryMigratedTierResolvesInTheRegistry() throws {
