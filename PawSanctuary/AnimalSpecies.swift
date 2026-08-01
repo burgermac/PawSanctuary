@@ -758,6 +758,8 @@ extension AdoptionOrder {
         guard let raw = rewards.first(where: { $0.kind == .cardPack })?.payloadID else { return nil }
         return CardPackType(rawValue: raw)
     }
+    /// The hard slot's material reward (Task 5.3), if this order carries one.
+    var materialReward: OrderReward? { rewards.first { $0.kind == .material } }
 }
 
 // ============================================================
@@ -1265,6 +1267,21 @@ let orderRewardTierOffset = 3
 
 /// One order in this many carries a board-item reward.
 let orderBoardItemFrequency = 3
+
+/// Phase 5, Task 5.3: the hard-difficulty slot always carries a material reward
+/// too, giving the Sanctuary Map's wood/metal/cement economy a second, reliable
+/// faucet alongside quest-driven Toolboxes (today's only source). Deterministic
+/// rather than a chance roll, matching the reference blueprint's per-difficulty
+/// payout table (easy/medium → COIN, hard → PART) — "its own bottleneck" means
+/// dependable, not rare.
+///
+/// No material-economy model exists yet (unlike the coin economy's
+/// `EconomySimulation`), so this quantity/tier is a conservative first cut, not
+/// an empirically derived one: 1 item, discounted `materialRewardTierOffset`
+/// tiers below what a same-level Toolbox could roll (`toolboxMaxTier`), so a
+/// hard order never outpaces the existing Toolbox channel — it supplements it.
+let materialRewardCount = 1
+let materialRewardTierOffset = 2
 
 // ── Dog Tag store (Phase 2, Task 2.3c) ────────────────────────
 

@@ -344,6 +344,14 @@ struct AdoptionOrderCard: View {
                         (Text(Image(systemName: "coin.fill")) + Text(" +\(order.rewardCoins)"))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(Color(red: 0.45, green: 0.28, blue: 0.02))
+                        // Task 5.3 — the hard slot's material reward.
+                        if let material = order.materialReward, let chainID = material.payloadID {
+                            let symbol = ContentRegistry.shared.tier(chainID, material.payloadTier ?? 0)?.symbol
+                                ?? "shippingbox.fill"
+                            (Text(Image(systemName: symbol)) + Text(" +\(material.amount)"))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(Color(red: 0.45, green: 0.35, blue: 0.20))
+                        }
                     }
                 }
 

@@ -2640,7 +2640,14 @@ class MergeBoardViewModel {
                 let item = BoardItem(chainID: chainID,
                                      tier: min(max(0, reward.payloadTier ?? 0), maxTier))
                 for _ in 0..<max(1, reward.amount) { placeOrBankItem(item) }
-            case .material, .eventToken:
+            case .material:
+                // Task 5.3 — feed the hard slot's material reward into the same
+                // accumulator Toolboxes use (with its 2:1 cascade), rather than
+                // a separate mechanic.
+                guard let chainID = reward.payloadID else { break }
+                let item = BoardItem(chainID: chainID, tier: max(0, reward.payloadTier ?? 0))
+                inventoryStore.absorbMaterialItems(Array(repeating: item, count: max(1, reward.amount)))
+            case .eventToken:
                 break   // Phase 6 — intentionally unhandled for now
             }
         }
@@ -2681,7 +2688,14 @@ class MergeBoardViewModel {
                 let item = BoardItem(chainID: chainID,
                                      tier: min(max(0, reward.payloadTier ?? 0), maxTier))
                 for _ in 0..<max(1, reward.amount) { placeOrBankItem(item) }
-            case .material, .eventToken:
+            case .material:
+                // Task 5.3 — feed the hard slot's material reward into the same
+                // accumulator Toolboxes use (with its 2:1 cascade), rather than
+                // a separate mechanic.
+                guard let chainID = reward.payloadID else { break }
+                let item = BoardItem(chainID: chainID, tier: max(0, reward.payloadTier ?? 0))
+                inventoryStore.absorbMaterialItems(Array(repeating: item, count: max(1, reward.amount)))
+            case .eventToken:
                 break   // Phase 6 — intentionally unhandled for now
             }
         }

@@ -399,6 +399,40 @@ final class EconomyTests: XCTestCase {
         }
     }
 
+    // MARK: Task 5.3 — hard slot pays materials
+
+    func testHardSlotAlwaysPaysAMaterialReward() {
+        let board = AdoptionBoard()
+        let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
+        let materialChainIDs: Set<ChainID> = [ContentRegistry.woodChainID, ContentRegistry.metalChainID,
+                                              ContentRegistry.cementChainID]
+        for level in [1, 20, 40, 60] {
+            for _ in 0..<50 {
+                let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: level, forSlot: 3)
+                let materials = order.rewards.filter { $0.kind == .material }
+                XCTAssertEqual(materials.count, 1, "the hard slot must pay exactly one material reward")
+                guard let reward = materials.first else { continue }
+                XCTAssertEqual(reward.amount, materialRewardCount)
+                XCTAssertTrue(reward.payloadID.map { materialChainIDs.contains($0) } ?? false,
+                             "material reward must name a real material chain")
+                XCTAssertGreaterThanOrEqual(reward.payloadTier ?? -1, 0)
+                XCTAssertLessThanOrEqual(reward.payloadTier ?? 6, 5)
+            }
+        }
+    }
+
+    func testNonHardSlotsNeverPayAMaterialReward() {
+        let board = AdoptionBoard()
+        let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
+        for slot in [0, 1, 2] {
+            for _ in 0..<200 {
+                let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 45, forSlot: slot)
+                XCTAssertFalse(order.rewards.contains { $0.kind == .material },
+                               "only the hard slot (index 3) should ever pay materials")
+            }
+        }
+    }
+
     // MARK: Task 2.5 — the ratio curve
 
     func testDemandSupplyRatioMatchesTheTargetCurve() {

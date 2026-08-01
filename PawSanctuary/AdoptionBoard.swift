@@ -114,6 +114,17 @@ class AdoptionBoard {
                                        payloadID: rewardChainID, payloadTier: rewardTier))
         }
 
+        // Task 5.3: the hard slot always pays a material too, so the Sanctuary
+        // Map economy has a dedicated bottleneck beyond quest-driven Toolboxes.
+        if difficulty == .hard {
+            let materialChainIDs = [ContentRegistry.woodChainID, ContentRegistry.metalChainID,
+                                    ContentRegistry.cementChainID]
+            let materialChainID = materialChainIDs.randomElement() ?? ContentRegistry.woodChainID
+            let materialTier = max(0, toolboxMaxTier(forPlayerLevel: playerLevel) - materialRewardTierOffset)
+            rewards.append(OrderReward(kind: .material, amount: materialRewardCount,
+                                       payloadID: materialChainID, payloadTier: materialTier))
+        }
+
         rewards.append(contentsOf: OrderRewardRegistry.riders(playerLevel: playerLevel))
 
         return AdoptionOrder(
