@@ -95,8 +95,8 @@ final class EconomyTests: XCTestCase {
     func testGeneratedOrdersPayWithinTheSpreadOfNominal() {
         let board = AdoptionBoard()
         let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
-        for _ in 0..<500 {
-            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 45)
+        for i in 0..<500 {
+            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 45, forSlot: i % 4)
             guard let coins = order.rewards.first(where: { $0.kind == .coins })?.amount else {
                 return XCTFail("every order should carry a coin reward")
             }
@@ -377,8 +377,8 @@ final class EconomyTests: XCTestCase {
         let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
         var withItem = 0
         let sample = 3_000
-        for _ in 0..<sample {
-            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 30)
+        for i in 0..<sample {
+            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 30, forSlot: i % 4)
             if order.rewards.contains(where: { $0.kind == .boardItem }) { withItem += 1 }
         }
         let rate = Double(withItem) / Double(sample)
@@ -390,8 +390,8 @@ final class EconomyTests: XCTestCase {
     func testOrderBoardItemRewardIsWellBelowWhatTheOrderAsksFor() {
         let board = AdoptionBoard()
         let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
-        for _ in 0..<500 {
-            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 40)
+        for i in 0..<500 {
+            let order = board.generateOrder(unlockedChainIDs: chains, playerLevel: 40, forSlot: i % 4)
             guard let reward = order.rewards.first(where: { $0.kind == .boardItem }),
                   let tier = reward.payloadTier else { continue }
             XCTAssertLessThanOrEqual(tier, max(0, order.wantedTier - orderRewardTierOffset),

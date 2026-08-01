@@ -68,7 +68,7 @@ struct UpgradeBonus {
     var coinsPerOrderFulfil:     Int  = 0   // Antique Dog House T2
     var kibblePerRegen:          Int  = 0   // Scratching Post T1 (+1 kibble on each regen tick)
     var coinsPerAmbassador:      Int  = 0   // Scratching Post T2
-    var extraAdoptionSlots:      Int  = 0   // Garden Hutch T1 (adds order slots beyond the base 2)
+    var extraAdoptionSlots:      Int  = 0   // Garden Hutch T1 (adds order slots beyond the base 4)
     var questDogTagBonus:        Int  = 0   // Garden Hutch T2 (+N dog tags on any quest claim)
     var weeklyGoldDiscount:      Int  = 0   // Decorative Birdhouse T1 (reduces the Gold coin target)
     var monthlyWeeksDiscount:    Int  = 0   // Decorative Birdhouse T2 (reduces weeks needed for monthly)

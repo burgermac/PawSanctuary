@@ -641,7 +641,7 @@ class MergeBoardViewModel {
         max(1, monthlyGoalWeeksNeeded - cachedActiveBonuses.monthlyWeeksDiscount)
     }
     var monthlyGoalReached: Bool { weeklyGoldCompletions >= monthlyGoalWeeksRequired }
-    var adoptionOrderCount: Int  { 2 + cachedActiveBonuses.extraAdoptionSlots }
+    var adoptionOrderCount: Int  { 4 + cachedActiveBonuses.extraAdoptionSlots }
 
     var passMultiplier: Double { isPassActive ? passKibbleMultiplier : 1.0 }
     func withPassBonus(_ base: Int) -> Int { Int(Double(base) * passMultiplier) }
@@ -2651,7 +2651,8 @@ class MergeBoardViewModel {
     func generateAdoptionOrder() -> AdoptionOrder {
         adoptionBoardCoordinator.generateOrder(
             unlockedChainIDs: progression.unlockedAnimalChainIDs,
-            playerLevel: progression.playerLevel
+            playerLevel: progression.playerLevel,
+            forSlot: 0
         )
     }
 

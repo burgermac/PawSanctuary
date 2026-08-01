@@ -21,8 +21,8 @@ class AdoptionBoard {
     // MARK: Setup
 
     func setupOrders(count: Int, unlockedChainIDs: [ChainID], playerLevel: Int) {
-        adoptionOrders = (0..<max(2, count)).map { _ in
-            generateOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel)
+        adoptionOrders = (0..<max(orderSlotDifficultyPattern.count, count)).map { i in
+            generateOrder(unlockedChainIDs: unlockedChainIDs, playerLevel: playerLevel, forSlot: i)
         }
     }
 
@@ -30,33 +30,43 @@ class AdoptionBoard {
     func syncOrderSlots(count: Int, unlockedChainIDs: [ChainID], playerLevel: Int) {
         while adoptionOrders.count < count {
             adoptionOrders.append(generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                                playerLevel: playerLevel))
+                                                playerLevel: playerLevel,
+                                                forSlot: adoptionOrders.count))
         }
     }
 
     // MARK: Generation
 
-    /// Draws an uncapped tier from `orderTierBands`.
-    static func rollTier() -> Int {
+    /// The fixed difficulty for a given slot index (Task 5.1) — cycles
+    /// `orderSlotDifficultyPattern` so slots added by Sanctuary Map upgrades
+    /// beyond the base 4 keep following the same easy/medium/medium/hard spread.
+    static func difficulty(forSlot index: Int) -> OrderDifficulty {
+        orderSlotDifficultyPattern[index % orderSlotDifficultyPattern.count]
+    }
+
+    /// Draws an uncapped tier from `orderDifficultyBands[difficulty]`.
+    static func rollTier(difficulty: OrderDifficulty) -> Int {
+        let bands = orderDifficultyBands[difficulty] ?? []
         var roll = Double.random(in: 0..<1)
-        for band in orderTierBands {
+        for band in bands {
             roll -= band.probability
             if roll < 0 { return band.tiers.randomElement() ?? 0 }
         }
-        return orderTierBands.last?.tiers.last ?? 0
+        return bands.last?.tiers.last ?? 0
     }
 
-    func generateOrder(unlockedChainIDs: [ChainID], playerLevel: Int) -> AdoptionOrder {
+    func generateOrder(unlockedChainIDs: [ChainID], playerLevel: Int, forSlot index: Int) -> AdoptionOrder {
         let animalChainIDs = unlockedChainIDs.filter {
             ContentRegistry.shared.chain($0)?.category == .animal
         }
         let familyIndex = Int.random(in: 0..<adoptionFamilies.count)
         let chainID     = animalChainIDs.randomElement() ?? ContentRegistry.animalChainID(.dog)
 
-        // Tier weighting comes from the shared `orderTierBands` table so the
+        // Tier weighting comes from the shared `orderDifficultyBands` table so the
         // economy model in EconomySimulation can never drift from what is
         // actually generated here. All tiers are capped by maxAchievableOrderTier.
-        let rawTier = Self.rollTier()
+        let difficulty = Self.difficulty(forSlot: index)
+        let rawTier = Self.rollTier(difficulty: difficulty)
         let maxTier = maxAchievableOrderTier(forPlayerLevel: playerLevel)
         let tier    = min(rawTier, maxTier)
         let count   = (tier <= 5 && Int.random(in: 1...3) == 1) ? 2 : 1
@@ -119,7 +129,7 @@ class AdoptionBoard {
                 adoptionOrders[i].timeRemaining -= 1
             } else {
                 adoptionOrders[i] = generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                                  playerLevel: playerLevel)
+                                                  playerLevel: playerLevel, forSlot: i)
             }
         }
     }
@@ -155,7 +165,7 @@ class AdoptionBoard {
     func replaceOrder(at index: Int, unlockedChainIDs: [ChainID], playerLevel: Int) {
         guard adoptionOrders.indices.contains(index) else { return }
         adoptionOrders[index] = generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                              playerLevel: playerLevel)
+                                              playerLevel: playerLevel, forSlot: index)
     }
 
     // MARK: Skip
@@ -171,7 +181,7 @@ class AdoptionBoard {
         guard adoptionOrders.indices.contains(index),
               !adoptionOrders[index].isClaimed else { return }
         adoptionOrders[index] = generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                              playerLevel: playerLevel)
+                                              playerLevel: playerLevel, forSlot: index)
     }
 
     // MARK: Offline progress
@@ -184,7 +194,7 @@ class AdoptionBoard {
             adoptionOrders[i].timeRemaining -= elapsed
             if adoptionOrders[i].timeRemaining <= 0 {
                 adoptionOrders[i] = generateOrder(unlockedChainIDs: unlockedChainIDs,
-                                                  playerLevel: playerLevel)
+                                                  playerLevel: playerLevel, forSlot: i)
             }
         }
         _ = secs  // suppress unused warning

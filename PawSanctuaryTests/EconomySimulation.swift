@@ -72,17 +72,31 @@ struct EconomySimulation {
 
     // MARK: Demand
     //
-    // Enumerates `AdoptionBoard.generateOrder`'s tier-weighting table exactly
-    // rather than sampling it, so the number is stable and the test can assert on it.
+    // Enumerates `AdoptionBoard`'s per-difficulty tier-weighting tables exactly
+    // rather than sampling them, so the number is stable and the test can assert on it.
 
-    /// Every (tier, probability) pair an order can be generated with at `level`.
-    /// Mirrors the `roll` switch in `AdoptionBoard.generateOrder` — keep in step.
+    /// Order slots active at `level`. Base 4 (Task 5.1); Garden Hutch T1 adds one,
+    /// modelled as available from L13 — the other four order-slot upgrades
+    /// scattered later across the map are not separately modelled, consistent
+    /// with this function's pre-5.1 approximation of only the first unlock.
+    static func slotCount(level: Int) -> Int {
+        level >= 13 ? 5 : 4
+    }
+
+    /// Every (tier, probability) pair an order can be generated with at `level`,
+    /// averaged across every active slot's fixed difficulty. Mirrors
+    /// `AdoptionBoard.difficulty(forSlot:)` + `rollTier(difficulty:)` — keep in step.
     static func tierDistribution(level: Int) -> [(tier: Int, p: Double)] {
         let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        let slots = slotCount(level: level)
         var weights: [Int: Double] = [:]
-        for (bandProbability, tiers) in orderTierBands {
-            let each = bandProbability / Double(tiers.count)
-            for t in tiers { weights[min(t, maxTier), default: 0] += each }
+        for slotIndex in 0..<slots {
+            let difficulty = AdoptionBoard.difficulty(forSlot: slotIndex)
+            let bands = orderDifficultyBands[difficulty] ?? []
+            for (bandProbability, tiers) in bands {
+                let each = bandProbability / Double(tiers.count) / Double(slots)
+                for t in tiers { weights[min(t, maxTier), default: 0] += each }
+            }
         }
         return weights.map { (tier: $0.key, p: $0.value) }.sorted { $0.tier < $1.tier }
     }
@@ -97,9 +111,7 @@ struct EconomySimulation {
     }
 
     static func ordersPerDay(level: Int) -> Double {
-        // Base 2 slots; Garden Hutch T1 adds one, modelled as available from L13.
-        let slots = level >= 13 ? 3.0 : 2.0
-        return slots * Double(orderCyclesPerDay)
+        Double(slotCount(level: level)) * Double(orderCyclesPerDay)
     }
 
     static func grossDemand(level: Int) -> Double {

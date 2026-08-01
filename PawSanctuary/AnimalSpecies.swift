@@ -1094,7 +1094,7 @@ func toolboxMaxTier(forPlayerLevel level: Int) -> Int {
 /// Early players never receive orders for stages they can't realistically reach,
 /// preventing the frustration of watching orders expire unfilled.
 ///
-/// **Phase 2 dial.** Together with `orderTierBands` this is the primary control on
+/// **Phase 2 dial.** Together with `orderDifficultyBands` this is the primary control on
 /// the demand/supply ratio — see `EconomySimulation`. Retuned in Phase 2 because
 /// under neutral pricing a tier-14 item costs 16,384 kibble (~22 days of a
 /// player's entire income); the pre-Phase-2 table was written for the old world
@@ -1112,23 +1112,35 @@ func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
     }
 }
 
-/// The adoption-order tier-weighting table: `(probability, tiers)`, probabilities
-/// summing to 1. A tier above `maxAchievableOrderTier` collapses onto it.
+/// An order slot's fixed difficulty (Phase 5, Task 5.1). Replaces the old
+/// uniform tier roll — every slot now draws from its own difficulty's band
+/// instead of all slots sharing one distribution, so the board can never show
+/// (say) four easy orders at once by chance.
+enum OrderDifficulty: String, Codable, CaseIterable {
+    case easy, medium, hard
+}
+
+/// The fixed per-slot difficulty spread: slot 0 is always easy, slots 1-2
+/// medium, slot 3 hard. Slots beyond the base 4 (granted by Sanctuary Map
+/// upgrades) repeat the same pattern.
+let orderSlotDifficultyPattern: [OrderDifficulty] = [.easy, .medium, .medium, .hard]
+
+/// Per-difficulty tier-weighting table: `(probability, tiers)`, probabilities
+/// summing to 1 within each difficulty. A tier above `maxAchievableOrderTier`
+/// collapses onto it, same as before.
 ///
-/// **Phase 2 dial** — shared by `AdoptionBoard.generateOrder` and
-/// `EconomySimulation` so the model can never drift from what the game generates.
-///
-/// The distribution is deliberately bottom-heavy: cost doubles per tier, so the
-/// top band dominates the mean however rare it is. At the pre-Phase-2 weighting
-/// (20/20/20/20/10/10 across tiers 0-14) the average order cost 2,526 kibble
-/// against a daily income of ~745 — a ratio of 54.
-let orderTierBands: [(probability: Double, tiers: [Int])] = [
-    (0.460, [0, 1, 2]),
-    (0.300, [3, 4]),
-    (0.180, [5, 6]),
-    (0.040, [7, 8]),
-    (0.015, [9, 10]),
-    (0.005, [11]),
+/// **Phase 5 dial**, superseding the old `orderTierBands` — shared by
+/// `AdoptionBoard.generateOrder` and `EconomySimulation` so the model can never
+/// drift from what the game generates. `.hard` keeps the shape of the old top
+/// three bands (still mostly tier 5-6, only occasionally the true top of the
+/// chain) rather than jumping straight to the deepest tier every time a hard
+/// slot regenerates — a *guaranteed* hard order is a much bigger demand lever
+/// than the old ~6% chance of drawing one, so it stays weighted toward the
+/// cheaper end of "hard."
+let orderDifficultyBands: [OrderDifficulty: [(probability: Double, tiers: [Int])]] = [
+    .easy:   [(1.000, [0, 1])],
+    .medium: [(1.000, [2, 3])],
+    .hard:   [(0.750, [4, 5]), (0.130, [6, 7]), (0.090, [8, 9]), (0.030, [10, 11])],
 ]
 
 // ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
