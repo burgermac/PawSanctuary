@@ -45,6 +45,21 @@ struct EventDefinition: Identifiable {
     let icon: String
     let accentColor: Color
     let gradientColors: [Color]
+    /// Minimum player level to see/participate in this event. Phase 6a — EventScheduler.
+    let minLevel: Int
+    /// Which event wins a contested UI slot when several are active simultaneously.
+    /// Higher wins; ties break by earliest startDate. Phase 6a — EventScheduler.
+    let priority: Int
+
+    init(id: String, name: String, tagline: String, startDate: Date, endDate: Date,
+         milestones: [EventMilestone], icon: String, accentColor: Color, gradientColors: [Color],
+         minLevel: Int = 0, priority: Int = 0) {
+        self.id = id; self.name = name; self.tagline = tagline
+        self.startDate = startDate; self.endDate = endDate
+        self.milestones = milestones
+        self.icon = icon; self.accentColor = accentColor; self.gradientColors = gradientColors
+        self.minLevel = minLevel; self.priority = priority
+    }
 
     var isActive: Bool {
         let now = Date()

@@ -6,10 +6,16 @@
 //  Nothing conforms to these yet. They exist so Phase 6 has a target and so
 //  nothing is built against a shape that will change.
 //
+//  All protocols are @MainActor: every implementation in the codebase follows
+//  the domain-coordinator pattern (see KibbleEngine, InventoryStore) of a
+//  @MainActor @Observable class, and Swift 6 strict concurrency requires the
+//  isolation to be declared on the protocol for that conformance to compile.
+//
 
 import Foundation
 
 // 1. Scheduler — lifecycle, eligibility, and overlap/priority resolution.
+@MainActor
 protocol EventScheduling {
     func activeEvents(at date: Date) -> [String]        // event IDs
     func isEligible(eventID: String, playerLevel: Int) -> Bool
@@ -18,6 +24,7 @@ protocol EventScheduling {
 }
 
 // 2. Token wallet — arbitrary named currencies with an end-of-event lifecycle.
+@MainActor
 protocol TokenWalleting {
     func balance(_ token: String) -> Int
     func credit(_ token: String, _ amount: Int)
@@ -33,6 +40,7 @@ struct TrackMilestone: Codable, Equatable {
     var paidRewards: [OrderReward]
 }
 
+@MainActor
 protocol ProgressTracking {
     func progress(trackID: String) -> Int
     func advance(trackID: String, by amount: Int)
@@ -46,12 +54,14 @@ struct WeightedReward: Codable, Equatable {
     var rewards: [OrderReward]
 }
 
+@MainActor
 protocol RewardTabling {
     func roll(tableID: String) -> [OrderReward]
     func table(_ id: String) -> [WeightedReward]
 }
 
 // 5. Timer service — countdowns, deadlines, expiry, and attached notifications.
+@MainActor
 protocol EventTiming {
     func remaining(eventID: String) -> TimeInterval
     func isUrgent(eventID: String) -> Bool
@@ -59,12 +69,14 @@ protocol EventTiming {
 }
 
 // 6. Offer hook — lets an active event register its own offers.
+@MainActor
 protocol OfferHooking {
     func registerOffer(eventID: String, offerID: String)
     func activeOffers() -> [String]
 }
 
 // 7. Parallel board instance — a second board with its own chains, energy and offers.
+@MainActor
 protocol ParallelBoardHosting {
     func makeBoard(eventID: String) -> UUID
     func teardownBoard(eventID: String)
