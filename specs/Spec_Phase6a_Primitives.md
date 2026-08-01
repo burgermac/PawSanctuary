@@ -4,7 +4,7 @@
 
 > **Not atomic.** Each primitive is independently useful and independently testable — land them as separate commits, in the order below. Do not batch. Stop after any one if something resists; the others don't depend on it.
 
-**DRAFT — written by Claude Code from the existing protocol stubs and the Alignment Plan, not yet reviewed by the design-authority chat.** Numbers, scope cuts and the "out of scope" list below are proposals, not decisions. Read `specs/PawSanctuary_Alignment_Plan.md` §3 (D5, D8) and §9 before approving.
+**IMPLEMENTED** (commits `7580cf9`…`dbce315`, 166/166 tests green). Written cold by Claude Code from the existing protocol stubs and the Alignment Plan, reviewed and approved in-session rather than through a separate design-authority pass — if that distinction matters for this project's process, treat the scope cuts and the "out of scope" list below as still worth a second look against `specs/PawSanctuary_Alignment_Plan.md` §3 (D5, D8) and §9.
 
 ---
 
