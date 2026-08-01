@@ -101,10 +101,6 @@ final class TokenWallet: TokenWalleting {
 // ============================================================
 // MARK: - 3. Progress track
 // ============================================================
-//
-// TrackState is declared here (backing GameState.progressTracks, added in the
-// same v30 migration as the token wallet above); ProgressTrack itself — the
-// ProgressTracking conformance — lands in the next commit.
 
 /// Per-track claimed-milestone state. `claimedFree`/`claimedPaid` hold
 /// `TrackMilestone.index` values already claimed on that lane.
@@ -112,4 +108,79 @@ struct TrackState: Codable, Equatable {
     var progress: Int = 0
     var claimedFree: [Int] = []
     var claimedPaid: [Int] = []
+}
+
+/// Ordered milestone lists, keyed by track ID. Empty — no track is authored
+/// until Phase 6b (e.g. the Pass event type) defines one.
+enum ProgressTrackRegistry {
+    static let tracks: [String: [TrackMilestone]] = [:]
+}
+
+/// Ordered milestones with parallel free/paid lanes. Owns its state directly
+/// and round-trips through `GameState.progressTracks` via
+/// restore(from:)/capture(into:), same shape as `TokenWallet`. Not yet wired
+/// into `MergeBoardViewModel`.
+@Observable
+@MainActor
+final class ProgressTrack: ProgressTracking {
+    private var states: [String: TrackState] = [:]
+    private let registry: [String: [TrackMilestone]]
+
+    init(registry: [String: [TrackMilestone]] = ProgressTrackRegistry.tracks) {
+        self.registry = registry
+    }
+
+    func progress(trackID: String) -> Int {
+        states[trackID]?.progress ?? 0
+    }
+
+    func advance(trackID: String, by amount: Int) {
+        states[trackID, default: TrackState()].progress += amount
+    }
+
+    /// Every milestone reached whose relevant lane still has an unclaimed
+    /// reward. The free lane counts regardless of `paidLaneUnlocked`; the paid
+    /// lane only counts when it's `true` — so a milestone whose free reward is
+    /// already claimed and whose paid lane isn't unlocked drops out entirely,
+    /// even past threshold.
+    func claimable(trackID: String, paidLaneUnlocked: Bool) -> [TrackMilestone] {
+        let milestones = registry[trackID] ?? []
+        let state = states[trackID] ?? TrackState()
+        return milestones.filter { milestone in
+            guard milestone.threshold <= state.progress else { return false }
+            let freeAvailable = !state.claimedFree.contains(milestone.index)
+            let paidAvailable = paidLaneUnlocked && !state.claimedPaid.contains(milestone.index)
+            return freeAvailable || paidAvailable
+        }
+    }
+
+    /// Idempotent — claiming an already-claimed lane returns `[]`, not the
+    /// same rewards again.
+    func claim(trackID: String, milestone: Int, paidLane: Bool) -> [OrderReward] {
+        guard let def = registry[trackID]?.first(where: { $0.index == milestone }) else { return [] }
+        var state = states[trackID] ?? TrackState()
+        guard def.threshold <= state.progress else { return [] }
+
+        if paidLane {
+            guard !state.claimedPaid.contains(milestone) else { return [] }
+            state.claimedPaid.append(milestone)
+            states[trackID] = state
+            return def.paidRewards
+        } else {
+            guard !state.claimedFree.contains(milestone) else { return [] }
+            state.claimedFree.append(milestone)
+            states[trackID] = state
+            return def.freeRewards
+        }
+    }
+
+    // MARK: Persistence
+
+    func restore(from s: GameState) {
+        states = s.progressTracks
+    }
+
+    func capture(into s: inout GameState) {
+        s.progressTracks = states
+    }
 }

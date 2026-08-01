@@ -185,3 +185,77 @@ final class TokenWalletTests: XCTestCase {
         XCTAssertEqual(captured.eventTokenWallets, ["a": 3, "b": 7, "c": 1])
     }
 }
+
+@MainActor
+final class ProgressTrackTests: XCTestCase {
+
+    private let milestones = [
+        TrackMilestone(index: 0, threshold: 10,
+                        freeRewards: [OrderReward(kind: .coins, amount: 5)],
+                        paidRewards: [OrderReward(kind: .coins, amount: 50)]),
+        TrackMilestone(index: 1, threshold: 20,
+                        freeRewards: [OrderReward(kind: .coins, amount: 10)],
+                        paidRewards: [OrderReward(kind: .coins, amount: 100)]),
+    ]
+
+    private func makeTrack() -> ProgressTrack {
+        ProgressTrack(registry: ["t": milestones])
+    }
+
+    func testAdvancePastThresholdMakesItClaimable() {
+        let track = makeTrack()
+        XCTAssertEqual(track.claimable(trackID: "t", paidLaneUnlocked: false), [])
+        track.advance(trackID: "t", by: 10)
+        XCTAssertEqual(track.progress(trackID: "t"), 10)
+        XCTAssertEqual(track.claimable(trackID: "t", paidLaneUnlocked: false).map(\.index), [0])
+    }
+
+    func testClaimReturnsTheRightLaneAndIsIdempotent() {
+        let track = makeTrack()
+        track.advance(trackID: "t", by: 10)
+
+        let free = track.claim(trackID: "t", milestone: 0, paidLane: false)
+        XCTAssertEqual(free, [OrderReward(kind: .coins, amount: 5)])
+        XCTAssertEqual(track.claim(trackID: "t", milestone: 0, paidLane: false), [],
+                       "claiming the free lane twice should return nothing the second time")
+
+        let paid = track.claim(trackID: "t", milestone: 0, paidLane: true)
+        XCTAssertEqual(paid, [OrderReward(kind: .coins, amount: 50)])
+        XCTAssertEqual(track.claim(trackID: "t", milestone: 0, paidLane: true), [],
+                       "claiming the paid lane twice should return nothing the second time")
+    }
+
+    func testClaimBelowThresholdReturnsNothing() {
+        let track = makeTrack()
+        XCTAssertEqual(track.claim(trackID: "t", milestone: 0, paidLane: false), [])
+    }
+
+    /// A milestone whose free reward is already claimed and whose paid lane
+    /// isn't unlocked must not appear in `claimable`, even past threshold.
+    func testPaidLaneMilestoneInvisibleWhenLocked() {
+        let track = makeTrack()
+        track.advance(trackID: "t", by: 10)
+        _ = track.claim(trackID: "t", milestone: 0, paidLane: false)
+
+        XCTAssertEqual(track.claimable(trackID: "t", paidLaneUnlocked: false), [],
+                       "free reward already claimed and paid lane locked -> nothing claimable")
+        XCTAssertEqual(track.claimable(trackID: "t", paidLaneUnlocked: true).map(\.index), [0],
+                       "same milestone reappears once the paid lane unlocks")
+    }
+
+    func testRestoreAndCaptureRoundTripThroughGameState() {
+        var state = emptyGameState()
+        state.progressTracks = ["t": TrackState(progress: 15, claimedFree: [0], claimedPaid: [])]
+
+        let track = makeTrack()
+        track.restore(from: state)
+        XCTAssertEqual(track.progress(trackID: "t"), 15)
+        XCTAssertEqual(track.claimable(trackID: "t", paidLaneUnlocked: false), [])
+
+        track.advance(trackID: "t", by: 5)
+        var captured = state
+        track.capture(into: &captured)
+        XCTAssertEqual(captured.progressTracks["t"]?.progress, 20)
+        XCTAssertEqual(captured.progressTracks["t"]?.claimedFree, [0])
+    }
+}
