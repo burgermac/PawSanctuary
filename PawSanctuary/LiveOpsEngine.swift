@@ -261,3 +261,58 @@ final class EventTimer: EventTiming {
             eventID: eventID, at: date, summary: "\(event.name) — \(event.tagline)")
     }
 }
+
+// ============================================================
+// MARK: - 6. Offer hook
+// ============================================================
+
+/// Lets an active event register its own offers. In-memory only, same
+/// registration-list shape as `OrderRewardRegistry` (Phase 1.2) — nothing
+/// here needs to survive a save: an active event re-registers its offers on
+/// every launch while it's live.
+@MainActor
+final class OfferHookRegistry: OfferHooking {
+    private var offersByEvent: [String: [String]] = [:]
+
+    func registerOffer(eventID: String, offerID: String) {
+        guard !(offersByEvent[eventID] ?? []).contains(offerID) else { return }
+        offersByEvent[eventID, default: []].append(offerID)
+    }
+
+    func activeOffers() -> [String] {
+        offersByEvent.values.flatMap { $0 }
+    }
+
+    /// Not part of `OfferHooking` — internal cleanup on event expiry, the
+    /// same asymmetry `TokenWalleting.purge` has over `credit`/`debit`.
+    func unregister(offersFor eventID: String) {
+        offersByEvent.removeValue(forKey: eventID)
+    }
+}
+
+// ============================================================
+// MARK: - 7. Parallel board instance — STUB ONLY
+// ============================================================
+
+/// **Not the Phase 6b "Parallel board" event type.** This is UUID bookkeeping
+/// only — no board grid, no chains, no energy regen — so `LiveOpsPrimitives`
+/// has a real conforming type for every protocol. `energyBalance` always
+/// reads 0. The real second board (its own `[[BoardCell]]`, its own energy
+/// system) is its own spec, deferred to 6b.
+@MainActor
+final class ParallelBoardStub: ParallelBoardHosting {
+    private var boards: [String: UUID] = [:]
+
+    func makeBoard(eventID: String) -> UUID {
+        if let existing = boards[eventID] { return existing }
+        let id = UUID()
+        boards[eventID] = id
+        return id
+    }
+
+    func teardownBoard(eventID: String) {
+        boards.removeValue(forKey: eventID)
+    }
+
+    func energyBalance(eventID: String) -> Int { 0 }
+}

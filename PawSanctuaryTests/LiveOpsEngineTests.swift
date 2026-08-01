@@ -344,3 +344,63 @@ final class EventTimerTests: XCTestCase {
         XCTAssertFalse(timer.isUrgent(eventID: "nope"))
     }
 }
+
+@MainActor
+final class OfferHookRegistryTests: XCTestCase {
+
+    func testRegisterAndActiveOffers() {
+        let hook = OfferHookRegistry()
+        hook.registerOffer(eventID: "e1", offerID: "o1")
+        hook.registerOffer(eventID: "e1", offerID: "o2")
+        hook.registerOffer(eventID: "e2", offerID: "o3")
+        XCTAssertEqual(Set(hook.activeOffers()), ["o1", "o2", "o3"])
+    }
+
+    func testRegisteringTheSameOfferTwiceDoesNotDuplicate() {
+        let hook = OfferHookRegistry()
+        hook.registerOffer(eventID: "e1", offerID: "o1")
+        hook.registerOffer(eventID: "e1", offerID: "o1")
+        XCTAssertEqual(hook.activeOffers(), ["o1"])
+    }
+
+    func testUnregisterRemovesOnlyThatEventsOffers() {
+        let hook = OfferHookRegistry()
+        hook.registerOffer(eventID: "e1", offerID: "o1")
+        hook.registerOffer(eventID: "e2", offerID: "o2")
+        hook.unregister(offersFor: "e1")
+        XCTAssertEqual(hook.activeOffers(), ["o2"])
+    }
+}
+
+@MainActor
+final class ParallelBoardStubTests: XCTestCase {
+
+    func testMakeBoardIsStableForTheSameEventID() {
+        let stub = ParallelBoardStub()
+        let first = stub.makeBoard(eventID: "e1")
+        let second = stub.makeBoard(eventID: "e1")
+        XCTAssertEqual(first, second)
+    }
+
+    func testMakeBoardIsDistinctAcrossEventIDs() {
+        let stub = ParallelBoardStub()
+        let a = stub.makeBoard(eventID: "e1")
+        let b = stub.makeBoard(eventID: "e2")
+        XCTAssertNotEqual(a, b)
+    }
+
+    func testTeardownRemovesTheBoard() {
+        let stub = ParallelBoardStub()
+        let first = stub.makeBoard(eventID: "e1")
+        stub.teardownBoard(eventID: "e1")
+        let second = stub.makeBoard(eventID: "e1")
+        XCTAssertNotEqual(first, second, "a fresh makeBoard after teardown should mint a new UUID")
+    }
+
+    func testEnergyBalanceIsAlwaysZero() {
+        let stub = ParallelBoardStub()
+        _ = stub.makeBoard(eventID: "e1")
+        XCTAssertEqual(stub.energyBalance(eventID: "e1"), 0)
+        XCTAssertEqual(stub.energyBalance(eventID: "unknown"), 0)
+    }
+}
