@@ -1376,6 +1376,9 @@ class MergeBoardViewModel {
         if collectCurrencyItem(at: pos) {
             return
         }
+        if collectDecayedBubbleIfAny(at: pos) {
+            return
+        }
         if board[pos.row][pos.col].producer != nil {
             activateProducer(at: pos)
             return
@@ -1549,11 +1552,12 @@ class MergeBoardViewModel {
             return
         }
 
-        guard let srcItem = board[from.row][from.col].item else { return }
+        guard let srcItem = board[from.row][from.col].item, srcItem.bubbledAt == nil else { return }
         guard board[to.row][to.col].producer == nil else { return }
 
         if let dstItem = board[to.row][to.col].item {
-            if srcItem.chainID == dstItem.chainID,
+            if dstItem.bubbledAt == nil,
+               srcItem.chainID == dstItem.chainID,
                srcItem.tier == dstItem.tier,
                let next = ContentRegistry.shared.nextTier(srcItem.chainID, after: srcItem.tier) {
                 // Nine Lives snapshot — taken before the board state changes.
@@ -1569,6 +1573,8 @@ class MergeBoardViewModel {
                 grantXP(srcDef?.xpValue ?? 0)
                 if next == (srcItem.chain?.maxTier ?? Int.max) {
                     triggerTopTierCelebration(chainID: srcItem.chainID)
+                } else if srcItem.chain?.category == .animal {
+                    maybeBubbleMergedItem(at: to)
                 }
                 mergeCount += 1
                 lastMergeTimestamp = Date().timeIntervalSince1970
@@ -1726,6 +1732,70 @@ class MergeBoardViewModel {
     func dismissAmbassadorBanner() {
         ambassadorBannerGeneration += 1   // invalidate any pending auto-dismiss too
         withAnimation(.easeOut(duration: 0.3)) { showAmbassadorBanner = false }
+    }
+
+    // MARK: Bubble mechanic (Phase 4, Task 4.4)
+
+    /// Rolls whether the item just placed at `pos` gets bubbled instead of
+    /// landing normally. Called only for below-top-tier animal merges — top
+    /// tier has its own Ambassador celebration and is excluded at the call site.
+    private func maybeBubbleMergedItem(at pos: GridPosition) {
+        guard Double.random(in: 0..<1) < bubbleChance else { return }
+        board[pos.row][pos.col].item?.bubbledAt = Date().timeIntervalSince1970
+    }
+
+    /// True when `pos` holds a bubble that hasn't decayed yet — the View
+    /// routes a tap here to the pop sheet instead of the normal tap flow.
+    func isActiveBubble(at pos: GridPosition) -> Bool {
+        guard let item = board[pos.row][pos.col].item, item.bubbledAt != nil else { return false }
+        return !item.isBubbleDecayed()
+    }
+
+    /// Auto-collects a fully-decayed bubble for its lesser (never zero) coin
+    /// value. Returns `false` for anything that isn't a decayed bubble, so
+    /// callers can chain it into their own tap-dispatch without a separate guard.
+    @discardableResult
+    func collectDecayedBubbleIfAny(at pos: GridPosition) -> Bool {
+        guard let item = board[pos.row][pos.col].item,
+              item.bubbledAt != nil, item.isBubbleDecayed() else { return false }
+        let value = max(1, Int((Double(animalSellValue(tier: item.tier)) * bubbleDecayFloor).rounded()))
+        board[pos.row][pos.col].item = nil
+        if selectedCell == pos { selectedCell = nil }
+        earnCoins(value)
+        enqueueToast(Toast(kind: .info("Bubble decayed — collected +\(value) Coins")))
+        SoundManager.shared.playButtonTap()
+        recalcBoardIsFull()
+        persist()
+        return true
+    }
+
+    /// Pops the bubble at `pos` for full value, spending Dog Tags.
+    func popBubbleWithDogTags(at pos: GridPosition) {
+        guard let item = board[pos.row][pos.col].item, item.bubbledAt != nil else { return }
+        let cost = bubblePopDogTagCost(tier: item.tier)
+        guard kibbleEngine.dogTags >= cost else { return }
+        kibbleEngine.dogTags -= cost
+        board[pos.row][pos.col].item?.bubbledAt = nil
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        enqueueToast(Toast(kind: .info("Bubble popped!")))
+        persist()
+    }
+
+    /// Pops the bubble at `pos` for full value via a rewarded ad — shares the
+    /// kibble-refill sheet's daily ad-watch cap rather than a separate one
+    /// (Merge2_Reference_Blueprint.md measures bubble pops at ~3/day against
+    /// kibble's 4/day; sharing one pool is a deliberate simplification).
+    func popBubbleWithAd(at pos: GridPosition, provider: RewardedAdProvider = StubAdProvider()) {
+        guard board[pos.row][pos.col].item?.bubbledAt != nil else { return }
+        kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
+            guard let self else { return }
+            self.board[pos.row][pos.col].item?.bubbledAt = nil
+            SoundManager.shared.playQuestClaim()
+            HapticManager.shared.successPattern()
+            self.enqueueToast(Toast(kind: .info("Bubble popped!")))
+            self.persist()
+        }
     }
 
     // MARK: Ambassador Collection Quest
@@ -2663,7 +2733,10 @@ class MergeBoardViewModel {
     // MARK: Rewarded ads
 
     func watchRewardedAd(provider: RewardedAdProvider = StubAdProvider()) {
-        kibbleEngine.watchRewardedAd(effectiveKibble: effectiveAdKibble, provider: provider)
+        let amount = effectiveAdKibble
+        kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
+            self?.kibbleEngine.kibble += amount
+        }
     }
 
     // MARK: Sanctuary map

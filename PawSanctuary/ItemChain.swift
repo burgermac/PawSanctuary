@@ -73,11 +73,24 @@ struct BoardItem: Identifiable, Equatable, Codable {
     /// inert tier 0–2 intermediates. Optional so pre-v27 saves still decode.
     var rarity: SubObjectRarity? = nil
 
+    /// Phase 4, Task 4.4: non-nil while this item is encased in a bubble —
+    /// the `Date.timeIntervalSince1970` it was bubbled at. `nil` for every
+    /// normal item. See `bubbleDecaySeconds` for how long it stays poppable
+    /// for full value before decaying into a lesser, auto-collectible reward.
+    var bubbledAt: Double? = nil
+
     /// The tier definition (display + values). `nil` only if a save references a
     /// chain this build doesn't know — callers treat that as an empty cell.
     var def: ChainTier? { ContentRegistry.shared.tier(chainID, tier) }
     var chain: MergeChain? { ContentRegistry.shared.chain(chainID) }
     var isTopTier: Bool { chain.map { tier >= $0.maxTier } ?? false }
+
+    /// True once a bubbled item has passed `bubbleDecaySeconds` without being
+    /// popped — it can still be collected, just for less.
+    func isBubbleDecayed(now: Double = Date().timeIntervalSince1970) -> Bool {
+        guard let bubbledAt else { return false }
+        return now - bubbledAt >= bubbleDecaySeconds
+    }
 }
 
 // ============================================================

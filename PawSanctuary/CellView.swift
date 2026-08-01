@@ -62,6 +62,7 @@ struct CellView: View {
                 itemContent(item)
                     .opacity(isDragging ? 0.25 : 1.0)
                     .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
+                    .overlay(bubbleOverlay(for: item))
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -139,6 +140,26 @@ struct CellView: View {
             VStack(spacing: 3) {
                 Image(systemName: "lock.fill").font(.system(size: 16)).foregroundColor(.gray.opacity(0.4))
                 Text("Locked").font(.system(size: 7)).foregroundColor(.gray.opacity(0.4))
+            }
+        }
+    }
+
+    /// Tints a bubbled item cyan (still poppable for full value) or grey (Task
+    /// 4.4: decayed — a tap now just collects the lesser reward), with a small
+    /// badge marking which state it's in.
+    @ViewBuilder
+    private func bubbleOverlay(for item: BoardItem) -> some View {
+        if item.bubbledAt != nil {
+            let decayed = item.isBubbleDecayed()
+            let tint = decayed ? Color.gray : Color.cyan
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.22))
+                Image(systemName: decayed ? "sparkles" : "circle.hexagongrid.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(.white)
+                    .padding(3)
+                    .background(Circle().fill(tint.opacity(0.9)))
+                    .offset(x: 2, y: 2)
             }
         }
     }

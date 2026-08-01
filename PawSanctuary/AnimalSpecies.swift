@@ -1176,6 +1176,32 @@ func bonusSpawnChance(forMultiplierTier tierIndex: Int) -> Double {
 /// than the common "Lucky!" (matches the tap's own tier).
 let legendaryBonusShare = 0.15
 
+// ── Bubble mechanic (Phase 4, Task 4.4) ──────────────────────
+//
+// "Bubble: on merge, with probability p, the output is encased. Opened by
+// rewarded video (capped ~3/day) or gems, and decays into a lesser reward if
+// left. Converts a moment of success into a decision at the instant the
+// player feels good. It must decay into something — punishing non-payment
+// breaks the genre's core rule." (Merge2_Reference_Blueprint.md §23, measured)
+//
+// Two states only, not a continuous curve: poppable-for-full-value until
+// `bubbleDecaySeconds` elapses, then a single lesser value forever after.
+// The decision is made once, at bubble-creation time — "pop now, or risk it."
+
+/// Chance a below-top-tier animal merge gets bubbled instead of landing
+/// normally. Top tier is excluded — it has its own Ambassador celebration.
+let bubbleChance = 0.15
+
+/// How long a bubble stays poppable for full value before decaying.
+let bubbleDecaySeconds: Double = 600   // 10 minutes
+
+/// Coin value fraction once a bubble has decayed — never zero.
+let bubbleDecayFloor = 0.50
+
+/// Dog Tags to pop a bubble instantly, scaled like the Dog Tag store's
+/// tier-based pricing rather than a flat fee.
+func bubblePopDogTagCost(tier: Int) -> Int { 3 + tier }
+
 /// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
 func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
 

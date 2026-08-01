@@ -140,10 +140,12 @@ class KibbleEngine {
 
     // MARK: Rewarded ads
 
-    /// Presents a rewarded ad and grants kibble on success.
-    /// `effectiveKibble` is pre-computed by the caller (pass bonus applied there).
-    func watchRewardedAd(effectiveKibble: Int,
-                         provider: RewardedAdProvider = StubAdProvider()) {
+    /// Presents a rewarded ad, counting it against the shared daily cap on
+    /// success and then calling `onEarned` — callers decide what a watch
+    /// grants (kibble, a bubble pop, etc.), matching the reference's "build
+    /// one primitive and use it everywhere" (Merge2_Reference_Blueprint.md §3).
+    func watchRewardedAd(provider: RewardedAdProvider = StubAdProvider(),
+                         onEarned: @escaping @MainActor @Sendable () -> Void) {
         guard remainingAdWatches > 0, !isWatchingAd else { return }
         isWatchingAd = true
         provider.showRewardedAd { result in
@@ -157,7 +159,7 @@ class KibbleEngine {
                 }
                 self.adsWatchedToday += 1
                 self.lastAdWatchDate  = Date()
-                self.kibble           += effectiveKibble
+                onEarned()
             }
         }
     }

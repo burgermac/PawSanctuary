@@ -665,6 +665,8 @@ struct MergeBoardView: View {
             KibbleRefillSheet(viewModel: viewModel, storeManager: storeManager)
         case .mergeProgression(let chainID):
             MergeProgressionView(chainID: chainID)
+        case .bubblePop(let pos):
+            BubblePopSheet(viewModel: viewModel, position: pos)
         }
     }
 
@@ -743,7 +745,13 @@ struct MergeBoardView: View {
                             }
                         }
                         .frame(width: cellSize, height: cellSize)
-                        .onTapGesture { viewModel.boardCellTapped(at: pos) }
+                        .onTapGesture {
+                            if viewModel.isActiveBubble(at: pos) {
+                                activeRoute = .bubblePop(pos)
+                            } else {
+                                viewModel.boardCellTapped(at: pos)
+                            }
+                        }
                         .gesture(
                             DragGesture(minimumDistance: 5, coordinateSpace: .global)
                                 .onChanged { v in
@@ -1295,6 +1303,107 @@ private struct KibbleRefillBundleRow: View {
 }
 
 // ============================================================
+// MARK: - BUBBLE POP SHEET
+// ============================================================
+
+/// Shown when the player taps a still-active bubble (Phase 4, Task 4.4).
+/// "Converts a moment of success into a decision at the instant the player
+/// feels good" (Merge2_Reference_Blueprint.md §23) — pop now for the full
+/// item via ad or Dog Tags, or close this and let it decay into a smaller,
+/// guaranteed coin reward later.
+private struct BubblePopSheet: View {
+    let viewModel: MergeBoardViewModel
+    let position: GridPosition
+    @Environment(\.dismiss) private var dismiss
+
+    private var item: BoardItem? { viewModel.board[position.row][position.col].item }
+
+    private var decayedValue: Int {
+        guard let item else { return 0 }
+        return max(1, Int((Double(animalSellValue(tier: item.tier)) * bubbleDecayFloor).rounded()))
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                if let item, let def = item.def {
+                    VStack(spacing: 10) {
+                        ZStack {
+                            Circle().fill(Color.cyan.opacity(0.18)).frame(width: 84, height: 84)
+                            Image(systemName: def.symbol)
+                                .font(.system(size: 34))
+                                .foregroundColor(def.tint ?? def.color)
+                        }
+                        Text("🫧 Bubbled: \(def.name)")
+                            .font(.headline)
+                        Text("Pop it now for the full reward, or leave it — it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes.")
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                    }
+
+                    VStack(spacing: 10) {
+                        if viewModel.remainingAdWatches > 0 {
+                            Button(action: {
+                                viewModel.popBubbleWithAd(at: position)
+                                dismiss()
+                            }) {
+                                HStack {
+                                    Image(systemName: "play.rectangle.fill")
+                                    Text("Watch Ad to Pop")
+                                    Spacer()
+                                    Text("\(viewModel.remainingAdWatches) left today")
+                                        .font(.caption).foregroundColor(.white.opacity(0.85))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16).padding(.vertical, 12)
+                                .background(RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(red: 0.25, green: 0.55, blue: 0.35)))
+                            }
+                        }
+
+                        let cost = bubblePopDogTagCost(tier: item.tier)
+                        let canAfford = viewModel.dogTags >= cost
+                        Button(action: {
+                            viewModel.popBubbleWithDogTags(at: position)
+                            dismiss()
+                        }) {
+                            HStack {
+                                Image(systemName: "tag.fill")
+                                Text("Pop with \(cost) Dog Tags")
+                                Spacer()
+                            }
+                            .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(canAfford
+                                      ? Color(red: 0.20, green: 0.40, blue: 0.65)
+                                      : Color(red: 0.92, green: 0.88, blue: 0.78)))
+                        }
+                        .disabled(!canAfford)
+                    }
+                    .padding(.horizontal)
+                } else {
+                    Text("This bubble is gone.").foregroundColor(.secondary)
+                }
+            }
+            .padding()
+            .navigationTitle("Bubble")
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Not Now") { dismiss() }
+                }
+            }
+            #endif
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+// ============================================================
 // MARK: - SPAWN MULTIPLIER BUTTON
 // ============================================================
 
@@ -1423,6 +1532,7 @@ private enum SheetRoute: Identifiable, Equatable {
     case task(TaskSheet)
     case kibbleRefill
     case mergeProgression(String)
+    case bubblePop(GridPosition)
 
     var id: String {
         switch self {
@@ -1430,6 +1540,7 @@ private enum SheetRoute: Identifiable, Equatable {
         case .task(let t):                return "task-\(t.rawValue)"
         case .kibbleRefill:               return "kibbleRefill"
         case .mergeProgression(let cid):  return "progression-\(cid)"
+        case .bubblePop(let pos):         return "bubble-\(pos.row)-\(pos.col)"
         }
     }
 }
