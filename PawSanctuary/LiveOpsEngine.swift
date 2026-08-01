@@ -226,3 +226,38 @@ final class RewardTableRegistry: RewardTabling {
         return entries.last?.rewards ?? []
     }
 }
+
+// ============================================================
+// MARK: - 5. Timer service
+// ============================================================
+
+/// Countdowns, deadlines, and expiry notifications for events. `remaining`/
+/// `isUrgent` delegate to `EventDefinition`'s existing computed properties;
+/// an unrecognised ID reads as "not remaining, not urgent" rather than
+/// trapping — a stale notification firing after an event left the registry
+/// is a real scenario, not a bug. Notification scheduling is a thin wrapper
+/// over `NotificationManager.scheduleEventExpiry`, resolving the summary
+/// from the event's own name/tagline since the protocol method carries no
+/// summary parameter.
+@MainActor
+final class EventTimer: EventTiming {
+    private let events: [EventDefinition]
+
+    init(events: [EventDefinition] = EventRegistry.allEvents) {
+        self.events = events
+    }
+
+    func remaining(eventID: String) -> TimeInterval {
+        events.first(where: { $0.id == eventID })?.timeRemaining ?? 0
+    }
+
+    func isUrgent(eventID: String) -> Bool {
+        events.first(where: { $0.id == eventID })?.isUrgent ?? false
+    }
+
+    func scheduleExpiryNotification(eventID: String, at date: Date) {
+        guard let event = events.first(where: { $0.id == eventID }) else { return }
+        NotificationManager.shared.scheduleEventExpiry(
+            eventID: eventID, at: date, summary: "\(event.name) — \(event.tagline)")
+    }
+}

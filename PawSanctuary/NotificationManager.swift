@@ -24,6 +24,7 @@ enum NotificationID {
     static let streakReminder  = "pawsanctuary.streak.reminder"
     static let reengagement    = "pawsanctuary.reengagement"
     static func orderExpiry(_ id: String) -> String { "pawsanctuary.order.expiry.\(id)" }
+    static func eventExpiry(_ id: String) -> String { "pawsanctuary.event.expiry.\(id)" }
 }
 
 // MARK: - Manager
@@ -176,6 +177,38 @@ final class NotificationManager: NSObject {
 
         cancel(ids: [id])
         UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: Schedule — live-ops event expiry (Phase 6a — EventTimer)
+
+    /// Schedules a notification at `date` for an ending live-ops event.
+    /// - Parameters:
+    ///   - eventID: Stable string ID for cancellation.
+    ///   - date:    When to fire — the caller decides how far ahead of the
+    ///              event's actual end this should be (see `EventTimer`).
+    ///   - summary: Notification body, resolved by the caller from the event's
+    ///              own name/tagline.
+    func scheduleEventExpiry(eventID: String, at date: Date, summary: String) {
+        guard isAuthorised else { return }
+        let interval = date.timeIntervalSinceNow
+        guard interval > 10 else { return }   // not worth notifying if already nearly there
+
+        let content       = UNMutableNotificationContent()
+        content.title     = "Event ending soon!"
+        content.body      = summary
+        content.sound     = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+        let id      = NotificationID.eventExpiry(eventID)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+
+        cancel(ids: [id])
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Cancels any pending expiry notification for a specific event.
+    func cancelEventExpiry(eventID: String) {
+        cancel(ids: [NotificationID.eventExpiry(eventID)])
     }
 
     // MARK: Schedule — daily challenges reset

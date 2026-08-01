@@ -304,3 +304,43 @@ final class RewardTableRegistryTests: XCTestCase {
                        "expected ~90% common rolls, observed \(observed * 100)%")
     }
 }
+
+@MainActor
+final class EventTimerTests: XCTestCase {
+
+    private func makeEvent(id: String, start: Date, end: Date) -> EventDefinition {
+        EventDefinition(id: id, name: id, tagline: "tag", startDate: start, endDate: end,
+                        milestones: [], icon: "star.fill", accentColor: .blue,
+                        gradientColors: [.blue, .white])
+    }
+
+    func testRemainingAndUrgentForAFutureEvent() {
+        let future = makeEvent(id: "e", start: Date(), end: Date().addingTimeInterval(7200))
+        let timer = EventTimer(events: [future])
+        XCTAssertGreaterThan(timer.remaining(eventID: "e"), 7000)
+        XCTAssertFalse(timer.isUrgent(eventID: "e"), "2 hours out should not read as urgent")
+    }
+
+    func testUrgentWhenLessThanAnHourRemains() {
+        let soon = makeEvent(id: "e", start: Date().addingTimeInterval(-3600),
+                             end: Date().addingTimeInterval(1800))
+        let timer = EventTimer(events: [soon])
+        XCTAssertTrue(timer.isUrgent(eventID: "e"))
+    }
+
+    func testRemainingClampsToZeroForAPastEvent() {
+        let past = makeEvent(id: "e", start: Date(timeIntervalSince1970: 0),
+                             end: Date(timeIntervalSince1970: 1))
+        let timer = EventTimer(events: [past])
+        XCTAssertEqual(timer.remaining(eventID: "e"), 0)
+        // isUrgent is `timeRemaining < 3600` (EventDefinition, pre-existing) --
+        // 0 remaining still satisfies that, so an expired event reads as urgent.
+        XCTAssertTrue(timer.isUrgent(eventID: "e"))
+    }
+
+    func testUnknownEventIDIsNotRemainingOrUrgentRatherThanTrapping() {
+        let timer = EventTimer(events: [])
+        XCTAssertEqual(timer.remaining(eventID: "nope"), 0)
+        XCTAssertFalse(timer.isUrgent(eventID: "nope"))
+    }
+}
