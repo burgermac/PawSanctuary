@@ -152,18 +152,26 @@ private func gameCenterRootViewController() -> UIViewController? {
 }
 
 
+/// Loads and converts friends entirely outside @MainActor isolation — older
+/// SDKs (pre-iOS 26) don't mark `GKPlayer`/`[GKPlayer]` Sendable, so the raw
+/// result can never cross back into `loadGameCenterFriends`. Only the
+/// Sendable `GameCenterFriend` values it returns do.
+private nonisolated func fetchGameCenterFriends() async throws -> [GameCenterFriend] {
+    let players = try await GKLocalPlayer.local.loadFriends()
+    return players.map {
+        GameCenterFriend(id: $0.gamePlayerID,
+                         alias: $0.alias,
+                         displayName: $0.displayName)
+    }
+}
+
 /// Fetches the local player's Game Center friends.
 /// Requires the Game Center entitlement and user consent.
 @MainActor
 func loadGameCenterFriends() async -> [GameCenterFriend] {
     guard GKLocalPlayer.local.isAuthenticated else { return [] }
     do {
-        let players = try await GKLocalPlayer.local.loadFriends()
-        return players.map {
-            GameCenterFriend(id: $0.gamePlayerID,
-                             alias: $0.alias,
-                             displayName: $0.displayName)
-        }
+        return try await fetchGameCenterFriends()
     } catch {
         print("[GameCenter] loadFriends error: \(error.localizedDescription)")
         return []
