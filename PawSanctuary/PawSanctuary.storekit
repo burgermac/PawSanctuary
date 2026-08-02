@@ -167,6 +167,21 @@
       "productID" : "com.pawsanctuary.energy.xl",
       "referenceName" : "Energy Pack XL",
       "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "DFC3507F-6391-4A26-9260-118C739BFD4E",
+      "localizations" : [
+        {
+          "description" : "Unlocks the paid rewards lane for the current event, including any milestones already reached.",
+          "displayName" : "Event Pass",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.eventpass",
+      "referenceName" : "Event Pass",
+      "type" : "ConsumableIAP"
     }
   ],
   "subscriptionGroups" : [

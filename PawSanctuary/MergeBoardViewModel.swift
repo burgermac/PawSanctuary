@@ -3091,6 +3091,13 @@ class MergeBoardViewModel {
             isPassActive = true
             claimPassDaily()
         }
+        if product == .eventPass, let eventID = activeEvent?.id {
+            // Unlocks whichever event is live at purchase time — correct under
+            // the current single-active-event model (specs/Spec_Phase6b_Pass.md
+            // §0). No active event -> activeEvent is nil -> safe no-op; the
+            // storefront must never offer this purchase out of context (§3.3).
+            passUnlockedEventIDs.insert(eventID)
+        }
         // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
         //
         // Sanctuary Pass subscription renewals also arrive here via
