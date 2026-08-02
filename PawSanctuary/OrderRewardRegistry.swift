@@ -10,6 +10,7 @@ import Foundation
 
 /// A system that can attach extra rewards to newly generated adoption orders.
 /// Events register providers; AdoptionBoard queries them at generation time.
+@MainActor
 protocol OrderRewardProvider: AnyObject {
     func riders(playerLevel: Int) -> [OrderReward]
 }

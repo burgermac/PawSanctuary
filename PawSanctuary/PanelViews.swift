@@ -1244,8 +1244,11 @@ struct EventTaskCard: View {
     var viewModel: MergeBoardViewModel
     let event: EventDefinition
     var body: some View {
-        let maxCoins = event.milestones.last?.coinsRequired ?? 1
-        let fraction = Double(viewModel.eventProgress.coinsEarned) / Double(max(1, maxCoins))
+        // Phase 6b: sourced from ProgressTrackRegistry/ProgressTrack, not
+        // event.milestones/eventProgress — see EventPanelView.swift.
+        let maxTokens = (ProgressTrackRegistry.tracks[event.id]?.last?.threshold) ?? 1
+        let earned = viewModel.progressTrack.progress(trackID: event.id)
+        let fraction = Double(earned) / Double(max(1, maxTokens))
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: event.icon).font(.system(size: 11))
@@ -1267,7 +1270,7 @@ struct EventTaskCard: View {
                 .lineLimit(2)
             TaskProgressBar(fraction: fraction,
                             color: Color(red: 0.85, green: 0.52, blue: 0.10).opacity(0.8))
-            Text("\(viewModel.eventProgress.coinsEarned)/\(maxCoins) coins")
+            Text("\(earned)/\(maxTokens) coins")
                 .font(.system(size: 9)).foregroundColor(.secondary)
         }
         .padding(10)

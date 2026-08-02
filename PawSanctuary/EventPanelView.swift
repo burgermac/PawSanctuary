@@ -4,6 +4,11 @@
 //
 //  Sheet panel for time-limited events.
 //
+//  Phase 6b: reads milestones from ProgressTrackRegistry/ProgressTrack
+//  (Phase 6a primitive) rather than EventDefinition.milestones/eventProgress —
+//  the old EventMilestone/EventProgress path is left inert, not deleted (see
+//  specs/Spec_Phase6b_MilestoneTrack.md §3.6).
+//
 
 import SwiftUI
 
@@ -15,6 +20,10 @@ struct EventSheetView: View {
     let viewModel: MergeBoardViewModel
     let event: EventDefinition
     @Environment(\.dismiss) private var dismiss
+
+    private var milestones: [TrackMilestone] {
+        ProgressTrackRegistry.tracks[event.id] ?? []
+    }
 
     var body: some View {
         NavigationStack {
@@ -74,9 +83,9 @@ struct EventSheetView: View {
     }
 
     private var progressSection: some View {
-        let maxCoins = event.milestones.last?.coinsRequired ?? 1
-        let earned = viewModel.eventProgress.coinsEarned
-        let progress = min(1.0, Double(earned) / Double(maxCoins))
+        let maxTokens = milestones.last?.threshold ?? 1
+        let earned = viewModel.progressTrack.progress(trackID: event.id)
+        let progress = min(1.0, Double(earned) / Double(maxTokens))
 
         return VStack(spacing: 8) {
             HStack {
@@ -84,7 +93,7 @@ struct EventSheetView: View {
                     .font(.subheadline.bold())
                     .foregroundColor(event.accentColor)
                 Spacer()
-                Text("\(earned) / \(maxCoins)")
+                Text("\(earned) / \(maxTokens)")
                     .font(.subheadline.bold())
                     .foregroundColor(event.accentColor)
             }
@@ -99,8 +108,8 @@ struct EventSheetView: View {
                             startPoint: .leading, endPoint: .trailing))
                         .frame(width: geo.size.width * progress, height: 12)
                     // Milestone tick marks
-                    ForEach(event.milestones) { m in
-                        let x = geo.size.width * (Double(m.coinsRequired) / Double(maxCoins))
+                    ForEach(milestones, id: \.index) { m in
+                        let x = geo.size.width * (Double(m.threshold) / Double(maxTokens))
                         Rectangle()
                             .fill(Color.white.opacity(0.6))
                             .frame(width: 2, height: 12)
@@ -116,7 +125,7 @@ struct EventSheetView: View {
 
     private var milestonesSection: some View {
         VStack(spacing: 10) {
-            ForEach(event.milestones) { milestone in
+            ForEach(milestones, id: \.index) { milestone in
                 MilestoneRowView(
                     viewModel: viewModel,
                     event: event,
@@ -134,11 +143,21 @@ struct EventSheetView: View {
 private struct MilestoneRowView: View {
     let viewModel: MergeBoardViewModel
     let event: EventDefinition
-    let milestone: EventMilestone
+    let milestone: TrackMilestone
 
-    private var isClaimed: Bool  { viewModel.eventProgress.hasClaimed(milestone.id) }
-    private var isReached: Bool  { viewModel.eventProgress.coinsEarned >= milestone.coinsRequired }
-    private var canClaim: Bool   { viewModel.eventProgress.canClaim(milestone) }
+    /// `claimable` returns exactly "reached and the free lane isn't claimed
+    /// yet" for a paidLaneUnlocked:false query — everything else (isReached,
+    /// isClaimed) is derived from that plus `progress`, rather than adding a
+    /// direct "is this claimed" query to `ProgressTrack`'s public surface for
+    /// a UI-only need.
+    private var canClaim: Bool {
+        viewModel.progressTrack.claimable(trackID: event.id, paidLaneUnlocked: false)
+            .contains { $0.index == milestone.index }
+    }
+    private var isReached: Bool {
+        viewModel.progressTrack.progress(trackID: event.id) >= milestone.threshold
+    }
+    private var isClaimed: Bool { isReached && !canClaim }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -154,7 +173,7 @@ private struct MilestoneRowView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
                 } else {
-                    Text("\(milestone.id)")
+                    Text("\(milestone.index)")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(isReached ? .white : .secondary)
                 }
@@ -162,19 +181,12 @@ private struct MilestoneRowView: View {
 
             // Reward description
             VStack(alignment: .leading, spacing: 3) {
-                Text("\(milestone.coinsRequired) coins")
+                Text("\(milestone.threshold) coins")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 HStack(spacing: 8) {
-                    if milestone.kibbleReward > 0 {
-                        Label("+\(milestone.kibbleReward) Kibble", systemImage: "pawprint.fill")
-                            .font(.subheadline.bold())
-                            .foregroundColor(.green)
-                    }
-                    if milestone.dogTagsReward > 0 {
-                        Label("+\(milestone.dogTagsReward) Tags", systemImage: "tag.fill")
-                            .font(.subheadline.bold())
-                            .foregroundColor(.blue)
+                    ForEach(Array(milestone.freeRewards.enumerated()), id: \.offset) { _, reward in
+                        rewardPill(reward)
                     }
                 }
             }
@@ -187,7 +199,9 @@ private struct MilestoneRowView: View {
                     .font(.caption.bold())
                     .foregroundColor(.green)
             } else if canClaim {
-                Button(action: { viewModel.claimEventMilestone(tier: milestone.id) }) {
+                Button(action: {
+                    viewModel.claimMilestoneTrack(trackID: event.id, milestone: milestone.index)
+                }) {
                     Text("Claim!")
                         .font(.subheadline.bold())
                         .foregroundColor(.white)
@@ -195,7 +209,7 @@ private struct MilestoneRowView: View {
                         .background(RoundedRectangle(cornerRadius: 12).fill(event.accentColor))
                 }
             } else {
-                Text("\(milestone.coinsRequired - viewModel.eventProgress.coinsEarned) to go")
+                Text("\(milestone.threshold - viewModel.progressTrack.progress(trackID: event.id)) to go")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.trailing)
@@ -209,5 +223,27 @@ private struct MilestoneRowView: View {
                       : isReached ? event.accentColor.opacity(0.08)
                       : Color.white.opacity(0.35))
         )
+    }
+
+    /// Only the reward kinds a milestone track actually pays today (kibble,
+    /// dog tags — Spec_Phase6b_MilestoneTrack.md §4) get a dedicated pill;
+    /// anything else renders as a plain amount rather than guessing an icon
+    /// for a kind this track doesn't use yet.
+    @ViewBuilder
+    private func rewardPill(_ reward: OrderReward) -> some View {
+        switch reward.kind {
+        case .kibble:
+            Label("+\(reward.amount) Kibble", systemImage: "pawprint.fill")
+                .font(.subheadline.bold())
+                .foregroundColor(.green)
+        case .dogTags:
+            Label("+\(reward.amount) Tags", systemImage: "tag.fill")
+                .font(.subheadline.bold())
+                .foregroundColor(.blue)
+        default:
+            Text("+\(reward.amount)")
+                .font(.subheadline.bold())
+                .foregroundColor(.secondary)
+        }
     }
 }

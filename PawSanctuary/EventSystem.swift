@@ -112,9 +112,60 @@ enum EventRegistry {
                 Color(red: 0.99, green: 0.87, blue: 0.68),
             ]
         ),
+        // Phase 6b screen-verification content — a short-lived (3-4 day, per
+        // D5) milestone track proving the primitive-backed flow end to end.
+        // NOT the real 6c rolling calendar. `milestones: []` is correct and
+        // intentional: this event's real milestone data lives in
+        // ProgressTrackRegistry.tracks (LiveOpsEngine.swift), not here — the
+        // old EventMilestone-keyed field is vestigial for any event defined
+        // after Phase 6b (specs/Spec_Phase6b_MilestoneTrack.md §3.6).
+        EventDefinition(
+            id: "adoption_drive_aug2026",
+            name: "Adoption Drive",
+            tagline: "Fulfil orders to earn drive tokens!",
+            startDate: date("2026-08-01"),
+            endDate:   date("2026-08-05"),
+            milestones: [],
+            icon: "pawprint.circle.fill",
+            accentColor: Color(red: 0.10, green: 0.55, blue: 0.60),
+            gradientColors: [
+                Color(red: 0.85, green: 0.96, blue: 0.95),
+                Color(red: 0.70, green: 0.90, blue: 0.88),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
         allEvents.first { $0.isActive }
+    }
+}
+
+// ============================================================
+// MARK: - MILESTONE TRACK RIDER (Phase 6b)
+// ============================================================
+
+/// Attaches an `.eventToken` reward to a fraction of newly-generated orders
+/// while `eventID`'s event is active — the faucet for its progress track.
+/// Registered/unregistered by `MergeBoardViewModel.checkEventLifecycle()` as
+/// the active event changes; never constructed directly by UI code.
+///
+/// Numbers are a first cut (specs/Spec_Phase6b_MilestoneTrack.md §4), not
+/// derived from a model — `riderFrequency` mirrors Phase 2's `.boardItem`
+/// recirculation rider, the closest existing precedent.
+@MainActor
+final class MilestoneTrackRiderProvider: OrderRewardProvider {
+    let eventID: String
+    let tokensPerRider: Int
+    let riderFrequency: Double
+
+    init(eventID: String, tokensPerRider: Int = 20, riderFrequency: Double = 0.33) {
+        self.eventID = eventID
+        self.tokensPerRider = tokensPerRider
+        self.riderFrequency = riderFrequency
+    }
+
+    func riders(playerLevel: Int) -> [OrderReward] {
+        guard Double.random(in: 0..<1) < riderFrequency else { return [] }
+        return [OrderReward(kind: .eventToken, amount: tokensPerRider, payloadID: eventID)]
     }
 }

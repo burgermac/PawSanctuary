@@ -104,6 +104,7 @@ class MergeBoardViewModel {
     let adoptionBoardCoordinator = AdoptionBoard()
     let progression   = PlayerProgression()
     let dogTagStore   = DogTagStore()
+    let progressTrack = ProgressTrack()
 
     // MARK: Board state
 
@@ -154,6 +155,11 @@ class MergeBoardViewModel {
     var eventProgress: EventProgress = EventProgress()
 
     var activeEvent: EventDefinition? { EventRegistry.currentEvent }
+
+    /// The rider provider currently registered for the live event, if any —
+    /// tracked so `checkEventLifecycle()` can unregister it by identity when
+    /// the event changes or ends. Not persisted; re-derived every launch.
+    private var activeMilestoneRiderProvider: MilestoneTrackRiderProvider?
 
     // Invite-a-friend
     var inviteProgress: InviteProgress = InviteProgress()
@@ -714,6 +720,7 @@ class MergeBoardViewModel {
                                                    playerLevel: progression.playerLevel)
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
+        checkEventLifecycle()
         startTimer()
         // Game Center auth is opt-in, triggered only from the Card Album (see
         // ensureGameCenterAuthenticated()) — NOT here at launch. It used to run
@@ -896,6 +903,7 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.capture(into: &s)
         progression.capture(into: &s)
         dogTagStore.capture(into: &s)
+        progressTrack.capture(into: &s)
         return s
     }
 
@@ -964,6 +972,7 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.restore(from: s)
         progression.restore(from: s)
         dogTagStore.restore(from: s)
+        progressTrack.restore(from: s)
         kibbleEngine.rollOverExchangeDayIfNeeded()
 
         recalcBoardIsFull()
@@ -1059,6 +1068,7 @@ class MergeBoardViewModel {
         passLastClaimDate = nil
         loyaltyClubDayIndex = 0; loyaltyClubLastClaimDate = nil; loyaltyClubStreak = 0
         eventProgress = EventProgress(); inviteProgress = InviteProgress()
+        progressTrack.reset()
         unlockedSuperpowerSpecies = []; superpowerCooldownEnds = [:]
         lagomorphMergeCount = 0; lastMergeTimestamp = 0; lastMergedSpeciesRaw = nil
         equineSprintRemaining = 0; pouchItems = [nil, nil]; pouchExpiryTimestamp = 0
@@ -2615,16 +2625,21 @@ class MergeBoardViewModel {
         }
     }
 
-    func autoClaimOrder(at index: Int) {
-        guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index),
-              adoptionBoardCoordinator.adoptionOrders[index].isComplete,
-              !adoptionBoardCoordinator.adoptionOrders[index].isClaimed else { return }
-        let order = adoptionBoardCoordinator.adoptionOrders[index]
-        // Adoption orders are fulfilled by merging animals on the board; kibble is
-        // intentionally NOT a merge reward (regen timer, dog tags, quests, IAP only).
-        SoundManager.shared.playRescueClaim()
-        grantXP(xpPerOrderFulfil)
-        for reward in order.rewards {
+    /// Applies a reward list to player state. Shared by `autoClaimOrder`,
+    /// `autoClaimUrgentOrder`, and the milestone-track claim path (Phase 6b) —
+    /// previously duplicated verbatim between the first two (see QA-04 in
+    /// docs/CODE_HEALTH.md for why that duplication pattern is worth avoiding
+    /// from the start rather than fixing later).
+    ///
+    /// **Trap for a future caller:** `.coins` always adds
+    /// `cachedActiveBonuses.coinsPerOrderFulfil` — correct for the two order
+    /// paths this was extracted from, wrong for any future non-order caller
+    /// (e.g. a Pass event) that pays raw coins. No current caller hits this —
+    /// the milestone track only pays kibble/dog tags (Spec_Phase6b_MilestoneTrack.md
+    /// §4) — but it's not validated against, so flag it here rather than let
+    /// it surprise whoever adds the next one.
+    private func applyRewards(_ rewards: [OrderReward]) {
+        for reward in rewards {
             switch reward.kind {
             case .dogTags:  kibbleEngine.dogTags += reward.amount
             case .coins:    earnCoins(reward.amount + cachedActiveBonuses.coinsPerOrderFulfil)
@@ -2648,9 +2663,24 @@ class MergeBoardViewModel {
                 let item = BoardItem(chainID: chainID, tier: max(0, reward.payloadTier ?? 0))
                 inventoryStore.absorbMaterialItems(Array(repeating: item, count: max(1, reward.amount)))
             case .eventToken:
-                break   // Phase 6 — intentionally unhandled for now
+                // Phase 6b — the milestone track's faucet. payloadID is the
+                // event/track ID (Spec_Phase6b_MilestoneTrack.md §3.3).
+                guard let eventID = reward.payloadID else { break }
+                progressTrack.advance(trackID: eventID, by: reward.amount)
             }
         }
+    }
+
+    func autoClaimOrder(at index: Int) {
+        guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index),
+              adoptionBoardCoordinator.adoptionOrders[index].isComplete,
+              !adoptionBoardCoordinator.adoptionOrders[index].isClaimed else { return }
+        let order = adoptionBoardCoordinator.adoptionOrders[index]
+        // Adoption orders are fulfilled by merging animals on the board; kibble is
+        // intentionally NOT a merge reward (regen timer, dog tags, quests, IAP only).
+        SoundManager.shared.playRescueClaim()
+        grantXP(xpPerOrderFulfil)
+        applyRewards(order.rewards)
         // Persistent slots have no timer, so claiming one doesn't touch the
         // rescue-expiring notification — that's the urgent order's job now.
         adoptionBoardCoordinator.markClaimed(at: index)
@@ -2674,31 +2704,7 @@ class MergeBoardViewModel {
               order.isComplete, !order.isClaimed else { return }
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
-        for reward in order.rewards {
-            switch reward.kind {
-            case .dogTags:  kibbleEngine.dogTags += reward.amount
-            case .coins:    earnCoins(reward.amount + cachedActiveBonuses.coinsPerOrderFulfil)
-            case .kibble:   kibbleEngine.kibble += reward.amount
-            case .xp:       grantXP(reward.amount)
-            case .cardPack:
-                if let raw = reward.payloadID, let pack = CardPackType(rawValue: raw) { earnCardPack(pack) }
-            case .boardItem:
-                guard let chainID = reward.payloadID else { break }
-                let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
-                let item = BoardItem(chainID: chainID,
-                                     tier: min(max(0, reward.payloadTier ?? 0), maxTier))
-                for _ in 0..<max(1, reward.amount) { placeOrBankItem(item) }
-            case .material:
-                // Task 5.3 — feed the hard slot's material reward into the same
-                // accumulator Toolboxes use (with its 2:1 cascade), rather than
-                // a separate mechanic.
-                guard let chainID = reward.payloadID else { break }
-                let item = BoardItem(chainID: chainID, tier: max(0, reward.payloadTier ?? 0))
-                inventoryStore.absorbMaterialItems(Array(repeating: item, count: max(1, reward.amount)))
-            case .eventToken:
-                break   // Phase 6 — intentionally unhandled for now
-            }
-        }
+        applyRewards(order.rewards)
         order.isClaimed = true
         adoptionBoardCoordinator.urgentOrder = order
         NotificationManager.shared.cancelRescueExpiring()
@@ -2920,6 +2926,36 @@ class MergeBoardViewModel {
         let kibble = withPassBonus(milestone.kibbleReward)
         kibbleEngine.kibble = min(kibbleRegenCap, kibbleEngine.kibble + kibble)
         if milestone.dogTagsReward > 0 { kibbleEngine.dogTags += milestone.dogTagsReward }
+        persist()
+    }
+
+    /// Registers/unregisters the milestone track's order-rider provider as the
+    /// active event changes. Launch-only for now — an event starting mid-session
+    /// on a long-lived app instance won't be picked up until next launch
+    /// (Spec_Phase6b_MilestoneTrack.md §3.2, flagged as a known gap rather than
+    /// silently accepted).
+    func checkEventLifecycle() {
+        let currentID = EventRegistry.currentEvent?.id
+        guard activeMilestoneRiderProvider?.eventID != currentID else { return }
+        if let old = activeMilestoneRiderProvider {
+            OrderRewardRegistry.unregister(old)
+            activeMilestoneRiderProvider = nil
+        }
+        if let currentID {
+            let provider = MilestoneTrackRiderProvider(eventID: currentID)
+            OrderRewardRegistry.register(provider)
+            activeMilestoneRiderProvider = provider
+        }
+    }
+
+    /// Claims a milestone-track reward. Free lane only — a pure milestone
+    /// track has no paid lane; that's the Pass event type's differentiator
+    /// (Spec_Phase6b_MilestoneTrack.md §2). No-ops (via `ProgressTrack.claim`'s
+    /// own guards) if the milestone isn't reached or is already claimed.
+    func claimMilestoneTrack(trackID: String, milestone: Int) {
+        let rewards = progressTrack.claim(trackID: trackID, milestone: milestone, paidLane: false)
+        guard !rewards.isEmpty else { return }
+        applyRewards(rewards)
         persist()
     }
 
