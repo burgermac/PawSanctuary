@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 below — land as separate commits, verify each, stop if one resists.
 
-**DRAFT — written by Claude Code from the current codebase, the Alignment Plan, and the Blueprint. Not yet reviewed.** Read `specs/PawSanctuary_Alignment_Plan.md` §9 (Phase 6b) before approving. Numbers in §4 are a first cut, not derived from a model — flagged inline.
+**IMPLEMENTED** (commits `486973c`…`efd5402`, 169/169 tests green, verified end-to-end on the simulator). Written cold by Claude Code, approved in-session. Numbers in §4 are still a first cut, not derived from a model — re-derive if the pacing feels wrong in play.
 
 ---
 
