@@ -118,3 +118,33 @@ enum EventRegistry {
         allEvents.first { $0.isActive }
     }
 }
+
+// ============================================================
+// MARK: - MILESTONE TRACK RIDER (Phase 6b)
+// ============================================================
+
+/// Attaches an `.eventToken` reward to a fraction of newly-generated orders
+/// while `eventID`'s event is active — the faucet for its progress track.
+/// Registered/unregistered by `MergeBoardViewModel.checkEventLifecycle()` as
+/// the active event changes; never constructed directly by UI code.
+///
+/// Numbers are a first cut (specs/Spec_Phase6b_MilestoneTrack.md §4), not
+/// derived from a model — `riderFrequency` mirrors Phase 2's `.boardItem`
+/// recirculation rider, the closest existing precedent.
+@MainActor
+final class MilestoneTrackRiderProvider: OrderRewardProvider {
+    let eventID: String
+    let tokensPerRider: Int
+    let riderFrequency: Double
+
+    init(eventID: String, tokensPerRider: Int = 20, riderFrequency: Double = 0.33) {
+        self.eventID = eventID
+        self.tokensPerRider = tokensPerRider
+        self.riderFrequency = riderFrequency
+    }
+
+    func riders(playerLevel: Int) -> [OrderReward] {
+        guard Double.random(in: 0..<1) < riderFrequency else { return [] }
+        return [OrderReward(kind: .eventToken, amount: tokensPerRider, payloadID: eventID)]
+    }
+}

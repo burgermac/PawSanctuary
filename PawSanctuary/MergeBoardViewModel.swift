@@ -156,6 +156,11 @@ class MergeBoardViewModel {
 
     var activeEvent: EventDefinition? { EventRegistry.currentEvent }
 
+    /// The rider provider currently registered for the live event, if any —
+    /// tracked so `checkEventLifecycle()` can unregister it by identity when
+    /// the event changes or ends. Not persisted; re-derived every launch.
+    private var activeMilestoneRiderProvider: MilestoneTrackRiderProvider?
+
     // Invite-a-friend
     var inviteProgress: InviteProgress = InviteProgress()
 
@@ -715,6 +720,7 @@ class MergeBoardViewModel {
                                                    playerLevel: progression.playerLevel)
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
+        checkEventLifecycle()
         startTimer()
         // Game Center auth is opt-in, triggered only from the Card Album (see
         // ensureGameCenterAuthenticated()) — NOT here at launch. It used to run
@@ -2925,6 +2931,25 @@ class MergeBoardViewModel {
         kibbleEngine.kibble = min(kibbleRegenCap, kibbleEngine.kibble + kibble)
         if milestone.dogTagsReward > 0 { kibbleEngine.dogTags += milestone.dogTagsReward }
         persist()
+    }
+
+    /// Registers/unregisters the milestone track's order-rider provider as the
+    /// active event changes. Launch-only for now — an event starting mid-session
+    /// on a long-lived app instance won't be picked up until next launch
+    /// (Spec_Phase6b_MilestoneTrack.md §3.2, flagged as a known gap rather than
+    /// silently accepted).
+    func checkEventLifecycle() {
+        let currentID = EventRegistry.currentEvent?.id
+        guard activeMilestoneRiderProvider?.eventID != currentID else { return }
+        if let old = activeMilestoneRiderProvider {
+            OrderRewardRegistry.unregister(old)
+            activeMilestoneRiderProvider = nil
+        }
+        if let currentID {
+            let provider = MilestoneTrackRiderProvider(eventID: currentID)
+            OrderRewardRegistry.register(provider)
+            activeMilestoneRiderProvider = provider
+        }
     }
 
     func checkWeeklyGoalReset() {
