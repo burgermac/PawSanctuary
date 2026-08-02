@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 below — land as separate commits, verify each, stop if one resists.
 
-**DRAFT — written cold by Claude Code, not yet reviewed by the design authority.** Per the Alignment Plan's working method (§2), specs are supposed to originate in the design conversation and be handed to Claude Code to implement. No such spec existed for this task, so this one was drafted directly in the implementation session at the user's request. Treat every number in §4 and every judgment call flagged below as provisional — review before implementing, the same way `Spec_Phase6a_Primitives.md`'s header flags its own scope cuts as worth a second look.
+**DRAFT — written cold by Claude Code, not yet reviewed by the design authority.** Per the Alignment Plan's working method (§2), specs are supposed to originate in the design conversation and be handed to Claude Code to implement. No such spec existed for this task, so this one was drafted directly in the implementation session at the user's request. **A technical-accuracy pass was done after the first draft** — every file/line reference below was checked against the current source rather than assumed, one real numeric error in §4 was caught and fixed (a dog-tag list with fewer values than its own stated range), and the §5 test-event dates were tightened to close a one-day gap where no event would have been active. That pass verifies the spec is buildable as written; it is not the design-authority review the working method calls for — treat every number in §4 and every judgment call flagged in §0 as still provisional on that front.
 
 ---
 
@@ -33,7 +33,7 @@ The rider layer already doesn't have this problem — `OrderRewardRegistry.provi
 
 **Decision for this task: do not fix it.** Generalizing "the active event" to a plural model touches the two UI entry points, `checkEventLifecycle()`, and `activeEvent` itself — real surface area, and `CLAUDE.md` Rule 5 says ask before large refactors. It's also not this task's problem to solve alone: 6c (the rolling calendar) is where concurrent events actually start getting authored, and generalizing the single-event model without a second real concurrent event to test it against risks guessing the wrong shape. Milestone track's own spec deferred the identical thing (§7, "`EventScheduler`'s overlap/priority resolution — only one event exists or is planned right now") — this is the same deferral, now flagged twice, which is the point at which it should be raised explicitly rather than deferred a third time. **Raise before 6c.**
 
-**Consequence for this task, worked around, not fixed:** the Event Pass test event (§5) cannot run concurrently with the Milestone track's live test event (`adoption_drive_aug2026`, active through 2026-08-05). It's scheduled to start 2026-08-06, after that one ends, so only one event is ever active at a time — same constraint the shipped code already lives under.
+**Consequence for this task, worked around, not fixed:** the Event Pass test event (§5) cannot run concurrently with the Milestone track's live test event (`adoption_drive_aug2026`, active 2026-08-01 up to but not including 2026-08-05 — `EventDefinition.isActive` is `now >= startDate && now < endDate`). It's scheduled to start exactly 2026-08-05, so the handoff is clean — zero overlap, zero dead gap — and only one event is ever active at a time, same constraint the shipped code already lives under.
 
 ---
 
@@ -60,10 +60,13 @@ The rider layer already doesn't have this problem — `OrderRewardRegistry.provi
 
 ### 3.1 — Generalize the rider provider
 
-`MilestoneTrackRiderProvider` (`EventSystem.swift`) has zero milestone-specific logic in its body — it emits `.eventToken` riders for an `eventID` at some frequency/amount. It was named for its one caller, not because it's milestone-shaped. Rename it to `EventTokenRiderProvider` (keep the same `init(eventID:tokensPerRider:riderFrequency:)` signature — only the type name changes) so the Pass track can reuse it instead of hand-duplicating a second near-identical class. Update:
+`MilestoneTrackRiderProvider` (`EventSystem.swift`) has zero milestone-specific logic in its body — it emits `.eventToken` riders for an `eventID` at some frequency/amount. It was named for its one caller, not because it's milestone-shaped. Rename it to `EventTokenRiderProvider` (keep the same `init(eventID:tokensPerRider:riderFrequency:)` signature — only the type name changes) so the Pass track can reuse it instead of hand-duplicating a second near-identical class. Exactly two type-name references exist in production code — update both:
 - `EventSystem.swift`'s declaration and doc comment
-- `MergeBoardViewModel.checkEventLifecycle()`'s one construction call site (`MergeBoardViewModel.swift:2941-2946`) and the `activeMilestoneRiderProvider` var's doc comment (rename the var too if it reads oddly post-rename — `activeEventRiderProvider` reads fine)
-- `PawSanctuaryTests/EventSystemTests.swift`'s references (`grep -rn MilestoneTrackRiderProvider` first to get the exact call sites — one file, unknown count of references)
+- `MergeBoardViewModel.swift:162`, the `activeMilestoneRiderProvider` var's type annotation and doc comment (rename the var too — `activeEventRiderProvider` reads fine), and `MergeBoardViewModel.swift:2945`, the `MilestoneTrackRiderProvider(eventID:)` construction call inside `checkEventLifecycle()`
+
+`PawSanctuaryTests/EventSystemTests.swift` has four references, all inside one test class (`MilestoneTrackRiderProviderTests`, lines 13/16/23/33) — rename the class too (`EventTokenRiderProviderTests`) while updating them.
+
+**Don't touch** `specs/Spec_Phase6b_MilestoneTrack.md` or `specs/PawSanctuary_Alignment_Plan.md` — both reference the old name as historical record of what shipped, same precedent as leaving `rescue_rush_jun2026`/`eventProgress` alone rather than retroactively rewriting closed work.
 
 **No behavior change.** This is a pure rename; verify by running the existing Milestone track tests unchanged in intent, just recompiled against the new name.
 
@@ -82,7 +85,7 @@ var passUnlockedEventIDs: Set<String> = []
 
 Bump `GameStore.currentVersion` to `31`. Add `if version == 30 { return migrateByInjecting(from: 30, defaults: [:], into: data) }` to the dispatch chain (mirrors the existing `version == 29` line), and add `"passUnlockedEventIDs": [String]()` to `additiveDefaultsSinceV8` — purely additive, same shape as `eventTokenWallets`/`progressTracks`' own v30 migration.
 
-`MergeBoardViewModel` needs read/write access — no new coordinator needed, this is a flat `Set<String>` read/written directly off `GameState`-backed state the way `coins`/`kibble` already are (check `MergeBoardViewModel`'s existing pattern for a top-level `GameState`-backed `var` — likely just add `var passUnlockedEventIDs: Set<String> = []` alongside `eventProgress` and wire it into `apply(_:)`/snapshot capture the same way).
+`MergeBoardViewModel` needs read/write access — no new coordinator needed. `eventProgress` is the exact precedent to copy: it's a flat `GameState`-backed property, not owned by a sub-coordinator. Add `var passUnlockedEventIDs: Set<String> = []` alongside `eventProgress` (`MergeBoardViewModel.swift:155`), then wire it the same two places `eventProgress` appears: `passUnlockedEventIDs: passUnlockedEventIDs` in the `GameState(...)` initializer call inside the snapshot builder (alongside `eventProgress: eventProgress`, ~line 884), and `passUnlockedEventIDs = s.passUnlockedEventIDs` as a plain assignment in `apply(_:)` (alongside `eventProgress = s.eventProgress`, ~line 941). No purge on event end — leave it as permanent history, same as `eventTokenWallets`/`progressTracks` already do (nothing purges those either; `TokenWallet.purge(tokensFor:)` exists on the primitive but has zero call sites in production).
 
 ### 3.3 — IAP product
 
@@ -134,12 +137,12 @@ Update `MilestoneRowView`'s existing call site (`EventPanelView.swift:203`) to `
 `hasPaidLane` — derive from data, don't add a parallel `EventDefinition` field that could drift from it: `ProgressTrackRegistry.tracks[event.id]?.contains { !$0.paidRewards.isEmpty } ?? false`. Put this as a computed property on `EventSheetView` (mirrors how `milestones` is already computed there) and thread it down to `MilestoneRowView`.
 
 When `hasPaidLane`:
-- If `!viewModel.passUnlockedEventIDs.contains(event.id)`: render a locked paid-lane column next to the free one — reward pills dimmed/greyed (reuse `rewardPill`, wrapped in `.opacity(0.4)` or similar — don't invent a second rendering path for the same pill), with a lock icon, **and** a single purchase CTA for the whole event (not per-row — buying unlocks every milestone's paid lane, present and future, per `ProgressTrack.claimable`'s existing "past thresholds count too" behavior). Suggested placement: one button in `EventSheetView`'s `header` or as its own section above `milestonesSection`, not per-row, since per-row would visually suggest N separate purchases. Wire it to `Task { await storeManager.purchase(...) }` the same way `ShopView.swift:464` does — needs `storeManager` threaded into `EventSheetView`'s init (it currently only takes `viewModel`/`event`; check `MergeBoardView.swift:649-650`'s call site for how `storeManager` is already available in that scope to pass down).
+- If `!viewModel.passUnlockedEventIDs.contains(event.id)`: render a locked paid-lane column next to the free one — reward pills dimmed/greyed (reuse `rewardPill`, wrapped in `.opacity(0.4)` or similar — don't invent a second rendering path for the same pill), with a lock icon, **and** a single purchase CTA for the whole event (not per-row — buying unlocks every milestone's paid lane, present and future, per `ProgressTrack.claimable`'s existing "past thresholds count too" behavior). Suggested placement: one button in `EventSheetView`'s `header` or as its own section above `milestonesSection`, not per-row, since per-row would visually suggest N separate purchases. Wire it to `Task { await storeManager.purchase(...) }` the same way `ShopView.swift:464` does. Add `let storeManager: StoreManager` to `EventSheetView` (`EventPanelView.swift:19-22`, alongside its existing `viewModel`/`event`) and pass it at the one construction site, `MergeBoardView.swift:650` (`EventSheetView(viewModel: viewModel, event: event, storeManager: storeManager)`) — `storeManager` is already a `@State` property on `MergeBoardView` (`MergeBoardView.swift:33`) and is already threaded into sibling sheets the identical way (`ShopView`, `KibbleRefillSheet`), so this is a drop-in, not a new wiring pattern.
 - If unlocked: paid-lane column renders live, same claim/claimed/progress states as the free column, calling `claimTrackMilestone(trackID:milestone:paidLane: true)`.
 
 When `!hasPaidLane` (i.e., a Milestone-track-type event): render exactly as today — single column, no lock icon, no purchase CTA. This is the existing `adoption_drive_aug2026` behavior and must not change.
 
-**Reward pill for a paid lane richer than kibble/dog tags** — §4's paid rewards include a card pack (see below), which `rewardPill`'s `switch` doesn't have a case for beyond its `default: "+\(amount)"` fallback. Add a `.cardPack` case rendering the pack's name (check `CardPackType`'s existing display-name accessor, likely already used in `CardSystem.swift`/`ShopView.swift` — don't invent a new label for a type that already has one).
+**Reward pill for a paid lane richer than kibble/dog tags** — §4's paid rewards include a card pack (see below), which `rewardPill`'s `switch` doesn't have a case for beyond its `default: "+\(amount)"` fallback. Add a `.cardPack` case: `guard let raw = reward.payloadID, let pack = CardPackType(rawValue: raw) else { break }` then render `pack.displayName` (`CardSystem.swift:89` — `"\(stars)-Star Pack"`, already the label used elsewhere for packs; don't invent a second one).
 
 ### 3.6 — Test event content
 
@@ -153,9 +156,24 @@ Same posture as the Milestone track's §4: **no economy model was run for these.
 
 - **Rider frequency / tokens per rider:** unchanged from the Milestone track (0.33, 20) — same rider mechanism, reused via §3.1.
 - **Milestone count:** 10, evenly stepped — a genre-standard pass has more checkpoints than a 3-day event's 3.
-- **Thresholds:** 60 / 120 / 180 / 240 / 300 / 360 / 420 / 480 / 540 / 600 tokens (linear steps of 60, matching the Milestone track's per-milestone granularity rather than inventing a new curve).
-- **Free-lane rewards:** modest, escalating — kibble-only for the first few, small dog-tag amounts folded in from milestone 4 onward. Roughly:  25/40/50/60/75/90/100/120/140/160 kibble, plus dog tags starting at milestone 4 (3/4/5/6/8 for milestones 4–10 — not 6–10, recount before implementing) so the free lane alone stays a reasonable value even for a player who never buys the pass, matching D6/D7's "generous free tier" posture already adopted elsewhere in the plan.
-- **Paid-lane rewards:** meaningfully richer, not just 2×, to make the purchase legible — kibble roughly 2–2.5× the free amount at each tier, dog tags from milestone 1 (not gated to 4+ the way free is), and one `.cardPack` reward at the final milestone (milestone 10) as the "hero" reward, using whichever `CardPackType` is already the mid-tier option (check `CardPackType`'s cases — don't introduce a new pack tier for this).
+- **Thresholds:** linear steps of 60 tokens, matching the Milestone track's per-milestone granularity rather than inventing a new curve.
+
+**Sanity check against realistic order volume** (not a model — a bound): Phase 5's economy assumes several order fulfillments/day per engaged player. At the unchanged 0.33 rider frequency × 20 tokens/rider, even a conservative 2–3 fulfillments/day yields roughly 15–20 tokens/day, comfortably clearing 600 tokens well inside 30 days. That's intentional headroom, not a miscalibration — a less consistent player should still be able to finish the free lane, matching D7's "generous supply" posture already adopted for the wall. If actual play feels too fast or too slow, the anchor to retune is `tokensPerRider`/`riderFrequency`, not the thresholds — same guidance the Milestone track's §4 gave.
+
+**Milestone table** — indices match `TrackMilestone.index` (0-based, matching `ProgressTrackRegistry`'s existing convention). Free-lane dog tags are gated to the back half (index ≥ 3) so the earliest rewards stay kibble-only and simple; paid-lane dog tags run the full pass since the point of paying is a richer lane throughout, not just at the end. Paid kibble is free kibble × ~2.2, rounded. The final milestone's paid reward adds one `.cardPack` (`CardPackType.star4` — the existing mid-upper tier, 4 cards with 1 guaranteed rare per `CardSystem.swift`; not introducing a new pack tier) as the pass's hero reward.
+
+| Index | Threshold | Free kibble | Free dogTags | Paid kibble | Paid dogTags | Paid extra |
+|---|---|---|---|---|---|---|
+| 0 | 60  | 25  | —  | 55  | 2  | |
+| 1 | 120 | 40  | —  | 90  | 3  | |
+| 2 | 180 | 50  | —  | 110 | 4  | |
+| 3 | 240 | 60  | 3  | 130 | 5  | |
+| 4 | 300 | 75  | 4  | 165 | 6  | |
+| 5 | 360 | 90  | 5  | 200 | 8  | |
+| 6 | 420 | 100 | 6  | 220 | 10 | |
+| 7 | 480 | 120 | 8  | 260 | 12 | |
+| 8 | 540 | 140 | 10 | 300 | 15 | |
+| 9 | 600 | 160 | 15 | 350 | 20 | 1× `.cardPack` (`star4`) |
 
 **This entire table is a placeholder for the design authority to replace, not a designed pass.** It exists so the flow is screen-verifiable; treat the exact reward mix as provisional the same way Milestone track's §4 numbers were.
 
@@ -163,7 +181,7 @@ Same posture as the Milestone track's §4: **no economy model was run for these.
 
 ## 5. Task — one screen-verifiable test event
 
-Add a fresh `EventDefinition` to `EventRegistry.allEvents` — **do not** extend `adoption_drive_aug2026` (leave it as-is, historical, per the Milestone spec's own precedent of not overloading old events). Per §0's concurrency workaround: start date **2026-08-06** (the day after `adoption_drive_aug2026` ends), end date 30 days later (**2026-09-05**), matching D5's continuous-track cadence. `ProgressTrackRegistry.tracks[thisEvent.id] = [the 10 TrackMilestones from §4]`.
+Add a fresh `EventDefinition` to `EventRegistry.allEvents` — **do not** extend `adoption_drive_aug2026` (leave it as-is, historical, per the Milestone spec's own precedent of not overloading old events). Per §0's concurrency workaround: start date **2026-08-05** — the exact instant `adoption_drive_aug2026` goes inactive (`endDate` is exclusive), so the handoff has zero gap and zero overlap — end date 30 days later (**2026-09-04**), matching D5's continuous-track cadence. `ProgressTrackRegistry.tracks[thisEvent.id] = [the 10 TrackMilestones from §4]`.
 
 This is test-only content to prove the two-lane flow end to end — not 6c's real rolling calendar.
 
