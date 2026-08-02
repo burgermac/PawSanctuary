@@ -110,10 +110,28 @@ struct TrackState: Codable, Equatable {
     var claimedPaid: [Int] = []
 }
 
-/// Ordered milestone lists, keyed by track ID. Empty — no track is authored
-/// until Phase 6b (e.g. the Pass event type) defines one.
+/// Ordered milestone lists, keyed by track ID.
 enum ProgressTrackRegistry {
-    static let tracks: [String: [TrackMilestone]] = [:]
+    static let tracks: [String: [TrackMilestone]] = [
+        // "Adoption Drive" (EventSystem.swift) — Phase 6b screen-verification
+        // content. Thresholds/rewards are a first cut (roughly matching
+        // rescue_rush_jun2026's 200/450/700 spacing, scaled down since fewer
+        // orders carry a rider than earned coins generally), not derived from
+        // a model — see specs/Spec_Phase6b_MilestoneTrack.md §4.
+        "adoption_drive_aug2026": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+    ]
 }
 
 /// Ordered milestones with parallel free/paid lanes. Owns its state directly

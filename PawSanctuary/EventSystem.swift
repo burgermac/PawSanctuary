@@ -112,6 +112,27 @@ enum EventRegistry {
                 Color(red: 0.99, green: 0.87, blue: 0.68),
             ]
         ),
+        // Phase 6b screen-verification content — a short-lived (3-4 day, per
+        // D5) milestone track proving the primitive-backed flow end to end.
+        // NOT the real 6c rolling calendar. `milestones: []` is correct and
+        // intentional: this event's real milestone data lives in
+        // ProgressTrackRegistry.tracks (LiveOpsEngine.swift), not here — the
+        // old EventMilestone-keyed field is vestigial for any event defined
+        // after Phase 6b (specs/Spec_Phase6b_MilestoneTrack.md §3.6).
+        EventDefinition(
+            id: "adoption_drive_aug2026",
+            name: "Adoption Drive",
+            tagline: "Fulfil orders to earn drive tokens!",
+            startDate: date("2026-08-01"),
+            endDate:   date("2026-08-05"),
+            milestones: [],
+            icon: "pawprint.circle.fill",
+            accentColor: Color(red: 0.10, green: 0.55, blue: 0.60),
+            gradientColors: [
+                Color(red: 0.85, green: 0.96, blue: 0.95),
+                Color(red: 0.70, green: 0.90, blue: 0.88),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
