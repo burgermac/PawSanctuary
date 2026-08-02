@@ -183,6 +183,13 @@ final class ProgressTrack: ProgressTracking {
     func capture(into s: inout GameState) {
         s.progressTracks = states
     }
+
+    #if DEBUG
+    /// Dev-only full reset — see `MergeBoardViewModel.resetToFreshGame()`.
+    func reset() {
+        states = [:]
+    }
+    #endif
 }
 
 // ============================================================

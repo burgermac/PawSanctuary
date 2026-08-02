@@ -104,6 +104,7 @@ class MergeBoardViewModel {
     let adoptionBoardCoordinator = AdoptionBoard()
     let progression   = PlayerProgression()
     let dogTagStore   = DogTagStore()
+    let progressTrack = ProgressTrack()
 
     // MARK: Board state
 
@@ -896,6 +897,7 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.capture(into: &s)
         progression.capture(into: &s)
         dogTagStore.capture(into: &s)
+        progressTrack.capture(into: &s)
         return s
     }
 
@@ -964,6 +966,7 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.restore(from: s)
         progression.restore(from: s)
         dogTagStore.restore(from: s)
+        progressTrack.restore(from: s)
         kibbleEngine.rollOverExchangeDayIfNeeded()
 
         recalcBoardIsFull()
@@ -1059,6 +1062,7 @@ class MergeBoardViewModel {
         passLastClaimDate = nil
         loyaltyClubDayIndex = 0; loyaltyClubLastClaimDate = nil; loyaltyClubStreak = 0
         eventProgress = EventProgress(); inviteProgress = InviteProgress()
+        progressTrack.reset()
         unlockedSuperpowerSpecies = []; superpowerCooldownEnds = [:]
         lagomorphMergeCount = 0; lastMergeTimestamp = 0; lastMergedSpeciesRaw = nil
         equineSprintRemaining = 0; pouchItems = [nil, nil]; pouchExpiryTimestamp = 0
