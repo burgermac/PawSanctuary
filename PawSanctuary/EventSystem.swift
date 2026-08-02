@@ -133,6 +133,29 @@ enum EventRegistry {
                 Color(red: 0.70, green: 0.90, blue: 0.88),
             ]
         ),
+        // Phase 6b, Pass screen-verification content — a continuous 30-day
+        // track (per D5's second cadence clause) proving the two-lane,
+        // paid-unlock flow end to end. Starts the instant Adoption Drive goes
+        // inactive (endDate above is exclusive) so the two never overlap
+        // under the current single-active-event model — see
+        // specs/Spec_Phase6b_Pass.md §0. Real milestone data (both lanes)
+        // lives in ProgressTrackRegistry.tracks, not here — `milestones: []`
+        // is correct and intentional, same posture as Adoption Drive above.
+        // NOT the real 6c rolling calendar.
+        EventDefinition(
+            id: "founders_circle_aug2026",
+            name: "Founders' Circle",
+            tagline: "A season of rewards for the sanctuary's founding rescuers.",
+            startDate: date("2026-08-05"),
+            endDate:   date("2026-09-04"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
