@@ -48,13 +48,21 @@ final class NotificationManager: NSObject {
         Task { await refreshAuthStatus() }
     }
 
+    /// Fetches just the authorization status, never letting the non-Sendable
+    /// `UNNotificationSettings` itself cross back into this @MainActor type —
+    /// older SDKs (pre-iOS 26) don't mark it Sendable, which strict
+    /// concurrency rejects at the await site otherwise.
+    private nonisolated func fetchAuthorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
     /// Requests permission if not already determined.
     /// Returns true when permission is granted (existing or newly approved).
     @discardableResult
     func requestPermission() async -> Bool {
         let centre = UNUserNotificationCenter.current()
-        let settings = await centre.notificationSettings()
-        switch settings.authorizationStatus {
+        let authorizationStatus = await fetchAuthorizationStatus()
+        switch authorizationStatus {
         case .authorized, .provisional, .ephemeral:
             isAuthorised = true
             return true
@@ -340,9 +348,9 @@ final class NotificationManager: NSObject {
     // MARK: Private helpers
 
     private func refreshAuthStatus() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        isAuthorised = settings.authorizationStatus == .authorized
-            || settings.authorizationStatus == .provisional
+        let authorizationStatus = await fetchAuthorizationStatus()
+        isAuthorised = authorizationStatus == .authorized
+            || authorizationStatus == .provisional
     }
 }
 
