@@ -159,7 +159,7 @@ class MergeBoardViewModel {
     /// The rider provider currently registered for the live event, if any —
     /// tracked so `checkEventLifecycle()` can unregister it by identity when
     /// the event changes or ends. Not persisted; re-derived every launch.
-    private var activeMilestoneRiderProvider: MilestoneTrackRiderProvider?
+    private var activeEventRiderProvider: EventTokenRiderProvider?
 
     // Invite-a-friend
     var inviteProgress: InviteProgress = InviteProgress()
@@ -2936,15 +2936,15 @@ class MergeBoardViewModel {
     /// silently accepted).
     func checkEventLifecycle() {
         let currentID = EventRegistry.currentEvent?.id
-        guard activeMilestoneRiderProvider?.eventID != currentID else { return }
-        if let old = activeMilestoneRiderProvider {
+        guard activeEventRiderProvider?.eventID != currentID else { return }
+        if let old = activeEventRiderProvider {
             OrderRewardRegistry.unregister(old)
-            activeMilestoneRiderProvider = nil
+            activeEventRiderProvider = nil
         }
         if let currentID {
-            let provider = MilestoneTrackRiderProvider(eventID: currentID)
+            let provider = EventTokenRiderProvider(eventID: currentID)
             OrderRewardRegistry.register(provider)
-            activeMilestoneRiderProvider = provider
+            activeEventRiderProvider = provider
         }
     }
 

@@ -141,11 +141,15 @@ enum EventRegistry {
 }
 
 // ============================================================
-// MARK: - MILESTONE TRACK RIDER (Phase 6b)
+// MARK: - EVENT TOKEN RIDER (Phase 6b)
 // ============================================================
 
 /// Attaches an `.eventToken` reward to a fraction of newly-generated orders
-/// while `eventID`'s event is active — the faucet for its progress track.
+/// while `eventID`'s event is active — the faucet for any track-based event
+/// type (Milestone track, Pass). Generic: nothing about this class is
+/// milestone-specific, only its original name was (renamed from
+/// `MilestoneTrackRiderProvider` in specs/Spec_Phase6b_Pass.md §3.1 so the
+/// Pass event type could reuse it instead of a near-duplicate class).
 /// Registered/unregistered by `MergeBoardViewModel.checkEventLifecycle()` as
 /// the active event changes; never constructed directly by UI code.
 ///
@@ -153,7 +157,7 @@ enum EventRegistry {
 /// derived from a model — `riderFrequency` mirrors Phase 2's `.boardItem`
 /// recirculation rider, the closest existing precedent.
 @MainActor
-final class MilestoneTrackRiderProvider: OrderRewardProvider {
+final class EventTokenRiderProvider: OrderRewardProvider {
     let eventID: String
     let tokensPerRider: Int
     let riderFrequency: Double
