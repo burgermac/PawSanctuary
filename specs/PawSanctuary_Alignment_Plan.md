@@ -246,7 +246,7 @@ Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite g
 - [x] Parallel board instance — **stub only** (`ParallelBoardStub`): UUID bookkeeping, no board grid, no chains, no energy. The real thing is 6b's "Parallel board" item below, unchanged.
 
 **6b — Event types (three only, per D5)**
-- [ ] Milestone track (uses progress track + riders only — cheapest)
+- [ ] Milestone track (uses progress track + riders only — cheapest) — draft spec `specs/Spec_Phase6b_MilestoneTrack.md`, written cold by Claude Code. **Not yet reviewed.**
 - [ ] Pass, free + paid lanes
   - [ ] *(If D8 = adopt)* Chain-offer variant: same primitive, free-lane unlock predicate changed from "tier reached" to "adjacent paid node purchased." One predicate, not a fourth event type — this is why it does not spend D5's budget.
 - [ ] Parallel board — highest revenue, most expensive; the one worth the effort
