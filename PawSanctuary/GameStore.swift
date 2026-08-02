@@ -176,6 +176,13 @@ struct GameState: Codable {
     var eventTokenWallets: [String: Int] = [:]
     /// Per-track claimed-milestone state, keyed by track ID.
     var progressTracks: [String: TrackState] = [:]
+
+    /// Event IDs whose Event Pass paid lane has been purchased (v31, Phase 6b
+    /// Pass). Per-event, not global — buying the Pass for one event doesn't
+    /// carry over to the next one the way the Sanctuary Pass subscription
+    /// does. Deliberately not named anything containing "sanctuary" or
+    /// reusing IAPProduct.sanctuaryPass — see specs/Spec_Phase6b_Pass.md §0.
+    var passUnlockedEventIDs: Set<String> = []
 }
 
 // ============================================================
@@ -247,7 +254,10 @@ enum GameStore {
     /// v30: live-ops primitives (Phase 6a). GameState gains eventTokenWallets
     ///      (token ID -> balance) and progressTracks (track ID -> TrackState).
     ///      Purely additive; nothing writes to either yet.
-    static let currentVersion = 30
+    /// v31: Event Pass paid-lane unlock (Phase 6b, Pass). GameState gains
+    ///      passUnlockedEventIDs (Set of event IDs whose paid lane was
+    ///      purchased). Purely additive.
+    static let currentVersion = 31
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -413,6 +423,7 @@ enum GameStore {
         if version == 27 { return migrateV27toV28(data) }
         if version == 28 { return migrateV28toV29(data) }
         if version == 29 { return migrateByInjecting(from: 29, defaults: [:], into: data) }   // eventTokenWallets/progressTracks covered by additiveDefaultsSinceV8
+        if version == 30 { return migrateByInjecting(from: 30, defaults: [:], into: data) }   // passUnlockedEventIDs covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -481,6 +492,8 @@ enum GameStore {
         "urgentOrderTimeRemaining": 0.0, "urgentOrderCooldownRemaining": 0.0,
         // v30 — live-ops primitives (Phase 6a): token wallet + progress track state.
         "eventTokenWallets": [String: Int](), "progressTracks": [String: Any](),
+        // v31 — Event Pass paid-lane unlock (Phase 6b, Pass).
+        "passUnlockedEventIDs": [String](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

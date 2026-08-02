@@ -154,6 +154,10 @@ class MergeBoardViewModel {
     // Events
     var eventProgress: EventProgress = EventProgress()
 
+    /// Event IDs whose Event Pass paid lane has been purchased (Phase 6b,
+    /// Pass). Per-event, not global. See specs/Spec_Phase6b_Pass.md §3.2.
+    var passUnlockedEventIDs: Set<String> = []
+
     var activeEvent: EventDefinition? { EventRegistry.currentEvent }
 
     /// The rider provider currently registered for the live event, if any —
@@ -897,6 +901,7 @@ class MergeBoardViewModel {
         s.pouchItems                = pouchItems
         s.pouchExpiryTimestamp      = pouchExpiryTimestamp
         s.commerce                  = commerce
+        s.passUnlockedEventIDs      = passUnlockedEventIDs
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -966,6 +971,7 @@ class MergeBoardViewModel {
         pouchItems                = s.pouchItems
         pouchExpiryTimestamp      = s.pouchExpiryTimestamp
         commerce                  = s.commerce
+        passUnlockedEventIDs      = s.passUnlockedEventIDs
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
