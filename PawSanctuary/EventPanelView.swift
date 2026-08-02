@@ -200,7 +200,7 @@ private struct MilestoneRowView: View {
                     .foregroundColor(.green)
             } else if canClaim {
                 Button(action: {
-                    viewModel.claimMilestoneTrack(trackID: event.id, milestone: milestone.index)
+                    viewModel.claimTrackMilestone(trackID: event.id, milestone: milestone.index, paidLane: false)
                 }) {
                     Text("Claim!")
                         .font(.subheadline.bold())

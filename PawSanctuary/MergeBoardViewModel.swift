@@ -2954,12 +2954,22 @@ class MergeBoardViewModel {
         }
     }
 
-    /// Claims a milestone-track reward. Free lane only — a pure milestone
-    /// track has no paid lane; that's the Pass event type's differentiator
-    /// (Spec_Phase6b_MilestoneTrack.md §2). No-ops (via `ProgressTrack.claim`'s
-    /// own guards) if the milestone isn't reached or is already claimed.
-    func claimMilestoneTrack(trackID: String, milestone: Int) {
-        let rewards = progressTrack.claim(trackID: trackID, milestone: milestone, paidLane: false)
+    /// Claims a track-milestone reward, free or paid lane (Phase 6b, Pass —
+    /// generalized from the Milestone track's free-lane-only
+    /// `claimMilestoneTrack`, see specs/Spec_Phase6b_Pass.md §3.4). No-ops
+    /// (via `ProgressTrack.claim`'s own guards) if the milestone isn't reached
+    /// or is already claimed.
+    ///
+    /// The `passUnlockedEventIDs` guard is defense-in-depth, not the primary
+    /// gate — `EventSheetView` shouldn't offer a paid-lane claim button before
+    /// purchase, but `ProgressTrack.claim` itself has no concept of
+    /// "unlocked," only "claimed," so this is the one place that actually
+    /// enforces it.
+    func claimTrackMilestone(trackID: String, milestone: Int, paidLane: Bool) {
+        if paidLane {
+            guard passUnlockedEventIDs.contains(trackID) else { return }
+        }
+        let rewards = progressTrack.claim(trackID: trackID, milestone: milestone, paidLane: paidLane)
         guard !rewards.isEmpty else { return }
         applyRewards(rewards)
         persist()
