@@ -260,7 +260,7 @@ enum CardRegistry {
             description: "The people and places that make it happen",
             sfSymbol: "house.fill",
             cardIDs: allCards.filter { $0.albumID == "album.sanctuary" }.map(\.id),
-            rewardKibble: 0, rewardDogTags: 8, rewardCoins: 50
+            rewardKibble: 0, rewardDogTags: 8, rewardCoins: 500
         ),
         CardAlbumDefinition(
             id: "album.wildlife",
@@ -268,7 +268,7 @@ enum CardRegistry {
             description: "Portraits of the residents",
             sfSymbol: "hare.fill",
             cardIDs: allCards.filter { $0.albumID == "album.wildlife" }.map(\.id),
-            rewardKibble: 40, rewardDogTags: 10, rewardCoins: 100
+            rewardKibble: 40, rewardDogTags: 10, rewardCoins: 1_000
         ),
         CardAlbumDefinition(
             id: "album.vet",
@@ -276,7 +276,7 @@ enum CardRegistry {
             description: "The medical side of rescue",
             sfSymbol: "cross.fill",
             cardIDs: allCards.filter { $0.albumID == "album.vet" }.map(\.id),
-            rewardKibble: 50, rewardDogTags: 12, rewardCoins: 75
+            rewardKibble: 50, rewardDogTags: 12, rewardCoins: 750
         ),
         CardAlbumDefinition(
             id: "album.adventures",
@@ -284,7 +284,7 @@ enum CardRegistry {
             description: "Field rescues and outreach events",
             sfSymbol: "map.fill",
             cardIDs: allCards.filter { $0.albumID == "album.adventures" }.map(\.id),
-            rewardKibble: 60, rewardDogTags: 15, rewardCoins: 150
+            rewardKibble: 60, rewardDogTags: 15, rewardCoins: 1_500
         ),
         CardAlbumDefinition(
             id: "album.fame",
@@ -292,7 +292,7 @@ enum CardRegistry {
             description: "The sanctuary's most legendary animals",
             sfSymbol: "crown.fill",
             cardIDs: allCards.filter { $0.albumID == "album.fame" }.map(\.id),
-            rewardKibble: 100, rewardDogTags: 25, rewardCoins: 250
+            rewardKibble: 100, rewardDogTags: 25, rewardCoins: 2_500
         ),
     ]
 

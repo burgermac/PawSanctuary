@@ -146,7 +146,28 @@ struct AdoptionOrderPanelView: View {
     var viewModel: MergeBoardViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
+            // Urgent order (Task 5.2) — the one slot with a real clock and real
+            // stakes; shown above the persistent board so it's never missed.
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Urgent Order", systemImage: "bolt.fill")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.orange)
+                if let urgent = viewModel.urgentOrder {
+                    AdoptionOrderCard(
+                        order: urgent,
+                        canSkip: false,
+                        onSkip: {},
+                        showSkip: false,
+                        timer: (viewModel.urgentOrderTimeRemaining, urgentOrderDuration)
+                    )
+                } else {
+                    UrgentOrderCooldownCard(remaining: viewModel.urgentOrderCooldownRemaining)
+                }
+            }
+
+            Divider()
+
             // Panel header
             HStack {
                 Label("Adoption Board", systemImage: "heart.fill")
@@ -172,14 +193,61 @@ struct AdoptionOrderPanelView: View {
     }
 }
 
+/// Shown in the urgent-order slot while it waits out its post-miss cooldown
+/// (Task 5.2) — the visible consequence of letting one expire unfulfilled.
+struct UrgentOrderCooldownCard: View {
+    let remaining: Double
+
+    private var timeText: String {
+        let s = max(0, Int(remaining))
+        return s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60)s"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hourglass")
+                .font(.system(size: 18))
+                .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Missed it — a new urgent order is on its way")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("in \(timeText)")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.gray.opacity(0.08)))
+    }
+}
+
 struct AdoptionOrderCard: View {
     let order: AdoptionOrder
     let canSkip: Bool
     let onSkip: () -> Void
+    /// `nil` for a persistent order (no expiry, no bar shown). Populated for the
+    /// urgent order with `(remaining, duration)` so the bar/countdown render.
+    var showSkip: Bool = true
+    var timer: (remaining: Double, duration: Double)? = nil
+
+    private var timeFraction: Double {
+        guard let timer else { return 1 }
+        return timer.remaining / timer.duration
+    }
+    private var isUrgentCountdown: Bool {
+        guard let timer else { return false }
+        return timer.remaining < 120 && !order.isComplete
+    }
+    private var timeText: String {
+        guard let timer else { return "" }
+        let s = Int(timer.remaining)
+        return s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60 > 0 ? "\(s % 60)s" : "")"
+    }
 
     private var timerColor: Color {
         if order.isComplete { return .green }
-        if order.isUrgent   { return .red }
+        if isUrgentCountdown { return .red }
         return Color(red: 0.7, green: 0.25, blue: 0.35)
     }
 
@@ -209,7 +277,7 @@ struct AdoptionOrderCard: View {
                 Spacer()
 
                 // Skip button — only shown when order is active; greyed out when unaffordable
-                if !order.isClaimed && !order.isComplete {
+                if showSkip && !order.isClaimed && !order.isComplete {
                     Button(action: { SoundManager.shared.playButtonTap(); HapticManager.shared.lightTap(); onSkip() }) {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.clockwise")
@@ -276,6 +344,14 @@ struct AdoptionOrderCard: View {
                         (Text(Image(systemName: "coin.fill")) + Text(" +\(order.rewardCoins)"))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(Color(red: 0.45, green: 0.28, blue: 0.02))
+                        // Task 5.3 — the hard slot's material reward.
+                        if let material = order.materialReward, let chainID = material.payloadID {
+                            let symbol = ContentRegistry.shared.tier(chainID, material.payloadTier ?? 0)?.symbol
+                                ?? "shippingbox.fill"
+                            (Text(Image(systemName: symbol)) + Text(" +\(material.amount)"))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(Color(red: 0.45, green: 0.35, blue: 0.20))
+                        }
                     }
                 }
 
@@ -302,27 +378,38 @@ struct AdoptionOrderCard: View {
             }
             .padding(.top, 8)
 
-            // ── Timer bar ─────────────────────────────────────────
-            VStack(spacing: 3) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.15))
-                        RoundedRectangle(cornerRadius: 3).fill(timerColor.opacity(0.6))
-                            .frame(width: geo.size.width * (order.isComplete ? 1.0 : order.timeFraction))
-                            .animation(.linear(duration: 1.0), value: order.timeFraction)
-                    }
-                }.frame(height: 4)
+            // ── Timer bar — only for the urgent order; persistent slots have
+            // no timer at all (Task 5.2), so they just state their status ──
+            if timer != nil {
+                VStack(spacing: 3) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.15))
+                            RoundedRectangle(cornerRadius: 3).fill(timerColor.opacity(0.6))
+                                .frame(width: geo.size.width * (order.isComplete ? 1.0 : timeFraction))
+                                .animation(.linear(duration: 1.0), value: timeFraction)
+                        }
+                    }.frame(height: 4)
 
+                    HStack {
+                        Text(order.isComplete
+                             ? "Ready for pickup!"
+                             : isUrgentCountdown ? "Hurrying! \(timeText) left" : "\(timeText) remaining")
+                            .font(.system(size: 9, weight: isUrgentCountdown ? .bold : .regular))
+                            .foregroundColor(timerColor)
+                        Spacer()
+                    }
+                }
+                .padding(.top, 6)
+            } else {
                 HStack {
-                    Text(order.isComplete
-                         ? "Ready for pickup!"
-                         : order.isUrgent ? "Hurrying! \(order.timeText) left" : "\(order.timeText) remaining")
-                        .font(.system(size: 9, weight: order.isUrgent ? .bold : .regular))
-                        .foregroundColor(timerColor)
+                    Text(order.isComplete ? "Ready for pickup!" : "Open — no rush")
+                        .font(.system(size: 9))
+                        .foregroundColor(order.isComplete ? .green : .secondary)
                     Spacer()
                 }
+                .padding(.top, 6)
             }
-            .padding(.top, 6)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)
@@ -749,6 +836,46 @@ struct MonthlyGoalPanelView: View {
         .background(RoundedRectangle(cornerRadius: 16)
             .fill(Color(red: 0.96, green: 0.92, blue: 1.0).opacity(0.90))
             .shadow(color: .black.opacity(0.06), radius: 4))
+    }
+}
+
+// ============================================================
+// MARK: - SLIDE-UP CELEBRATION BANNER
+// ============================================================
+
+/// Shared "slides up from the bottom, auto-dismisses" celebration banner shell —
+/// icon + title + detail line over a rounded, shadowed background. Used by the
+/// unlock/level-up/area-built/superpower-unlock banners in MergeBoardView, which
+/// previously repeated this VStack/HStack/background/transition markup verbatim (QA-06).
+/// Each banner still owns its distinct icon styling and colors via the `icon` closure
+/// and `background` style — only the shared scaffolding moved here.
+struct BannerView<Icon: View>: View {
+    let title: String
+    let detail: String
+    let background: AnyShapeStyle
+    let bottomPadding: CGFloat
+    @ViewBuilder let icon: () -> Icon
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 12) {
+                icon()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline).foregroundColor(.white)
+                    Text(detail)
+                        .font(.caption).foregroundColor(.white.opacity(0.85))
+                        .lineLimit(2)
+                }
+                Spacer()
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 16)
+                .fill(background)
+                .shadow(color: .black.opacity(0.2), radius: 10))
+            .padding(.horizontal, 20).padding(.bottom, bottomPadding)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 }
 
@@ -1460,7 +1587,8 @@ struct TaskStripView: View {
                         .onTapGesture { activeSheet = .quests }
                 }
                 ForEach(viewModel.exchangeableTrios) { trio in
-                    AmbassadorTrioTaskCard(trio: trio) {
+                    AmbassadorTrioTaskCard(trio: trio,
+                                           coinValue: viewModel.ambassadorTrioValue(trio)) {
                         viewModel.exchangeAmbassadorTrio(trio)
                     }
                 }
@@ -1494,6 +1622,9 @@ struct TaskStripView: View {
 
 struct AmbassadorTrioTaskCard: View {
     let trio: ExchangeableTrio
+    /// Phase 2c: derived from the trio's sell value rather than a flat constant,
+    /// so the card can't advertise a number the exchange no longer pays.
+    let coinValue: Int
     let onClaim: () -> Void
 
     var body: some View {
@@ -1527,7 +1658,7 @@ struct AmbassadorTrioTaskCard: View {
                     Image(systemName: "coin.fill")
                         .font(.system(size: 10))
                         .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
-                    Text("+\(ambassadorTrioExchangeCoins) coins")
+                    Text("+\(coinValue) coins")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
                     Spacer()

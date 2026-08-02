@@ -22,6 +22,12 @@ class PlayerProgression {
     var unlockedProducerShopTiers: Set<ProducerLevel> = [.rescueCrate]
     var spawnMultiplier: Int = 1
 
+    /// Deepest 0-based animal tier the player has ever produced by merging.
+    /// Drives how recirculation scales with tenure (Phase 2): board item grants,
+    /// chest payloads, and the Dog Tag store's stock all key off it.
+    /// Only ever increases.
+    var deepestUnlockedTier: Int = 0
+
     // Level-up banner state (drives the view directly through forwarding props)
     var showLevelUpBanner: Bool = false
     var levelUpBannerTitle: String = ""
@@ -124,6 +130,7 @@ class PlayerProgression {
         unlockedChainIDs         = s.unlockedChainIDs.isEmpty ? startingChainIDs : s.unlockedChainIDs
         spawnMultiplier          = unlockedMultipliers.contains(s.spawnMultiplier)
                                    ? s.spawnMultiplier : 1
+        deepestUnlockedTier      = s.deepestUnlockedTier
 
         // Supply producer shop tiers are a pure function of level — re-derive on load.
         // Rescue-tier producers are superseded by family spawners (earned via the map).
@@ -138,5 +145,6 @@ class PlayerProgression {
         s.playerXP         = playerXP
         s.unlockedChainIDs = unlockedChainIDs
         s.spawnMultiplier  = spawnMultiplier
+        s.deepestUnlockedTier = deepestUnlockedTier
     }
 }

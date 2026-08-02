@@ -25,6 +25,10 @@ class KibbleEngine {
     /// and by MergeBoardViewModel whenever the level changes.
     var playerLevel: Int = 1
 
+    // Dog Tag → Kibble ladder (v27, Task 2.4) — escalating within a day, resets daily.
+    var dogTagExchangesToday: Int = 0
+    var lastExchangeResetDate: Date? = nil
+
     // Rewarded ads
     var adsWatchedToday: Int = 0
     var lastAdWatchDate: Date? = nil
@@ -101,18 +105,47 @@ class KibbleEngine {
 
     // MARK: Dog Tag exchange
 
-    func exchangeTagsForKibble(_ exchange: DogTagKibbleExchange) {
-        guard dogTags >= exchange.dogTagCost else { return }
-        dogTags -= exchange.dogTagCost
-        kibble  += exchange.kibbleGain
+    /// Today's offer on the escalating ladder. Rolls over on a calendar-day change.
+    var currentTagExchange: DogTagKibbleExchange {
+        DogTagKibbleExchange.offer(purchasesToday: exchangesTodayAfterReset)
+    }
+
+    /// `dogTagExchangesToday`, treated as 0 once the day has rolled over.
+    /// Read-only so the getter stays side-effect free; `rollOverExchangeDayIfNeeded`
+    /// is what actually commits the reset.
+    private var exchangesTodayAfterReset: Int {
+        guard let last = lastExchangeResetDate,
+              Calendar.current.isDateInToday(last) else { return 0 }
+        return dogTagExchangesToday
+    }
+
+    /// Commits the daily reset if the calendar day has changed.
+    func rollOverExchangeDayIfNeeded() {
+        if let last = lastExchangeResetDate, Calendar.current.isDateInToday(last) { return }
+        dogTagExchangesToday  = 0
+        lastExchangeResetDate = Date()
+    }
+
+    /// Buys the current rung of today's ladder. Each purchase makes the next dearer.
+    @discardableResult
+    func exchangeTagsForKibble() -> Bool {
+        rollOverExchangeDayIfNeeded()
+        let offer = DogTagKibbleExchange.offer(purchasesToday: dogTagExchangesToday)
+        guard dogTags >= offer.dogTagCost else { return false }
+        dogTags -= offer.dogTagCost
+        kibble  += offer.kibbleGain
+        dogTagExchangesToday += 1
+        return true
     }
 
     // MARK: Rewarded ads
 
-    /// Presents a rewarded ad and grants kibble on success.
-    /// `effectiveKibble` is pre-computed by the caller (pass bonus applied there).
-    func watchRewardedAd(effectiveKibble: Int,
-                         provider: RewardedAdProvider = StubAdProvider()) {
+    /// Presents a rewarded ad, counting it against the shared daily cap on
+    /// success and then calling `onEarned` — callers decide what a watch
+    /// grants (kibble, a bubble pop, etc.), matching the reference's "build
+    /// one primitive and use it everywhere" (Merge2_Reference_Blueprint.md §3).
+    func watchRewardedAd(provider: RewardedAdProvider = StubAdProvider(),
+                         onEarned: @escaping @MainActor @Sendable () -> Void) {
         guard remainingAdWatches > 0, !isWatchingAd else { return }
         isWatchingAd = true
         provider.showRewardedAd { result in
@@ -126,7 +159,7 @@ class KibbleEngine {
                 }
                 self.adsWatchedToday += 1
                 self.lastAdWatchDate  = Date()
-                self.kibble           += effectiveKibble
+                onEarned()
             }
         }
     }
@@ -159,6 +192,8 @@ class KibbleEngine {
         adsWatchedToday        = s.adsWatchedToday
         lastAdWatchDate        = s.lastAdWatchDate
         playerLevel            = s.playerLevel
+        dogTagExchangesToday   = s.dogTagExchangesToday
+        lastExchangeResetDate  = s.lastExchangeResetDate
     }
 
     func capture(into s: inout GameState) {
@@ -167,5 +202,7 @@ class KibbleEngine {
         s.secondsUntilNextKibble = secondsUntilNextKibble
         s.adsWatchedToday        = adsWatchedToday
         s.lastAdWatchDate        = lastAdWatchDate
+        s.dogTagExchangesToday   = dogTagExchangesToday
+        s.lastExchangeResetDate  = lastExchangeResetDate
     }
 }

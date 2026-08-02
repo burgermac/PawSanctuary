@@ -1,0 +1,52 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: PawSanctuaryTests
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select an available iPhone simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          NAME=$(xcrun simctl list devices available \
+            | grep -oE 'iPhone [0-9]+( Pro)?( Max)?' \
+            | sort -Vr | head -1)
+          if [ -z "$NAME" ]; then
+            echo "No available iPhone simulator found on this runner" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "Using simulator: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Run PawSanctuaryTests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project PawSanctuary.xcodeproj \
+            -scheme PawSanctuary \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
+            2>&1 | tee xcodebuild-test.log
+
+      - name: Upload test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-test-log
+          path: xcodebuild-test.log

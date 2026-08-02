@@ -49,15 +49,20 @@ struct CellView: View {
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isLeapSource))
 
             // ── Content ──────────────────────────────────────────────
-            if let producer = cell.producer {
+            // Locked is checked before item (Task 4.2): a locked row's cache
+            // renders as a dimmed preview under a lock badge, never as a fully
+            // interactive tile — checkLevelUnlock only flips isUnlocked, so the
+            // same item just becomes normal itemContent the instant it unlocks.
+            if !cell.isUnlocked {
+                lockedContent(cachedItem: cell.item)
+            } else if let producer = cell.producer {
                 ProducerTileContent(producer: producer, cellSize: cellSize)
                     .opacity(isDragging ? 0.25 : 1.0)
             } else if let item = cell.item {
                 itemContent(item)
                     .opacity(isDragging ? 0.25 : 1.0)
                     .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
-            } else if !cell.isUnlocked {
-                lockedContent
+                    .overlay(bubbleOverlay(for: item))
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -110,10 +115,52 @@ struct CellView: View {
         }
     }
 
-    private var lockedContent: some View {
-        VStack(spacing: 3) {
-            Image(systemName: "lock.fill").font(.system(size: 16)).foregroundColor(.gray.opacity(0.4))
-            Text("Locked").font(.system(size: 7)).foregroundColor(.gray.opacity(0.4))
+    /// A locked cell with no cache shows the plain "Locked" placeholder. A
+    /// pre-seeded cache (Task 4.2) shows a dimmed preview of what's waiting,
+    /// with a small lock badge — visible, but read as not-yet-interactive.
+    @ViewBuilder
+    private func lockedContent(cachedItem: BoardItem?) -> some View {
+        if let item = cachedItem, let def = item.def {
+            ZStack(alignment: .topTrailing) {
+                VStack(spacing: 2) {
+                    Image(systemName: def.symbol).font(.system(size: 22))
+                        .foregroundColor((def.tint ?? def.color).opacity(0.45))
+                    Text(def.shortLabel).font(.system(size: 7)).foregroundColor(.gray.opacity(0.55))
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                }
+                .padding(3)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(.gray.opacity(0.7))
+                    .padding(3)
+                    .background(Circle().fill(Color.white.opacity(0.75)))
+                    .offset(x: 2, y: -2)
+            }
+        } else {
+            VStack(spacing: 3) {
+                Image(systemName: "lock.fill").font(.system(size: 16)).foregroundColor(.gray.opacity(0.4))
+                Text("Locked").font(.system(size: 7)).foregroundColor(.gray.opacity(0.4))
+            }
+        }
+    }
+
+    /// Tints a bubbled item cyan (still poppable for full value) or grey (Task
+    /// 4.4: decayed — a tap now just collects the lesser reward), with a small
+    /// badge marking which state it's in.
+    @ViewBuilder
+    private func bubbleOverlay(for item: BoardItem) -> some View {
+        if item.bubbledAt != nil {
+            let decayed = item.isBubbleDecayed()
+            let tint = decayed ? Color.gray : Color.cyan
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.22))
+                Image(systemName: decayed ? "sparkles" : "circle.hexagongrid.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(.white)
+                    .padding(3)
+                    .background(Circle().fill(tint.opacity(0.9)))
+                    .offset(x: 2, y: 2)
+            }
         }
     }
 

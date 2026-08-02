@@ -68,7 +68,7 @@ struct UpgradeBonus {
     var coinsPerOrderFulfil:     Int  = 0   // Antique Dog House T2
     var kibblePerRegen:          Int  = 0   // Scratching Post T1 (+1 kibble on each regen tick)
     var coinsPerAmbassador:      Int  = 0   // Scratching Post T2
-    var extraAdoptionSlots:      Int  = 0   // Garden Hutch T1 (adds order slots beyond the base 2)
+    var extraAdoptionSlots:      Int  = 0   // Garden Hutch T1 (adds order slots beyond the base 4)
     var questDogTagBonus:        Int  = 0   // Garden Hutch T2 (+N dog tags on any quest claim)
     var weeklyGoldDiscount:      Int  = 0   // Decorative Birdhouse T1 (reduces the Gold coin target)
     var monthlyWeeksDiscount:    Int  = 0   // Decorative Birdhouse T2 (reduces weeks needed for monthly)
@@ -265,7 +265,9 @@ let sanctuaryAreas: [SanctuaryArea] = [
                     MaterialCost(chainID: ContentRegistry.metalChainID,  tier: 5, count: 3),
                     MaterialCost(chainID: ContentRegistry.cementChainID, tier: 5, count: 2),
                 ],
-                bonus: UpgradeBonus(weeklyGoldDiscount: 25)
+                // Phase 2c: an absolute coin discount, rescaled alongside the Gold
+                // threshold it reduces (was 25 against a target of 250).
+                bonus: UpgradeBonus(weeklyGoldDiscount: 1_500)
             ),
         ]
     ),
@@ -347,7 +349,9 @@ let sanctuaryAreas: [SanctuaryArea] = [
                 description: "A cosy indoor roost where birdsong fills the corridors all morning. The uplifting atmosphere draws extra donations — the weekly Gold target drops.",
                 coinCost: 250,
                 materialCosts: [MaterialCost(chainID: ContentRegistry.metalChainID, tier: 5, count: 2)],
-                bonus: UpgradeBonus(weeklyGoldDiscount: 25)
+                // Phase 2c: an absolute coin discount, rescaled alongside the Gold
+                // threshold it reduces (was 25 against a target of 250).
+                bonus: UpgradeBonus(weeklyGoldDiscount: 1_500)
             ),
             AreaUpgradeTier(
                 id: "area.foster.upgrade.2",

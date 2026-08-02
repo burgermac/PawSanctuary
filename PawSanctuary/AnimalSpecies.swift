@@ -122,83 +122,74 @@ enum AnimalSpecies: String, CaseIterable, Codable {
         }
     }
 
-    /// The 15 unique tier names for this family, index 0 (smallest) through 14 (top tier).
+    /// The 12 unique tier names for this family, index 0 (smallest) through 11 (top tier).
+    ///
+    /// Four conceptual eras of three. Phase 2b dropped the fourth era of five
+    /// (old indices 9–11) because Phase 2's tuning capped order tiers at 9 against
+    /// a 15-tier chain, leaving the top six stages outside the order economy
+    /// entirely. At 12 tiers the top item costs 2,048 kibble rather than 16,384 —
+    /// about 2.7 days of total income instead of 22 — so it is orderable again.
     var tierNames: [String] {
         switch self {
         case .dog:       return ["Pup", "Kit", "Houndling",
                                  "Terrier", "Spaniel", "Scout",
                                  "Retriever", "Shepherd", "Husky",
-                                 "Alpha", "Guardian", "Sentinel",
                                  "Dire Wolf", "Mythic", "Primordial"]
         case .cat:       return ["Kitten", "Tabby", "Kit",
                                  "Ocelot", "Bobcat", "Lynx",
                                  "Puma", "Jaguar", "Leopard",
-                                 "Panther", "Tiger", "Lion",
                                  "Sabertooth", "Sovereign", "Apex"]
         case .rabbit:    return ["Bunny", "Cottontail", "Rex",
                                  "Angora", "Lop", "Harlequin",
                                  "Hare", "Jackrabbit", "Snow",
-                                 "Flemish", "Belgian", "Giant",
                                  "Desert", "Patagonian", "Mara"]
         case .bird:      return ["Hatchling", "Chick", "Fluff",
                                  "Sparrow", "Finch", "Starling",
                                  "Pigeon", "Magpie", "Jay",
-                                 "Falcon", "Hawk", "Owl",
                                  "Eagle", "Vulture", "Condor"]
         case .hamster:   return ["Mouse", "Hamster", "Gerbil",
                                  "Chipmunk", "Squirrel", "Rat",
                                  "Chinchilla", "Degu", "Beaver",
-                                 "Prairie Dog", "Marmot", "Nutria",
                                  "Muskrat", "Porcupine", "Capybara"]
         case .turtle:    return ["Hatch", "Gecko", "Anole",
                                  "Skink", "Racer", "Whiptail",
                                  "Iguana", "Monitor", "Tegu",
-                                 "Gila", "Spiny", "Python",
                                  "Boa", "Caiman", "Komodo Dragon"]
         case .fox:       return ["Fawn", "Muntjac", "Roe",
                                  "Fallow", "Chital", "Sika",
                                  "Caribou", "Reindeer", "Deer",
-                                 "Red", "Wapiti", "Elk",
                                  "Sambar", "Pere David", "Moose"]
         case .owl:       return ["Cub", "Sun", "Sloth",
                                  "Spectacled", "Moon", "Black",
                                  "Panda", "Cinnamon", "Glacier",
-                                 "Brown", "Kodiak", "Grizzly",
                                  "Polar", "Ancient", "Behemoth"]
         case .fish:      return ["Guppy", "Tetra", "Minnow",
                                  "Clown", "Perch", "Bass",
                                  "Mackerel", "Tuna", "Salmon",
-                                 "Sword", "Sail", "Marlin",
                                  "Shark", "Hammerhead", "Whale Shark"]
         case .lizard:    return ["Tadpole", "Froglet", "Newt",
                                  "Tree Frog", "Poison", "Reed",
                                  "Bullfrog", "Toad", "Horned",
-                                 "Salamander", "Axolotl", "Mud",
                                  "Hellbender", "Giant", "Goliath"]
         case .ferret:    return ["Joey", "Quokka", "Honey",
                                  "Potoroo", "Bandicoot", "Bilby",
                                  "Wallaby", "Pademelon", "Tree",
-                                 "Devil", "Quoll", "Wombat",
                                  "Koala", "Macropod", "Red Kangaroo"]
         case .parrot:    return ["Marmoset", "Tamarin", "Pygmy",
                                  "Squirrel", "Capuchin", "Owl",
                                  "Macaque", "Langur", "Guenon",
-                                 "Baboon", "Mandrill", "Gibbon",
                                  "Chimpanzee", "Orangutan", "Gorilla"]
         case .pony:      return ["Foal", "Pony", "Shetland",
                                  "Donkey", "Mule", "Burro",
                                  "Mustang", "Arabian", "Paint",
-                                 "Thoroughbred", "Shire", "Clydesdale",
                                  "Zebra", "Quagga", "Giraffe"]
         case .hedgehog:  return ["Piglet", "Warthog", "Peccary",
                                  "Tapir", "Boar", "Babirusa",
                                  "Hippo", "Pygmy", "Rhino",
-                                 "White Rhino", "Black", "Indian",
                                  "Seal", "African", "Mammoth"]
         case .guineaPig: return ["Calf", "Heifer", "Oxen",
                                  "Steer", "Bull", "Zebu",
                                  "Bison", "Yak", "Muskox",
-                                 "Highland", "Longhorn", "Gaur",
                                  "Buffalo", "Aurochs", "Titan"]
         }
     }
@@ -481,11 +472,15 @@ struct GridPosition: Equatable, Hashable, Codable {
 }
 
 struct BoardCell: Identifiable, Codable {
-    var id = UUID()
     var position: GridPosition
     var item: BoardItem?           // a merge tile (any chain) — nil when empty or has a producer
     var producer: ProducerTile?    // a generator tile — nil when empty or has an item
     var isUnlocked: Bool
+
+    /// Stable identity for SwiftUI's ForEach diffing — a board cell's identity is its
+    /// grid position, not a per-copy UUID (which regenerated on every mutation and broke
+    /// merge/unlock animations that rely on identity to interpolate between states).
+    var id: GridPosition { position }
 
     /// A cell is empty when it holds neither an animal nor a producer.
     var isEmpty: Bool { item == nil && producer == nil }
@@ -507,12 +502,18 @@ enum QuestDifficulty: String, Codable {
         }
     }
     /// Coins awarded when the player claims a completed quest of this difficulty.
+    ///
+    /// Rescaled in Phase 2c. Rationale: a quest spans many merges, so it should
+    /// pay more than the single order it competes with for attention — a
+    /// legendary quest is worth about 2.5 average orders (~400 coins each), an
+    /// easy one about an eighth of that. Was 2/5/10/25, which a single tier-3
+    /// order now beats several times over.
     var coinReward: Int {
         switch self {
-        case .easy:      return 2
-        case .medium:    return 5
-        case .hard:      return 10
-        case .legendary: return 25
+        case .easy:      return 50
+        case .medium:    return 150
+        case .hard:      return 400
+        case .legendary: return 1_000
         }
     }
     var color: Color {
@@ -588,9 +589,13 @@ enum QuestGoal: Codable {
         }
     }
 
-    // MARK: Animal tier appearance — covers all 15 tiers (0–14).
-    // Tiers 0–8 preserve the original RescueStage colors/symbols; tiers 9–14 use
-    // higher-prestige purple/gold tones for the extended chain.
+    // MARK: Animal tier appearance — covers all 12 tiers (0–11).
+    // Tiers 0–8 preserve the original RescueStage colors/symbols; tiers 9–11 use
+    // higher-prestige gold tones for the top era.
+    //
+    // Phase 2b: the era that survived the 15→12 cut is the old top era (indices
+    // 12–14), so its appearance moved down with it. Elite/Champion/Legendary went
+    // with the dropped era.
     static func animalTierAppearance(tier: Int) -> (label: String, symbol: String, color: Color) {
         switch tier {
         case 0:  return ("Rescued",       "heart.fill",            .orange)
@@ -602,11 +607,8 @@ enum QuestGoal: Codable {
         case 6:  return ("Bonded",        "person.2.fill",         Color(red: 0.90, green: 0.35, blue: 0.60))
         case 7:  return ("Community Fav", "crown.fill",            Color(red: 0.95, green: 0.50, blue: 0.10))
         case 8:  return ("Ambassador",    "medal.fill",            Color(red: 0.95, green: 0.80, blue: 0.10))
-        case 9:  return ("Elite",         "bolt.circle.fill",      Color(red: 0.60, green: 0.20, blue: 0.90))
-        case 10: return ("Champion",      "sparkles",              Color(red: 0.50, green: 0.18, blue: 0.82))
-        case 11: return ("Legendary",     "seal.fill",             Color(red: 0.70, green: 0.50, blue: 0.90))
-        case 12: return ("Mythic",        "trophy.fill",           Color(red: 0.85, green: 0.68, blue: 0.10))
-        case 13: return ("Ancient",       "crown.circle.fill",     Color(red: 0.90, green: 0.75, blue: 0.08))
+        case 9:  return ("Mythic",        "trophy.fill",           Color(red: 0.85, green: 0.68, blue: 0.10))
+        case 10: return ("Ancient",       "crown.circle.fill",     Color(red: 0.90, green: 0.75, blue: 0.08))
         default: return ("Primordial",    "flame.fill",            Color(red: 0.95, green: 0.82, blue: 0.05))
         }
     }
@@ -666,10 +668,50 @@ let adoptionFamilies: [AdoptionFamily] = [
     AdoptionFamily(name: "The Singh Seniors", sfSymbol: "figure.walk.motion",              color: Color(red: 0.65, green: 0.45, blue: 0.20)),
 ]
 
-/// Duration (seconds) before an unfulfilled order expires and is replaced.
-let adoptionOrderDuration: Double = 900
+/// Duration (seconds) an active urgent order stays open before it's missed
+/// (Phase 5, Task 5.2). The 4 persistent order slots have no timer at all — this
+/// is now the only order-side countdown in the game.
+let urgentOrderDuration: Double = 900
+/// How long the urgent-order slot sits empty after a miss before a new one
+/// spawns. This is the "real stakes" the persistent slots never had: nothing is
+/// silently replaced, the player waits.
+let urgentOrderRespawnCooldown: Double = 1800
+/// Reward bonus on top of a normal order's payout — the urgent order should feel
+/// worth rushing for, not just risky.
+let urgentOrderRewardMultiplier: Double = 1.5
+
+/// The kind of payload a single `OrderReward` carries.
+enum RewardKind: String, Codable, CaseIterable {
+    case dogTags
+    case coins
+    case kibble
+    case xp
+    case cardPack
+    case boardItem     // recirculation — Phase 2
+    case material      // wood / metal / cement — Phase 2
+    case eventToken    // Phase 6
+}
+
+/// A single reward payload attached to an order.
+/// `payloadID` / `payloadTier` carry kind-specific detail:
+///   .cardPack   → payloadID = CardPackType.rawValue
+///   .boardItem  → payloadID = ChainID, payloadTier = tier index
+///   .material   → payloadID = material chain ID, payloadTier = tier index
+///   .eventToken → payloadID = event token identifier
+struct OrderReward: Codable, Equatable {
+    var kind: RewardKind
+    var amount: Int
+    var payloadID: String? = nil
+    var payloadTier: Int? = nil
+}
 
 /// A specific adoption request from a named family for a particular animal type.
+///
+/// Carries no timer of its own (Phase 5, Task 5.2) — the 4 board slots this
+/// backs are persistent, sitting until fulfilled. The one place a countdown
+/// still applies is the separate urgent order (`AdoptionBoard.urgentOrder`),
+/// which reuses this same struct for its descriptive/reward data and tracks
+/// `urgentOrderTimeRemaining` alongside it rather than on the struct itself.
 struct AdoptionOrder: Identifiable, Codable {
     var id = UUID()
     /// Index into the fixed `adoptionFamilies` roster (persisted instead of the
@@ -679,10 +721,7 @@ struct AdoptionOrder: Identifiable, Codable {
     var wantedTier: Int              // was wantedStage (0-based)
     var wantedCount: Int             // 1 or 2
     var fulfilled: Int = 0
-    var timeRemaining: Double
-    var rewardDogTags: Int
-    var rewardCoins: Int             // Phase 5: coins awarded on auto-claim
-    var rewardCardPack: CardPackType? = nil   // nil = no pack reward
+    var rewards: [OrderReward] = []
     var isClaimed: Bool = false
 
     /// Resolves the family from the fixed roster (clamped for safety).
@@ -698,12 +737,6 @@ struct AdoptionOrder: Identifiable, Codable {
 
     var isComplete: Bool         { fulfilled >= wantedCount }
     var progressFraction: Double { min(Double(fulfilled) / Double(wantedCount), 1.0) }
-    var timeFraction: Double     { timeRemaining / adoptionOrderDuration }
-    var isUrgent: Bool           { timeRemaining < 120 && !isComplete }
-    var timeText: String {
-        let s = Int(timeRemaining)
-        return s < 60 ? "\(s)s" : "\(s / 60)m \(s % 60 > 0 ? "\(s % 60)s" : "")"
-    }
 
     /// Human-readable request line shown on the card, e.g. "a Tabby" or "a Pup".
     var orderDescription: String {
@@ -713,6 +746,20 @@ struct AdoptionOrder: Identifiable, Codable {
         let tierName = ContentRegistry.shared.tier(wantedChainID, wantedTier)?.name ?? "animal"
         return "\(prefix) \(tierName)\(plural)"
     }
+}
+
+/// Computed accessors preserving the pre-Task-1.1 field names so PanelViews and
+/// other UI reading `order.rewardDogTags` / `.rewardCoins` / `.rewardCardPack`
+/// compile untouched against the new `rewards: [OrderReward]` list.
+extension AdoptionOrder {
+    var rewardDogTags: Int { rewards.first { $0.kind == .dogTags }?.amount ?? 0 }
+    var rewardCoins: Int   { rewards.first { $0.kind == .coins   }?.amount ?? 0 }
+    var rewardCardPack: CardPackType? {
+        guard let raw = rewards.first(where: { $0.kind == .cardPack })?.payloadID else { return nil }
+        return CardPackType(rawValue: raw)
+    }
+    /// The hard slot's material reward (Task 5.3), if this order carries one.
+    var materialReward: OrderReward? { rewards.first { $0.kind == .material } }
 }
 
 // ============================================================
@@ -806,23 +853,85 @@ enum IAPProduct: String, CaseIterable {
 }
 
 // ============================================================
+// MARK: - COMMERCE STATE (Phase 1, Task 1.4)
+// ============================================================
+
+/// Behavioural history for offer targeting, difficulty scaling, and the Phase 3
+/// first-purchase gate. Recorded starting Phase 1; cannot be backfilled for
+/// players who installed before this shipped.
+struct PlayerCommerceState: Codable, Equatable {
+    var firstLaunchDate: Date? = nil
+    var purchaseCount: Int = 0
+    /// Total spend in integer micros (USD × 1,000,000) — avoids Double drift.
+    var totalSpendMicros: Int = 0
+    var lastPurchaseDate: Date? = nil
+
+    /// Times the player has hit zero kibble while trying to act.
+    var wallEventsTotal: Int = 0
+    var lastWallDate: Date? = nil
+    /// What they were blocked on at the most recent wall event.
+    var lastWallChainID: String? = nil
+    var lastWallTier: Int? = nil
+
+    /// Flips permanently once the player first reaches a genuine wall.
+    /// Phase 3 uses this (with player level) to gate monetization surfaces.
+    var hasReachedFirstWall: Bool = false
+
+    var hasEverPurchased: Bool { purchaseCount > 0 }
+    var averagePurchaseMicros: Int { purchaseCount == 0 ? 0 : totalSpendMicros / purchaseCount }
+    var daysSinceLastPurchase: Int? {
+        guard let last = lastPurchaseDate else { return nil }
+        return Calendar.current.dateComponents([.day], from: last, to: Date()).day
+    }
+}
+
+// ============================================================
 // MARK: - CONSTANTS
 // ============================================================
 
 // ── Weekly / monthly goal constants ──────────────────────────
-let weeklyGoalBronzeCoins  = 50
-let weeklyGoalSilverCoins  = 120
-let weeklyGoalGoldCoins    = 250
+//
+// Rescaled in Phase 2c. These are thresholds on coins *earned this week*, and
+// the coin faucet moved by roughly 45× — the old Bronze 50 would have been
+// cleared by a single mid-tier order, silently, because these live here and the
+// payout formula lives in AdoptionBoard.
+//
+// Anchored on mid-game income: a level-30 player fulfilling orders earns roughly
+// 3,000 coins/day, so Gold at 12,000 asks for about four days of engagement and
+// Bronze lands on day one. The original 1 : 2.4 : 5 spacing is preserved.
+let weeklyGoalBronzeCoins  = 2_500
+let weeklyGoalSilverCoins  = 6_000
+let weeklyGoalGoldCoins    = 12_000
 /// Default number of Gold weeks required to complete the monthly goal.
 /// Foster Haven T2 can reduce this by 1.
 let monthlyGoalWeeksNeeded = 3
 
 // ── Coin rewards ──────────────────────────────────────────────
-let coinsPerAmbassadorMerge   = 10  // awarded in triggerTopTierCelebration
-/// Bonus coins for exchanging a trio of Ambassador-tier tiles of the same species.
-/// The player already earned coinsPerAmbassadorMerge × 3 = 30 from merging them up —
-/// this is the extra reward for holding three and cashing them in together.
-let ambassadorTrioExchangeCoins = 50
+//
+// All rescaled in Phase 2c against the new anchor: an *average* order pays
+// roughly 400 coins, and a top-tier one 13,312. Each of these is a bonus on top
+// of whatever the player does with the item, so none should rival the item's own
+// value — but none should be a rounding error either, which is what they became.
+
+/// Awarded in `triggerTopTierCelebration` when any chain reaches its top tier.
+/// Rationale: recognises the achievement without competing with what the item
+/// itself is worth (5,632 sold, 13,312 to an order). Was 10 — pure noise.
+let coinsPerAmbassadorMerge = 500
+
+/// Coins for clearing all three daily challenges.
+/// Rationale: a day's engagement, worth about one average order (~400) — a real
+/// top-up that doesn't compete with the main faucet. Was 15.
+let coinsPerAllDailyChallenges = 400
+
+/// Multiplier applied to the combined sell value when three top-tier tiles of one
+/// species are exchanged together.
+///
+/// Rationale: this consumes three items outright, so it has to beat selling them
+/// individually or it is a trap. It paid a flat 50 coins for three tiles worth
+/// 5,632 each — destroying about 16,850 coins of value for anyone who used it.
+/// A premium over the sell price makes the trio the best liquidity option for
+/// three matching Ambassadors, which is what a "trio bonus" should mean.
+let ambassadorTrioExchangeMultiplier = 1.25
 
 // ── Weekly goal tiers ─────────────────────────────────────────
 
@@ -860,6 +969,14 @@ enum WeeklyGoalTier: Int, CaseIterable {
     var toolboxCount: Int {
         switch self { case .bronze: return 0; case .silver: return 1; case .gold: return 2 }
     }
+    /// Board items paid out by this chest — recirculation (Phase 2, Task 2.3b).
+    var boardItemCount: Int {
+        switch self { case .bronze: return 1; case .silver: return 1; case .gold: return 2 }
+    }
+    /// How far below `deepestUnlockedTier` this chest's items land. Lower is richer.
+    var boardItemTierOffset: Int {
+        switch self { case .bronze: return 4; case .silver: return 3; case .gold: return 2 }
+    }
     var xpReward: Int {
         switch self { case .bronze: return 15; case .silver: return 35; case .gold: return 75 }
     }
@@ -867,16 +984,50 @@ enum WeeklyGoalTier: Int, CaseIterable {
 
 // ── Dog Tag → Kibble exchange ─────────────────────────────────
 
+/// A single Dog Tag → Kibble exchange offer.
+///
+/// Phase 2 (Task 2.4) reversed the shape. It used to be a *volume discount*
+/// (40→100, 80→240, 120→480 — 2.5, 3.0, then 4.0 kibble per tag), which rewarded
+/// bulk absorption and let a paying player flatten the pacing curve at will.
+///
+/// The reference games do the opposite: an escalating ladder for an identical
+/// amount of energy, resetting daily, which caps how much cheap energy anyone can
+/// absorb per day. That cap is what protects the pacing curve.
 struct DogTagKibbleExchange {
     let dogTagCost: Int
     let kibbleGain: Int
+    /// 0-based position in today's ladder.
+    let purchaseIndex: Int
     var label: String { "\(dogTagCost) Dog Tags → \(kibbleGain) Kibble" }
 
-    static let all: [DogTagKibbleExchange] = [
-        DogTagKibbleExchange(dogTagCost:  40, kibbleGain: 100),
-        DogTagKibbleExchange(dogTagCost:  80, kibbleGain: 240),
-        DogTagKibbleExchange(dogTagCost: 120, kibbleGain: 480),
-    ]
+    /// Every rung buys the same kibble; only the price climbs.
+    static let kibblePerExchange = 100
+    /// Tag cost by purchase number within the day. The last entry repeats forever.
+    static let dailyLadder = [15, 30, 60]
+
+    /// The offer a player with `purchasesToday` exchanges already made would see.
+    static func offer(purchasesToday: Int) -> DogTagKibbleExchange {
+        let i = max(0, purchasesToday)
+        let cost = dailyLadder[min(i, dailyLadder.count - 1)]
+        return DogTagKibbleExchange(dogTagCost: cost,
+                                    kibbleGain: kibblePerExchange,
+                                    purchaseIndex: i)
+    }
+
+    /// True once the ladder has bottomed out and the rate is flat.
+    var isAtFlatRate: Bool { purchaseIndex >= Self.dailyLadder.count - 1 }
+}
+
+// ── Dog Tag store stock (Phase 2, Task 2.3c) ──────────────────
+
+/// One purchasable board item in the daily Dog Tag store. Stock is 1 by design;
+/// `purchased` is what enforces it until the next daily rotation.
+struct DogTagStoreSlot: Codable, Equatable, Identifiable {
+    var id = UUID()
+    var chainID: ChainID
+    var tier: Int
+    var priceDogTags: Int
+    var purchased: Bool = false
 }
 
 let kibbleRegenCap            = 100
@@ -886,7 +1037,6 @@ let totalInventorySlots       = 18
 let freeInventorySlots        = 6
 let inventoryRow1Cost         = 10
 let inventoryRow2Cost         = 25
-let totalToolInventorySlots    = 18  // Phase 3: materials accumulate here before being spent
 let totalProducerOverflowSlots = 4   // Phase 3: overflow for producers retired before slot unlocks
 let spotlightWeeklyGoal    = 10
 let adoptionSkipCost       = 2   // kibble cost to skip an order you don't want
@@ -894,6 +1044,15 @@ let adoptionSkipCost       = 2   // kibble cost to skip an order you don't want
 // ── Rewarded ads ──────────────────────────────────────────────
 let maxDailyAdWatches      = 4   // ads available per day (resets at 09:00 UTC)
 let adKibbleReward         = 25  // kibble granted per completed ad watch
+
+// ── Monetization gate (D7 / Phase 3, Task 3.4) ──────────────────
+//
+// "Session-one monetization silence": no offer, no ad, no store push until
+// the player has both felt a genuine wall AND reached this level — whichever
+// of the two happens later. A level-1 player who empties their starting
+// kibble in the first few minutes hasn't earned a "genuine" wall yet; a
+// level-5 player who's never run dry hasn't felt scarcity yet either.
+let monetizationUnlockLevel = 5
 
 // ── Loyalty Club ─────────────────────────────────────────────
 let loyaltyClubLevelRequirement = 20
@@ -924,6 +1083,14 @@ let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 2 rows start lock
 /// Level at which each board row (by index) unlocks. Rows 0–6 start unlocked.
 let boardRowUnlockLevels: [Int: Int] = [7: 3, 8: 8]
 
+/// Phase 4, Task 4.2: every cell in a locked row is pre-seeded with a visible
+/// Kibble-chain cache at this tier, released (made interactive) the instant
+/// the row unlocks — `checkLevelUnlock` only flips `isUnlocked`; the cache is
+/// already sitting there. Authored per row, not derived: deeper unlocks get a
+/// richer cache, and there's no principled formula worth inventing for two
+/// data points.
+let lockedRowCacheTier: [Int: Int] = [7: 2, 8: 3]
+
 // ── Gameplay scaling helpers (package-internal so tests can reach them) ──────
 
 /// Maximum material tier that drops from a Toolbox at `level`.
@@ -936,15 +1103,279 @@ func toolboxMaxTier(forPlayerLevel level: Int) -> Int {
 /// Maximum 0-based animal tier that adoption orders should request at `level`.
 /// Early players never receive orders for stages they can't realistically reach,
 /// preventing the frustration of watching orders expire unfilled.
+///
+/// **Phase 2 dial.** Together with `orderDifficultyBands` this is the primary control on
+/// the demand/supply ratio — see `EconomySimulation`. Retuned in Phase 2 because
+/// under neutral pricing a tier-14 item costs 16,384 kibble (~22 days of a
+/// player's entire income); the pre-Phase-2 table was written for the old world
+/// where the ×8 multiplier sold tier-7 items for 8 kibble.
 func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
     switch level {
     case 1...3:   return 2
-    case 4...6:   return 5
-    case 7...9:   return 8
-    case 10...12: return 10
-    case 13...18: return 12
-    default:      return 14
+    case 4...6:   return 3
+    case 7...9:   return 4
+    case 10...20: return 5
+    case 21...30: return 6    // holds through L30 — ratio ~0.56
+    case 31...40: return 9    // tightening; ratio ~0.83
+    case 41...50: return 10   // the ratio crosses 1.00 here — Phase 3's offer moment
+    default:      return 11   // the top of the chain is orderable; ratio ~1.18
     }
+}
+
+/// An order slot's fixed difficulty (Phase 5, Task 5.1). Replaces the old
+/// uniform tier roll — every slot now draws from its own difficulty's band
+/// instead of all slots sharing one distribution, so the board can never show
+/// (say) four easy orders at once by chance.
+enum OrderDifficulty: String, Codable, CaseIterable {
+    case easy, medium, hard
+}
+
+/// The fixed per-slot difficulty spread: slot 0 is always easy, slots 1-2
+/// medium, slot 3 hard. Slots beyond the base 4 (granted by Sanctuary Map
+/// upgrades) repeat the same pattern.
+let orderSlotDifficultyPattern: [OrderDifficulty] = [.easy, .medium, .medium, .hard]
+
+/// Per-difficulty tier-weighting table: `(probability, tiers)`, probabilities
+/// summing to 1 within each difficulty. A tier above `maxAchievableOrderTier`
+/// collapses onto it, same as before.
+///
+/// **Phase 5 dial**, superseding the old `orderTierBands` — shared by
+/// `AdoptionBoard.generateOrder` and `EconomySimulation` so the model can never
+/// drift from what the game generates. `.hard` keeps the shape of the old top
+/// three bands (still mostly tier 5-6, only occasionally the true top of the
+/// chain) rather than jumping straight to the deepest tier every time a hard
+/// slot regenerates — a *guaranteed* hard order is a much bigger demand lever
+/// than the old ~6% chance of drawing one, so it stays weighted toward the
+/// cheaper end of "hard."
+let orderDifficultyBands: [OrderDifficulty: [(probability: Double, tiers: [Int])]] = [
+    .easy:   [(1.000, [0, 1])],
+    .medium: [(1.000, [2, 3])],
+    .hard:   [(0.750, [4, 5]), (0.130, [6, 7]), (0.090, [8, 9]), (0.030, [10, 11])],
+]
+
+// ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
+//
+// The multiplier selects a TIER; the tier sets the price. Cost is `2^tier`,
+// which is exactly what that item is worth in merge inputs, so no multiplier
+// level buys progress at a discount to building it by hand.
+//
+// Before Phase 2 the tier was `multiplier - 1` at a cost of `multiplier`,
+// which made ×8 an 8-kibble purchase of a 128-kibble item — a 16× arbitrage
+// that unlocked at level 20 and never closed.
+
+/// Maps a spawn multiplier (1 / 2 / 4 / 8) to the 0-based tier it produces.
+/// Total by construction: any unrecognised value falls back to tier 0.
+func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
+    switch multiplier {
+    case 1:  return 0
+    case 2:  return 1
+    case 4:  return 2
+    case 8:  return 3
+    default: return 0
+    }
+}
+
+// ── Bonus spawn layer (Phase 4, Task 4.3) ────────────────────
+//
+// "The bonus layer is an accelerant dressed as a reward" (Merge2_Reference_
+// Blueprint.md §4, measured [M]): "Lucky!"/"Legendary!" bonus spawns fire
+// only on boosted taps (×2/×4/×8), never at ×1. Gating the bonus behind the
+// multiplier pushes players toward bigger, faster-draining taps — the
+// generosity is real, but so is the acceleration.
+
+/// Chance of a bonus extra spawn, keyed by the multiplier's tier index
+/// (0/1/2/3 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
+func bonusSpawnChance(forMultiplierTier tierIndex: Int) -> Double {
+    switch tierIndex {
+    case 0:  return 0.00
+    case 1:  return 0.10
+    case 2:  return 0.25
+    default: return 0.40
+    }
+}
+
+/// Share of triggered bonuses that roll "Legendary!" (one tier richer) rather
+/// than the common "Lucky!" (matches the tap's own tier).
+let legendaryBonusShare = 0.15
+
+// ── Bubble mechanic (Phase 4, Task 4.4) ──────────────────────
+//
+// "Bubble: on merge, with probability p, the output is encased. Opened by
+// rewarded video (capped ~3/day) or gems, and decays into a lesser reward if
+// left. Converts a moment of success into a decision at the instant the
+// player feels good. It must decay into something — punishing non-payment
+// breaks the genre's core rule." (Merge2_Reference_Blueprint.md §23, measured)
+//
+// Two states only, not a continuous curve: poppable-for-full-value until
+// `bubbleDecaySeconds` elapses, then a single lesser value forever after.
+// The decision is made once, at bubble-creation time — "pop now, or risk it."
+
+/// Chance a below-top-tier animal merge gets bubbled instead of landing
+/// normally. Top tier is excluded — it has its own Ambassador celebration.
+let bubbleChance = 0.15
+
+/// How long a bubble stays poppable for full value before decaying.
+let bubbleDecaySeconds: Double = 600   // 10 minutes
+
+/// Coin value fraction once a bubble has decayed — never zero.
+let bubbleDecayFloor = 0.50
+
+/// Dog Tags to pop a bubble instantly, scaled like the Dog Tag store's
+/// tier-based pricing rather than a flat fee.
+func bubblePopDogTagCost(tier: Int) -> Int { 3 + tier }
+
+/// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
+func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
+
+/// Top 0-based tier of every animal chain (12 tiers as of Phase 2b).
+let animalChainTopTier = 11
+
+/// Phase 2c §5: the "mid-tier" band for the sell-vs-order contextual nudge —
+/// low enough to exclude the starter tiers (trivially cheap either way), high
+/// enough to exclude the top-tier Ambassador zone (already surfaced via the
+/// trio exchange).
+let sellVsOrderNudgeTierRange = 3...8
+
+// ── Recirculation (Phase 2, Task 2.3) ─────────────────────────
+//
+// Under neutral pricing a Stage-15 item costs 16,384 kibble — roughly 22 days of
+// a player's *entire* income — so deep tiers cannot be reached by tapping and
+// must arrive as items. These are the dials for how much comes back.
+
+/// How far below `deepestUnlockedTier` a granted board item lands.
+/// Offset 2 = a quarter of the player's current frontier item.
+let recirculationTierOffset = 2
+
+/// Absolute ceiling on any `deepestUnlockedTier`-relative item grant.
+///
+/// Without this the grant channel is *exponential in tenure*: item worth is `2^tier`,
+/// so pegging the payout a fixed number of tiers below the player's frontier doubles
+/// it every time they advance one stage. The Phase 2 model showed a deepest-14 player
+/// receiving ~7,600 kibble-equivalent per day from Board Item Grants alone, against a
+/// total daily income of ~745 — the same unbounded-faucet shape Task 2.2 removed from
+/// Spawner Refill, just denominated in items.
+///
+/// Re-derived in Phase 2b against the 12-tier chain, where the top item costs 2,048
+/// rather than 16,384. Tier 6 (64 kibble) keeps the channel meaningful for shallow
+/// players — where `deepest − 2` is the binding term — while stopping it outrunning
+/// demand in the endgame.
+let recirculationMaxItemTier = 6
+
+/// How far below an order's own `wantedTier` its board-item reward lands.
+/// Always a fraction of what the order asked for, never the whole thing.
+let orderRewardTierOffset = 3
+
+/// One order in this many carries a board-item reward.
+let orderBoardItemFrequency = 3
+
+/// Phase 5, Task 5.3: the hard-difficulty slot always carries a material reward
+/// too, giving the Sanctuary Map's wood/metal/cement economy a second, reliable
+/// faucet alongside quest-driven Toolboxes (today's only source). Deterministic
+/// rather than a chance roll, matching the reference blueprint's per-difficulty
+/// payout table (easy/medium → COIN, hard → PART) — "its own bottleneck" means
+/// dependable, not rare.
+///
+/// No material-economy model exists yet (unlike the coin economy's
+/// `EconomySimulation`), so this quantity/tier is a conservative first cut, not
+/// an empirically derived one: 1 item, discounted `materialRewardTierOffset`
+/// tiers below what a same-level Toolbox could roll (`toolboxMaxTier`), so a
+/// hard order never outpaces the existing Toolbox channel — it supplements it.
+let materialRewardCount = 1
+let materialRewardTierOffset = 2
+
+// ── Dog Tag store (Phase 2, Task 2.3c) ────────────────────────
+
+/// Board items purchasable with Dog Tags — 3 slots, rotating daily, stock 1 each.
+/// Tiers span `deepestUnlockedTier - 4` … `deepestUnlockedTier - 1`.
+let dogTagStoreSlotCount   = 3
+let dogTagStoreMinOffset   = 4   // deepest − 4 is the cheapest slot on offer
+let dogTagStoreMaxOffset   = 1   // deepest − 1 is the dearest
+/// Price for the cheapest tier on offer, then +step per tier above it.
+/// Anchored against the measured reference band of ~9–70 gems per item.
+let dogTagStoreBasePrice   = 15
+let dogTagStorePriceStep   = 18
+
+// ── The coin economy (Phase 2c) ───────────────────────────────
+//
+// Coins gate the Sanctuary Map — 291,900 coins across 61 entries — which is the
+// game's forever goal. Phases 2 and 2b modelled kibble only; coins were never
+// modelled, and the two tables that happened to exist put selling at ~6,500
+// coins/day against ~145/day from everything else combined. Selling *was* the
+// coin economy, and it is taught nowhere.
+//
+// Both channels now pay, in proportion to what an item cost to build:
+//
+//   Fulfil an order  →  6.50 coins per kibble   the efficient path; needs a
+//                                                matching order, so costs patience
+//   Sell an animal   →  2.75 coins per kibble   instant liquidity, ~2.4× worse
+//
+// A flat ratio at every tier is deliberate: no tier is relatively better to sell,
+// so there is no farming incentive anywhere on the chain, and the tradeoff reads
+// the same wherever the player is — always about 2.4× for waiting.
+//
+// The 6.5 anchor comes from the target of a ~60-day full map build-out:
+//   291,900 ÷ 60 days = ~4,865 coins/day, ÷ ~745 kibble/day of orders = ~6.5.
+
+/// Coins paid per kibble of build cost when an adoption order is fulfilled.
+let coinsPerKibbleOfOrder = 6.5
+
+/// Coins paid per kibble of build cost when an animal is sold.
+let coinsPerKibbleOfSale = 2.75
+
+/// Random spread applied to order payouts so they don't read as mechanical.
+/// Small enough that the worst order still beats the best sale by a wide margin.
+let orderCoinSpread = 0.10
+
+/// Kibble cost to build one item at `tier`, times `count` — the quantity both
+/// coin channels are denominated in.
+func buildCost(tier: Int, count: Int = 1) -> Int {
+    spawnCost(forTier: tier) * max(1, count)
+}
+
+/// Coins an adoption order pays for the items it asks for.
+/// `spreadFactor` is 1.0 for the nominal payout; `generateOrder` randomises it
+/// within ±`orderCoinSpread`.
+///
+/// Proportional rather than a hand-tuned table on purpose: the order tier
+/// distribution has already been re-swept twice (Phases 2 and 2b), and a formula
+/// stays correct across a re-sweep where a table would need re-deriving.
+func orderCoinPayout(tier: Int, count: Int = 1, spreadFactor: Double = 1.0) -> Int {
+    max(1, Int((Double(buildCost(tier: tier, count: count))
+                * coinsPerKibbleOfOrder * spreadFactor).rounded()))
+}
+
+/// Coins paid for selling one animal at `tier`.
+func animalSellValue(tier: Int) -> Int {
+    max(1, Int((Double(spawnCost(forTier: max(0, tier))) * coinsPerKibbleOfSale).rounded()))
+}
+
+/// The sell table, derived rather than authored so it cannot drift from the rate
+/// or from the chain length. Tier 0 → 3 coins, tier 11 → 5,632.
+let animalSellValues: [Int] = (0...animalChainTopTier).map { animalSellValue(tier: $0) }
+
+// ── Currency chains (Phase 4, Task 4.1) ──────────────────────────
+//
+// Kibble and Coin merge chains that spawn on the board via family spawners —
+// tap to collect the current tier's value, or merge two for a richer one.
+// Value pattern follows the measured reference (Merge2_Reference_Blueprint.md
+// §21): "Coin (Lvl 1) collects 1; Coin (Lvl 3) collects 7" — tier t (0-indexed)
+// collects 2^(t+1) - 1, not a clean doubling. Every merge is worth strictly
+// more than the sum of its two inputs, which is what makes "merge for a
+// better rate, or collect now for liquidity" a genuine decision rather than
+// a wash.
+let currencyChainTierCount = 6
+
+func currencyChainBaseValue(tier: Int) -> Int { (1 << (max(0, tier) + 1)) - 1 }
+
+/// Kibble granted when a Kibble-chain item at `tier` is collected.
+/// Tier 0 → 1, tier 5 (top) → 63 — roughly two hours of passive regen at cap.
+func kibbleCurrencyValue(tier: Int) -> Int { currencyChainBaseValue(tier: tier) }
+
+/// Coins granted when a Coin-chain item at `tier` is collected. Scaled by the
+/// same per-kibble sell rate as animals (Phase 2c) so this reads as a small
+/// side faucet, not a rival to orders/selling. Tier 0 → 3, tier 5 (top) → 173.
+func coinCurrencyValue(tier: Int) -> Int {
+    max(1, Int((Double(currencyChainBaseValue(tier: tier)) * coinsPerKibbleOfSale).rounded()))
 }
 
 // ── XP constants ──────────────────────────────────────────────

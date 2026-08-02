@@ -80,7 +80,7 @@ class InventoryStore {
             guard ContentRegistry.shared.chain(item.chainID)?.category == .material,
                   materialCounts[item.chainID] != nil else { continue }
             let tier = max(0, min(item.tier, 5))
-            materialCounts[item.chainID]![tier] += 1
+            materialCounts[item.chainID]?[tier] += 1
         }
         for chainID in materialCounts.keys { cascadeMaterial(chainID: chainID) }
     }
@@ -88,9 +88,9 @@ class InventoryStore {
     private func cascadeMaterial(chainID: ChainID) {
         guard materialCounts[chainID] != nil else { return }
         for tier in 0..<5 {
-            while materialCounts[chainID]![tier] >= 2 {
-                materialCounts[chainID]![tier] -= 2
-                materialCounts[chainID]![tier + 1] += 1
+            while (materialCounts[chainID]?[tier] ?? 0) >= 2 {
+                materialCounts[chainID]?[tier] -= 2
+                materialCounts[chainID]?[tier + 1] += 1
             }
         }
     }
@@ -119,9 +119,20 @@ class InventoryStore {
         case .tool:
             return true   // toolboxes are consumed on the board tap; discard if they reach here
         case .subObject:
+            // Only a completed sub-object (one carrying a rolled effect) is a
+            // usable power-up. Tiers 0–2 are inert intermediates and belong in
+            // the animal inventory, not in the 6 power-up slots.
+            guard item.rarity != nil else { return addToAnimalInventory(item) }
             return addToPowerUpInventory(item) || addToAnimalInventory(item)
         case .powerUp:
             return addToPowerUpInventory(item)
+        case .currency:
+            // Phase 4, Task 4.1: currency items are collected by tapping them on the
+            // board (MergeBoardViewModel.collectCurrencyItem), which every path that
+            // could reach here (drag-to-storage, sell) intercepts first. This is a
+            // defensive fallback only — reaching it means the value was already lost
+            // upstream, so it just no-ops rather than silently discarding again.
+            return true
         default:
             return addToAnimalInventory(item)
         }
@@ -190,7 +201,7 @@ class InventoryStore {
     func consumeFromToolInventory(chainID: ChainID, tier: Int) -> Bool {
         guard tier >= 0 && tier <= 5,
               (materialCounts[chainID]?[tier] ?? 0) > 0 else { return false }
-        materialCounts[chainID]![tier] -= 1
+        materialCounts[chainID]?[tier] -= 1
         return true
     }
 
@@ -280,6 +291,10 @@ class InventoryStore {
         }
         producerStorage         = s.producerStorage
         overflowProducerStorage = s.overflowProducerStorage
+        // Pad/trim in case the saved array predates the current slot count.
+        var slots = s.powerUpInventory
+        if slots.count < 6 { slots.append(contentsOf: Array(repeating: nil, count: 6 - slots.count)) }
+        powerUpInventory        = Array(slots.prefix(6))
         recalcInventoryOccupied()
         recalcProducerStorageOccupied()
     }
@@ -291,5 +306,6 @@ class InventoryStore {
         s.materialCounts          = materialCounts
         s.producerStorage         = producerStorage
         s.overflowProducerStorage = overflowProducerStorage
+        s.powerUpInventory        = powerUpInventory
     }
 }

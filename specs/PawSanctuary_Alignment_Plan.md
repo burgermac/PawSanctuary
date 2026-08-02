@@ -1,0 +1,279 @@
+# PawSanctuary — Alignment Plan
+
+**Objective:** bring PawSanctuary's gameplay psychology into line with the three measured reference titles, before launch.
+**Supersedes:** the checklist in §D of `PawSanctuary_Gap_Analysis.md`. That checklist was dependency-ordered but not a work plan. This is the work plan.
+
+---
+
+## 0. The chosen path, and its one real risk
+
+**Chosen: complete alignment before launch.** The full sequence, including live-ops, shipping once the retention architecture is in place rather than retrofitting it.
+
+**The risk:** live-ops is the largest single body of work here, and you'd be building it without telemetry telling you which events your players actually respond to.
+
+**The mitigation, built into this plan:** the eight live-ops *primitives* are not speculative. They are the same eight in every game in the genre, and they're generic infrastructure — a token wallet does not care what event uses it. Build those fully. The *event catalogue* is where guessing starts, so ship a deliberately small set (three event types, §Phase 6) and expand post-launch against real data. That gets you a launchable retention lattice without authoring twenty events on instinct.
+
+---
+
+## 1. Organizing principle
+
+Sequence by **what breaks if done late**, not by impact.
+
+| Category | Rule | Examples |
+|---|---|---|
+| **Foundations** | Cheap now, 5–10× more expensive once features stack on top. Invisible to players. Do first regardless. | Reward riders as a list · player-state history · event primitive interfaces · `ChainCategory.currency` |
+| **Atomic** | Must ship together or the game is broken in between | Neutral multiplier + recirculation |
+| **Incremental** | Order-flexible once the above are done | Board psychology · orders · individual event types |
+
+---
+
+## 2. Working method
+
+**This chat is the design authority. Claude Code is the implementation surface.**
+
+The measured data, the economy model and the reasoning live here. Every implementation spec must be written **cold** — self-contained, numbers inline, rationale stated — so it can be handed to a coding agent with no memory of this conversation and no access to the capture files.
+
+### Artifacts
+
+| Artifact | Purpose | Lives |
+|---|---|---|
+| `Merge2_Reference_Blueprint.md` | What good looks like, theme-neutral | Design authority |
+| `Phase2_Economy_Model.xlsx` | Every number, tunable | Design authority |
+| `PawSanctuary_Alignment_Plan.md` | This file — the master backlog | Design authority |
+| **Decision log** (§3 below) | Design calls with reasoning, so they aren't relitigated | Design authority |
+| **Per-phase spec** | One per work session, written cold | Handed to Claude Code |
+
+### Session rhythm
+
+```
+1. Confirm the decisions that gate the phase
+2. I write the implementation spec here (cold, self-contained)
+3. You implement in Claude Code
+4. Report back what changed and what resisted
+5. Verify against the spec, update the backlog, next phase
+```
+
+One phase per session where possible. Phases 2 and 6 will need more than one.
+
+**Keep the game playable at every commit.** No phase should leave the build in a state you can't run. Phase 2 is the only one that genuinely can't be split — everything else can land incrementally.
+
+---
+
+## 3. Phase 0 — Decisions
+
+Seven calls gate everything downstream. My recommendation and reasoning on each; override freely, but record the reasoning when you do so it doesn't get relitigated in three weeks.
+
+### D1 — Is the wall real?
+
+Your GDD states "no hard energy walls" as a monetization principle.
+
+**Recommendation: replace it.** New wording: *"generous supply, designed depletion."*
+
+Energy depletion is not a punishment — it's an interruption that leaves the loop open, and it is the single mechanism producing 6–10 sessions a day. You can be genuinely generous about *how much* energy you give (the reference games hand out ~395 free-or-cheap energy daily) while still making the *moment* of running out matter. Generosity is a dial on supply; the wall is a structural feature. The two aren't in tension — the current principle conflates them.
+
+**Blocks:** Phase 3 entirely.
+
+### D2 — Neutral spawn multiplier?
+
+Currently ×8 costs 8 kibble and yields a tier-7 item worth 128 kibble — a 16× arbitrage that opens at level 20.
+
+**Recommendation: yes, go neutral.** `cost = 2^tierIndex`. Neutrality is what makes the mechanic unarbitrageable in both directions and therefore safe to give away freely.
+
+**Note this cannot ship alone.** The multiplier is currently doing all the recirculation work; making it neutral without adding recirculation makes the game unplayable.
+
+**Blocks:** Phase 2.
+
+### D3 — Do Dog Tags/Coins buy board items?
+
+Your principle says never.
+
+**Recommendation: allow it, with stock limits.** Two reasons, and the second matters more than the first. It's the highest-converting purchase path in the reference games because it fires at the moment of highest intent — a player blocked on one specific item. But it's also a **recirculation channel**, and you need those (§Phase 2). If you keep the prohibition, recirculation has to come entirely from order rewards and chests, which is achievable but narrower.
+
+This is a values call and I'd defend either answer. Just don't decide it by default.
+
+**Blocks:** Phase 2 (recirculation sizing), Phase 4.
+
+### D4 — Session target
+
+GDD says 5–15 minutes. Reference is 2–4 minutes × 6–10/day.
+
+**Recommendation: move to 2–4 min.** Your implemented economy already assumes it — 100 kibble at ×1 is a few minutes of tapping, not fifteen. The stated target and the built economy currently disagree, and the economy is the one that's right.
+
+Session length drives cap, regen, order pacing, notification cadence and — critically — the number of wall events per day, which is the number of offer impressions.
+
+**Blocks:** Phase 2 tuning, Phase 5.
+
+### D5 — Sustainable live-ops cadence
+
+**Recommendation: commit to a number now, before building the engine.** Realistically, solo, something like: one 3–4 day event per week, one 30-day album/pass running continuously, daily challenges auto-generated.
+
+A lattice you can't feed is worse than a smaller one you can. This number determines how many event *types* are worth building in Phase 6.
+
+**Blocks:** Phase 6 scope.
+
+### D6 — Spend-quota tasks in dailies?
+
+Reference games include "Spend 50 Gems" as a daily-challenge task. It converts the retention system into a monetization one at zero UI cost.
+
+**Recommendation: out, at least at launch.** It's the most aggressive single mechanic found in the three games and it sits badly against your "Warmth" design pillar. It's also trivially addable later once you have conversion data. Nothing downstream depends on it.
+
+### D7 — Session-one monetization silence?
+
+**Recommendation: adopt.** The segment leader shows nothing — no offer, no ad, no store push — across 26 minutes and five levels, then fires the first offer at the first genuine wall around day 2–3.
+
+Cheapest possible implementation: gate the shop and all offer surfaces behind a flag that flips at first genuine energy depletion or player level 5, whichever is later.
+
+**Blocks:** Phase 3.
+
+### D8 — Chain offer? *(added 27 Jul, measured)*
+
+Both Gossip Harbor and Tasty Travels run a mechanic not previously catalogued: a vertical ladder of reward nodes where **free nodes sit padlocked until an adjacent paid node is purchased**. Buying releases them and advances the ladder, revealing the next paid rung — same price, slightly richer payout. Timer-bound, and in both observed cases surfaced at the energy wall.
+
+The economics are the interesting part. Measured at Tasty Travels:
+
+| | Gems/$ |
+|---|---|
+| Paid node alone (240 gems, $5.99) | 40.1 |
+| Shelf price for the same 240 gems (Small pack, $4.99) | 48.1 |
+| Paid node + the free nodes it releases | 52.4 |
+
+**On its face the offer is a 20% premium to shelf.** It only becomes competitive once the free nodes are counted. The player is not buying gems — they are buying the release of rewards already visible and padlocked on screen. That inversion is the whole mechanic.
+
+**Recommendation: adopt, but as a variant of the Pass primitive, not a fourth event type.** Structurally this *is* a pass with the lanes interleaved instead of parallel — free lane and paid lane, with the free lane's unlock condition changed from "reach the tier" to "purchase the adjacent node." It needs the progress track, reward table and offer hook already scheduled in Phase 6a, plus one new unlock predicate. That keeps D5's three-event budget intact.
+
+**Argument against, and it isn't weak:** this is a harder sell than anything else in the plan. It shows the player a reward, locks it, and charges to unlock — mechanically closer to the "Spend 50 Gems" daily rejected in D6 than to the progress-protection framing adopted in D7. It sits against the Warmth pillar for the same reason D6 does. If D6 stays out, the consistent call may be that this stays out too.
+
+**Unresolved:** whether the free nodes must be visible-but-locked (the coercive version, which is what both reference titles ship) or can be earned on a parallel free track (the softer version, which is just a pass and needs no new work at all). This is the decision, and it is a values call rather than a modelling one.
+
+**Blocks:** Phase 6b scope. **Depends on:** D6's reasoning — decide the two together.
+
+---
+
+## 4. Phase 1 — Foundations
+
+*Invisible to players. Every item here gets significantly more expensive once features stack on it.*
+
+- [ ] **1.1** Convert `AdoptionOrder` reward fields → `[OrderReward]` list with a `RewardKind` enum. Update `AdoptionBoard.generateOrder` and the reward distribution path in `MergeBoardViewModel`.
+- [ ] **1.2** Add a rider-injection hook so active systems can append to `Order.rewards` at generation time.
+- [ ] **1.3** Add `ChainCategory.currency` and the registry plumbing for it. No chains authored yet — just the category.
+- [ ] **1.4** Add player-state tracking: rolling average purchase value, purchase count, days since last purchase, current wall. **Start recording from first launch — this cannot be backfilled.**
+- [ ] **1.5** Stub the eight live-ops primitive interfaces (scheduler, token wallet, progress track, reward table, rider injection, parallel board, timer service, offer hook). Interfaces only; implementations in Phase 6.
+- [ ] **1.6** Schema migration for the above. You're at v24 with an unbroken chain — keep it unbroken.
+
+**Definition of done:** game plays identically to today; save/load round-trips; `PersistenceTests` green.
+
+---
+
+## 5. Phase 2 — Economy correction (atomic)
+
+*The only phase that cannot be split. Specced from `Phase2_Economy_Model.xlsx`.*
+
+- [ ] **2.1** Neutral multiplier: decouple `spawnTier` from `spawnMultiplier - 1`; price at `2^tierIndex`.
+- [ ] **2.2** Recirculation — minimum viable set, sized so the demand/supply ratio lands near 1.0 at mid-game:
+  - Orders occasionally pay **board items**, not only currency
+  - Chests contain board items
+  - A sub-object power-up effect that spawns a tier-N item
+  - *(If D3 = allow)* board items purchasable with Dog Tags, stock-limited
+- [ ] **2.3** Generator-tier progression: new families spawn at higher base tiers as the map unlocks, so the target-tier-minus-base-tier gap stays roughly constant while chains deepen.
+- [ ] **2.4** Retune the 15-tier chain against the neutral economy using the model's wall-curve targets: below 0.70 through L30, drifting to 0.95 by L40, crossing 1.00 at L41–50, holding 1.05–1.25 thereafter.
+- [ ] **2.5** Reverse `DogTagKibbleExchange` from a volume discount to a daily-escalating ladder with reset. Target shape: ~320 discounted units/day, then flat.
+
+**Definition of done:** a simulated player at L10/L30/L50 hits the ratio targets; no tier is reachable at a discount to its merge cost.
+
+---
+
+## 5b. Phase 2b — Reduce chains to 12 tiers
+
+Added 27 July after Phase 2's tuning revealed that capping order tiers at 9 left Stages 10–15 (90 named items) outside the order economy. Dropping Era 4 from every family brings top-tier cost from 16,384 to 2,048 kibble and puts the top of the chain back inside the loop.
+
+Atomic, like Phase 2. Full spec: `specs/Spec_Phase2b_TwelveTiers.md`.
+
+---
+
+## 5c. Phase 2c — The coin economy
+
+Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite gating the Sanctuary Map (291,900 coins total). Measured: orders yield ~145 coins/day against selling's ~6,500 — a 2,013-day map build-out versus 45. **Selling is currently the coin economy and orders are a rounding error**, which was never a decision.
+
+**Decision made 27 July:** both channels pay coins, orders pay strictly more — orders at ~6.5 coins per kibble of build cost, selling at ~2.75. Orders become the efficient path (but require a matching order); selling stays useful as instant liquidity at a ~2.4x discount. Rejected orders-only (guts selling) and selling-only (the primary faucet is taught nowhere, so players stall with no way to diagnose it). Targets a ~60-day map build-out. Atomic. Full spec: `specs/Spec_Phase2c_CoinEconomy.md`.
+
+---
+
+## 6. Phase 3 — The wall
+
+*Spec this before you get far into UX — the wall is a screen.*
+
+- [x] **3.1** Rebuild `KibbleRefillSheet` as the designed moment: rewarded ad first (free, capped), then the escalating kibble ladder, then the bundle. Landed `ea92de8`.
+- [x] **3.2** Move the ad out of any menu surface. It lives **in this dialog only**. Deleted the dead `WatchAdStripView` — it was already the only live ad surface.
+- [x] **3.3** Surface the nearest incomplete order or event timer on the sheet — the player must leave seeing what's unfinished. (Event timer will extend naturally once Phase 6 ships real events; only orders exist to surface today.)
+- [x] **3.4** First-purchase offer + `hasEverPurchased` gating; suppress all monetization surfaces in session one per D7. `isMonetizationUnlocked = commerce.hasReachedFirstWall && playerLevel >= monetizationUnlockLevel(5)` — read D7's "whichever is later" as requiring both, not either.
+- [ ] **3.5** Enable Push Notifications capability (already-written scheduling logic is what converts the wall into a return visit). **Blocked on you** — Xcode Signing & Capabilities, not code (see TODO.md).
+- [ ] **3.6** Real ad SDK. Now load-bearing rather than optional. **Blocked on an SDK/account decision** (AdMob, AppLovin, etc.) — flag when ready to proceed.
+
+**Definition of done:** hitting zero kibble produces the full ladder in order; a fresh account sees no monetization surface in session one. **Met for 3.1–3.4**, verified on screen 31 July 2026. Phase 3 is not fully closed until 3.5/3.6 land.
+
+---
+
+## 7. Phase 4 — Board psychology
+
+- [x] **4.1** Kibble and Coin merge chains that spawn on the board (`ChainCategory.currency` from 1.3). Landed `d3c90f2`: 10% of family-spawner taps, 6 tiers each, tap-to-collect (2^(t+1)-1 value curve per the measured reference), drag-merge via the existing generic path. Side-fix: `triggerTopTierCelebration` was firing the animal-only Ambassador banner for any chain's top tier (including sub-objects already) — now guarded to `.animal`.
+- [x] **4.2** Pre-seed locked rows with visible, unreachable kibble caches released on unlock. Landed `0d6ee51`: every locked cell holds a Kibble cache (tier authored per row, richer for deeper unlocks) rendered dimmed with a lock badge; `checkLevelUnlock` needed zero changes since it only ever flipped `isUnlocked`. Verified rendering + locked-tap no-op on screen; the unlock-reveal transition itself is a code-review-level guarantee (unchanged unlock logic), not screen-verified — a stuck simulator system dialog blocked further interaction that session.
+- [x] **4.3** Bonus layer ("Lucky!"/"Legendary!") gated to boosted spawns, scaling with multiplier. Landed `30307f4`: 0/10/25/40% chance by multiplier tier (×1/×2/×4/×8), 85/15 Lucky/Legendary split, routed through the existing `finishSpawn` so a bonus still counts as a rescue and can fulfil an order. Not screen-verified this session — a stuck simulator notification-permission dialog blocked interaction; confidence is code-review-level (simple roll + tier bump, `finishSpawn` itself is exercised by every normal spawn).
+- [x] **4.4** Bubble mechanic: probability *p* on merge, opened by ad (capped) / gems / waiting, **decaying into a lesser reward — never nothing**. Landed `6986959`: 15% of below-top-tier animal merges bubble instead of landing normally (top tier keeps its own Ambassador celebration); tapping an active bubble opens a sheet to pop for full value via rewarded ad (shares the kibble sheet's daily cap — `KibbleEngine.watchRewardedAd` refactored to a generic `onEarned` closure to make that sharing possible) or Dog Tags (cost scales with tier); left for 10 minutes it decays to a 50%-floor coin payout, auto-collected on tap, never zero. `BoardItem.bubbledAt: Double?` is a new optional defaulted to `nil` — no migration needed. Verified on screen: bubble creation via merge, active-bubble tap → pop sheet, ad-pop, Dog Tags pop button's disabled-when-unaffordable state, and decay → auto-collect. 129/129 tests passing.
+
+**Phase 4 complete.**
+
+---
+
+## 8. Phase 5 — Orders
+
+- [x] **5.1** 2 slots → 4, with a fixed 1 easy / 2 medium / 1 hard spread replacing the uniform tier roll. `AdoptionOrder` generation is now per-slot: slot 0 always rolls `.easy` (tiers 0-1), slots 1-2 `.medium` (2-3), slot 3 `.hard` (4-11, weighted toward the cheap end so a *guaranteed* hard order isn't as costly as the old ~6% chance of one) — see `orderSlotDifficultyPattern`/`orderDifficultyBands` in `AnimalSpecies.swift`. Slots beyond the base 4 (from Sanctuary Map upgrades) repeat the same 4-slot pattern.
+  Doubling the base slot count roughly doubled order-driven demand on its own, so this retuned the Phase 2.5 economy dial alongside it: `EconomySimulation` now models slot count (4, or 5 from L13) and averages each slot's fixed-difficulty distribution instead of one shared table, and `orderDifficultyBands`' weights were re-derived against `testDemandSupplyRatioMatchesTheTargetCurve` until the original measured ratio curve held again (L1-30 < 0.70, L35/40 ≈ 0.88, crosses 1.00 at L45/50, settles at ≈1.19 for L55/60 — inside the 1.05-1.25 band). All 129 tests pass; verified on screen that 4 orders render and generate correctly (the Adoption Board panel already renders any count, no layout change needed).
+- [x] **5.2** Split the roles: long-lived persistent orders (no timer, or many hours) + a separate short timed-order *event* carrying urgency. The 4 slots from 5.1 dropped `AdoptionOrder.timeRemaining` entirely — they now sit until fulfilled, no expiry, no auto-replace. A single separate `AdoptionBoard.urgentOrder` carries the countdown instead: 15 min to fulfil (`urgentOrderDuration`, the old shared constant, now repurposed for just this one slot), rolls `.medium` difficulty with guaranteed rewards scaled ×1.5 (`urgentOrderRewardMultiplier`) so it's worth rushing for. Missing it forfeits the reward outright and opens a real empty gap — `urgentOrderRespawnCooldown` (30 min) before a new one appears, shown as a distinct "on its way" placeholder card — the stakes the persistent slots never had. Schema v28→v29 (structural: `timeRemaining` removed from the persisted shape, not just superseded); old saves get `urgentOrder == nil` and spawn one on next load via `AdoptionBoard.ensureUrgentOrder`. `EconomySimulation` folds the urgent order in as +1 always-`.medium` slot; ratio curve held with no further retuning needed. 130/130 tests pass; verified on screen: urgent card shows a live countdown bar with no skip button, persistent cards show "Open — no rush" with skip still available.
+  Reward composition still doesn't differentiate by difficulty (`orderBoardItemFrequency` is the same for every slot) — the blueprint's "hard slot pays PART" idea is 5.3's job, not folded in here.
+- [x] **5.3** One slot dedicated to meta-progression materials, giving the map economy its own bottleneck. The hard slot (index 3) now always carries a `.material` `OrderReward` alongside its usual dogTags/coins — a random wood/metal/cement chain, `materialRewardCount` (1) items at `toolboxMaxTier(level) - materialRewardTierOffset (2)`, deterministic rather than a chance roll (matching the blueprint's per-difficulty payout table: easy/medium → COIN, hard → PART). Claiming routes into the same `InventoryStore.absorbMaterialItems` accumulator Toolboxes already use (cascade included), not a new mechanic. Toolboxes (quest-driven) remain the primary faucet; this is a smaller, reliable second one gated by order fulfillment instead of quest luck. No material-economy simulation exists yet (unlike the coin economy's `EconomySimulation`), so the quantity/tier is a conservative first cut, not empirically derived. 132/132 tests pass (2 new: every hard-slot order carries exactly one valid material reward; no other slot ever does). Verified on screen: the hard slot's card shows a leaf icon `+1` alongside its dog-tag/coin rewards; the other 3 slots don't.
+
+**Phase 5 complete.**
+
+---
+
+## 9. Phase 6 — Live-ops
+
+*Largest body of work. Build the engine fully; ship a small catalogue.*
+
+**6a — Primitives (implement the Phase 1 stubs)** — spec `specs/Spec_Phase6a_Primitives.md`, written cold by Claude Code from this section + the existing `LiveOpsPrimitives.swift` stubs. Implemented across 6 commits (`7580cf9`…`dbce315`), 166/166 tests green, zero UI call sites — nothing wires these into `MergeBoardViewModel` or the on-screen event card yet, per the spec's scope cut.
+- [x] Scheduler with overlap and priority resolution (`EventScheduler.contestedSlotWinner`) — tested against synthetic multi-event overlap; only one real event exists today so the four-plus-concurrent case is unexercised in practice
+- [x] Token wallet · progress track (parallel free/paid lanes) · reward table · timer service · offer hook — real implementations (`TokenWallet`, `ProgressTrack`, `RewardTableRegistry`, `EventTimer`, `OfferHookRegistry`)
+- [x] Parallel board instance — **stub only** (`ParallelBoardStub`): UUID bookkeeping, no board grid, no chains, no energy. The real thing is 6b's "Parallel board" item below, unchanged.
+
+**6b — Event types (three only, per D5)**
+- [ ] Milestone track (uses progress track + riders only — cheapest)
+- [ ] Pass, free + paid lanes
+  - [ ] *(If D8 = adopt)* Chain-offer variant: same primitive, free-lane unlock predicate changed from "tier reached" to "adjacent paid node purchased." One predicate, not a fourth event type — this is why it does not spend D5's budget.
+- [ ] Parallel board — highest revenue, most expensive; the one worth the effort
+
+**6c — Calendar**
+- [ ] Author a rolling 90-day `EventDefinition` calendar. Infrastructure without a calendar is exactly where you are now.
+
+---
+
+## 10. Phase 7 — Ongoing
+
+Content calendar feeding. Not a phase that ends — this is the operating cost of the model you've chosen, and D5 is the honest estimate of what you can carry.
+
+---
+
+## 11. What could go wrong
+
+**Phase 2 spirals.** Retuning a 15-tier × 15-family chain against a new economy is the most open-ended work here. Mitigation: tune one family end-to-end first, validate against the model, then apply the pattern.
+
+**Live-ops scope creep.** Six event types is more fun to build than three. Three is the number D5 supports. Resist.
+
+**The UX work and Phase 3 collide.** The wall is a screen and you're building screens. Spec Phase 3 before that screen gets built, or it gets built twice.
+
+**The chain offer gets adopted on economics alone.** It measures well and it is cheap to build on top of the Pass primitive, which makes it easy to wave through. But D6 rejected a *less* aggressive mechanic on Warmth grounds. Deciding D8 on the spreadsheet while D6 was decided on the pillar is how a design stops being coherent. Decide them together or revisit D6.
+
+**Foundations get skipped because they're invisible.** Phase 1 produces no visible change and is the easiest thing to defer. It's also the phase whose omission makes Phase 6 twice as expensive.
+
+---
+
+*Companion to `Merge2_Reference_Blueprint.md`, `Phase2_Economy_Model.xlsx`, `PawSanctuary_Gap_Analysis.md`, and `Findings_26July.md`.*

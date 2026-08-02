@@ -47,6 +47,11 @@ struct ShopView: View {
 
                         Divider().padding(.horizontal)
 
+                        // ── Board items for Dog Tags (recirculation) ──────
+                        DogTagStoreSection(viewModel: viewModel)
+
+                        Divider().padding(.horizontal)
+
                         // ── Dog Tag → Kibble exchange ─────────────────────
                         DogTagKibbleSection(viewModel: viewModel)
 
@@ -212,6 +217,95 @@ struct GeneratorShopRow: View {
 }
 
 // ============================================================
+// MARK: - DOG TAG STORE (recirculation, Task 2.3c)
+// ============================================================
+
+/// Three board items, rotating daily, stock 1 each. The release valve for a
+/// player blocked on one specific item.
+struct DogTagStoreSection: View {
+    var viewModel: MergeBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "shippingbox.fill")
+                    .foregroundColor(Color(red: 0.25, green: 0.50, blue: 0.88))
+                Text("Item Store")
+                    .font(.headline)
+                    .foregroundColor(Color(red: 0.18, green: 0.36, blue: 0.66))
+                Spacer()
+                Text("Rotates daily").font(.caption).foregroundColor(.secondary)
+            }
+
+            if viewModel.dogTagStore.slots.isEmpty {
+                Text("Merge deeper to unlock the item store.")
+                    .font(.caption).foregroundColor(.secondary)
+            } else {
+                ForEach(viewModel.dogTagStore.slots) { slot in
+                    DogTagStoreRow(slot: slot, viewModel: viewModel)
+                }
+                Text("One of each per day. Sold items return tomorrow.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .onAppear { viewModel.refreshDogTagStore() }
+    }
+}
+
+struct DogTagStoreRow: View {
+    let slot: DogTagStoreSlot
+    var viewModel: MergeBoardViewModel
+
+    private var def: ChainTier? { ContentRegistry.shared.tier(slot.chainID, slot.tier) }
+    private var canAfford: Bool { viewModel.dogTags >= slot.priceDogTags }
+    private var isAvailable: Bool { !slot.purchased && canAfford }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: def?.symbol ?? "pawprint.fill")
+                .font(.title2)
+                .foregroundColor(def?.tint ?? .brown)
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill((def?.tint ?? .brown).opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(def?.name ?? "Item").font(.subheadline.bold())
+                Text("Level \(slot.tier + 1)")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                SoundManager.shared.playButtonTap()
+                viewModel.purchaseDogTagStoreSlot(slot)
+            } label: {
+                HStack(spacing: 4) {
+                    if slot.purchased {
+                        Text("Sold").font(.subheadline.bold())
+                    } else {
+                        Image(systemName: "tag.fill").font(.system(size: 11))
+                        Text("\(slot.priceDogTags)").font(.subheadline.bold())
+                    }
+                }
+                .foregroundColor(isAvailable ? .white : .secondary)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(isAvailable
+                          ? Color(red: 0.25, green: 0.50, blue: 0.88)
+                          : Color(red: 0.90, green: 0.90, blue: 0.92)))
+            }
+            .disabled(!isAvailable)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color.white.opacity(0.75))
+            .shadow(color: .black.opacity(0.05), radius: 4))
+    }
+}
+
+// ============================================================
 // MARK: - DOG TAG → KIBBLE EXCHANGE
 // ============================================================
 
@@ -235,9 +329,14 @@ struct DogTagKibbleSection: View {
                 .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ForEach(DogTagKibbleExchange.all, id: \.dogTagCost) { exchange in
-                DogTagKibbleRow(exchange: exchange, viewModel: viewModel)
-            }
+            // A single escalating rung, not a volume discount (Task 2.4).
+            DogTagKibbleRow(exchange: viewModel.currentTagExchange, viewModel: viewModel)
+
+            Text(viewModel.currentTagExchange.isAtFlatRate
+                 ? "Today's discounted exchanges are used up. The price resets tomorrow."
+                 : "Each exchange today costs more than the last. Resets tomorrow.")
+                .font(.caption).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -274,7 +373,7 @@ struct DogTagKibbleRow: View {
             Button {
                 SoundManager.shared.playButtonTap()
                 HapticManager.shared.lightTap()
-                viewModel.exchangeTagsForKibble(exchange)
+                viewModel.exchangeTagsForKibble()
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "tag.fill").font(.system(size: 11))

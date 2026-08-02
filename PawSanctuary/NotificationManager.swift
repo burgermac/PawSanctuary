@@ -24,6 +24,7 @@ enum NotificationID {
     static let streakReminder  = "pawsanctuary.streak.reminder"
     static let reengagement    = "pawsanctuary.reengagement"
     static func orderExpiry(_ id: String) -> String { "pawsanctuary.order.expiry.\(id)" }
+    static func eventExpiry(_ id: String) -> String { "pawsanctuary.event.expiry.\(id)" }
 }
 
 // MARK: - Manager
@@ -47,13 +48,21 @@ final class NotificationManager: NSObject {
         Task { await refreshAuthStatus() }
     }
 
+    /// Fetches just the authorization status, never letting the non-Sendable
+    /// `UNNotificationSettings` itself cross back into this @MainActor type —
+    /// older SDKs (pre-iOS 26) don't mark it Sendable, which strict
+    /// concurrency rejects at the await site otherwise.
+    private nonisolated func fetchAuthorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
     /// Requests permission if not already determined.
     /// Returns true when permission is granted (existing or newly approved).
     @discardableResult
     func requestPermission() async -> Bool {
         let centre = UNUserNotificationCenter.current()
-        let settings = await centre.notificationSettings()
-        switch settings.authorizationStatus {
+        let authorizationStatus = await fetchAuthorizationStatus()
+        switch authorizationStatus {
         case .authorized, .provisional, .ephemeral:
             isAuthorised = true
             return true
@@ -176,6 +185,38 @@ final class NotificationManager: NSObject {
 
         cancel(ids: [id])
         UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: Schedule — live-ops event expiry (Phase 6a — EventTimer)
+
+    /// Schedules a notification at `date` for an ending live-ops event.
+    /// - Parameters:
+    ///   - eventID: Stable string ID for cancellation.
+    ///   - date:    When to fire — the caller decides how far ahead of the
+    ///              event's actual end this should be (see `EventTimer`).
+    ///   - summary: Notification body, resolved by the caller from the event's
+    ///              own name/tagline.
+    func scheduleEventExpiry(eventID: String, at date: Date, summary: String) {
+        guard isAuthorised else { return }
+        let interval = date.timeIntervalSinceNow
+        guard interval > 10 else { return }   // not worth notifying if already nearly there
+
+        let content       = UNMutableNotificationContent()
+        content.title     = "Event ending soon!"
+        content.body      = summary
+        content.sound     = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+        let id      = NotificationID.eventExpiry(eventID)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+
+        cancel(ids: [id])
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Cancels any pending expiry notification for a specific event.
+    func cancelEventExpiry(eventID: String) {
+        cancel(ids: [NotificationID.eventExpiry(eventID)])
     }
 
     // MARK: Schedule — daily challenges reset
@@ -307,9 +348,9 @@ final class NotificationManager: NSObject {
     // MARK: Private helpers
 
     private func refreshAuthStatus() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        isAuthorised = settings.authorizationStatus == .authorized
-            || settings.authorizationStatus == .provisional
+        let authorizationStatus = await fetchAuthorizationStatus()
+        isAuthorised = authorizationStatus == .authorized
+            || authorizationStatus == .provisional
     }
 }
 

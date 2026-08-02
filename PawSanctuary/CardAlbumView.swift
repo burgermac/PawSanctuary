@@ -69,7 +69,11 @@ struct CardAlbumView: View {
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.70), value: viewModel.showAlbumCompleteCard?.id)
-        .task { await viewModel.refreshIncomingTrades() }
+        .task {
+            viewModel.ensureGameCenterAuthenticated()
+            await viewModel.refreshIncomingTrades()
+            await viewModel.refreshOutgoingTrades()
+        }
     }
 
     // MARK: Tab bar
@@ -318,7 +322,10 @@ struct CardAlbumView: View {
                 }
                 Spacer()
                 Button {
-                    Task { await viewModel.refreshIncomingTrades() }
+                    Task {
+                        await viewModel.refreshIncomingTrades()
+                        await viewModel.refreshOutgoingTrades()
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 14, weight: .semibold))

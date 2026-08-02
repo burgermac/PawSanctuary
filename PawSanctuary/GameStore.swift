@@ -47,6 +47,11 @@ struct GameState: Codable {
     var dailyChallengeStreak: Int
     var dailyChallengeBonusClaimed: Bool
     var adoptionOrders: [AdoptionOrder]
+    // Urgent order (v29, Phase 5 Task 5.2) — separate from the persistent slots
+    // above. `nil` while `urgentOrderCooldownRemaining` counts down after a miss.
+    var urgentOrder: AdoptionOrder? = nil
+    var urgentOrderTimeRemaining: Double = 0
+    var urgentOrderCooldownRemaining: Double = 0
 
     // Spotlight
     var spotlightMergesThisWeek: Int
@@ -143,9 +148,34 @@ struct GameState: Codable {
     var pouchItems: [BoardItem?] = [nil, nil]          // Marsupials Pouch: 2 off-board storage slots
     var pouchExpiryTimestamp: Double = 0               // Unix timestamp when Pouch expires (0 = inactive)
 
+    // Player commerce state (v26) — offer targeting / difficulty scaling / Phase 3 first-purchase gate.
+    var commerce: PlayerCommerceState = PlayerCommerceState()
+
+    // Economy correction (v27, Phase 2)
+    /// Deepest animal tier ever reached by merging. Scales every recirculation channel.
+    var deepestUnlockedTier: Int = 0
+    /// Dog Tag → Kibble exchanges made since `lastExchangeResetDate`; drives the escalating ladder.
+    var dogTagExchangesToday: Int = 0
+    var lastExchangeResetDate: Date? = nil
+    /// Daily-rotating Dog Tag store stock (3 slots, one purchase each).
+    var dogTagStoreSlots: [DogTagStoreSlot] = []
+    var lastDogTagStoreRotation: Date? = nil
+    /// The 6 power-up slots. Persisted as of v27 — before that the array was
+    /// rebuilt empty on every launch, silently discarding earned power-ups.
+    /// Task 2.2 requires the rolled effect to survive save/load, which is only
+    /// meaningful if its container does too.
+    var powerUpInventory: [BoardItem?] = Array(repeating: nil, count: 6)
+
     /// Wall-clock time the snapshot was taken, used to advance timers for the
     /// span the app was closed. Optional so pre-existing saves still decode.
     var lastActiveDate: Date?
+
+    // Live-ops primitives (v30, Phase 6a) — nothing writes to these yet; see
+    // LiveOpsEngine.swift's TokenWallet / ProgressTrack.
+    /// Named-currency balances, keyed by token ID.
+    var eventTokenWallets: [String: Int] = [:]
+    /// Per-track claimed-milestone state, keyed by track ID.
+    var progressTracks: [String: TrackState] = [:]
 }
 
 // ============================================================
@@ -196,13 +226,46 @@ enum GameStore {
     /// v21: limitless material accumulator — toolInventory replaced by materialCounts dict.
     /// v22: pity tracking — pityStates dict added (additive; empty default for old saves).
     /// v23: pityStates type changed [String:Int]→[String:PityState]; sub-object chains registered.
-    static let currentVersion = 24
+    /// v25: AdoptionOrder's rewardDogTags/rewardCoins/rewardCardPack collapse into
+    ///      rewards: [OrderReward] (Phase 1, Task 1.1); OrderRewardRegistry rider hook (Task 1.2).
+    /// v26: commerce: PlayerCommerceState added (Phase 1, Task 1.4) — purchase history
+    ///      and kibble-wall events, for Phase 3 offer targeting/gating. Additive.
+    /// v27: economy correction (Phase 2). BoardItem gains an optional `rarity` carrying
+    ///      the effect rolled onto a completed sub-object; GameState gains
+    ///      deepestUnlockedTier, the Dog Tag ladder's daily counters, and the Dog Tag
+    ///      store's stock. Existing top-tier sub-objects are assigned Speed Burst
+    ///      rather than re-rolled, so nobody is retroactively handed a rare effect.
+    /// v28: animal chains shrink 15 tiers → 12 (Phase 2b). Every stored animal tier
+    ///      is remapped: 0–8 unchanged, 9–11 collapse to 8, 12–14 shift to 9–11.
+    ///      Applied at the shared migration exit rather than only in the v27 step,
+    ///      because the dispatch table is flat — see `finishMigration(_:from:)`.
+    /// v29: order roles split (Phase 5, Task 5.2). `AdoptionOrder.timeRemaining` is
+    ///      gone — the persistent slots no longer expire. A single separate urgent
+    ///      order (urgentOrder / urgentOrderTimeRemaining / urgentOrderCooldownRemaining)
+    ///      now carries the short fuse. Structural: the old per-order key is
+    ///      removed, not just superseded.
+    /// v30: live-ops primitives (Phase 6a). GameState gains eventTokenWallets
+    ///      (token ID -> balance) and progressTracks (track ID -> TrackState).
+    ///      Purely additive; nothing writes to either yet.
+    static let currentVersion = 30
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
     private struct SaveEnvelope: Codable { var version: Int }
 
     private static let cloudKey = "pawSanctuary.gameState"
+
+    /// Set when the most recent `load()` had to discard a save from schema v1–v7 —
+    /// versions that predate every migration path below and can't be recovered.
+    /// `nil` after a `load()` that found a usable state (local, backup, or cloud) even
+    /// if an old-format copy was encountered along the way. Callers check this right
+    /// after a `nil` result from `load()` to tell the difference between "no save ever
+    /// existed" and "a save existed but couldn't be restored" (QA-08) — surfacing that
+    /// distinction to the player is the caller's responsibility.
+    /// nonisolated(unsafe): GameStore's static methods are only ever called from the
+    /// MainActor-isolated ViewModel, matching the pattern used elsewhere in this codebase
+    /// (see MergeBoardViewModel.regenTimer) for state that's single-threaded in practice.
+    private(set) nonisolated(unsafe) static var discardedIncompatibleVersion: Int? = nil
 
     // MARK: Storage locations
 
@@ -248,16 +311,32 @@ enum GameStore {
         }
     }
 
+    /// Synchronous save for moments that cannot tolerate deferral — principally
+    /// app backgrounding, where a detached task may never be scheduled before
+    /// iOS suspends the process. Routine periodic saves should keep using
+    /// `save()` / `saveAndSync()`, which stay off the main thread (PERF-01).
+    static func saveNow(_ state: GameState) {
+        guard let data = encode(state) else { return }
+        writeLocal(data)
+        writeBackup(data)
+        if isCloudAvailable { writeCloud(data) }
+    }
+
     /// Loads the best available state: reconciles the local file and the iCloud copy
     /// (most-recently-active wins) and recovers from the backup slot if the main file
     /// is missing or unreadable. Returns `nil` only when no usable save exists.
     static func load() -> GameState? {
+        discardedIncompatibleVersion = nil
         let localState = readValid(try? Data(contentsOf: mainFileURL)) ?? recoverFromBackup()
         let cloudState = isCloudAvailable
             ? readValid(NSUbiquitousKeyValueStore.default.data(forKey: cloudKey))
             : nil
 
         guard let chosen = mostRecent(localState, cloudState) else { return nil }
+
+        // A usable state was found (local, backup, or cloud) — any old-format copy
+        // encountered along the way was superseded, not lost.
+        discardedIncompatibleVersion = nil
 
         // Make every slot consistent with the winning state, and refresh the
         // last-known-good backup from a state we just validated.
@@ -295,14 +374,14 @@ enum GameStore {
         guard let data else { return nil }
         // Read the version first so we discard intentionally, not by accident.
         let version = (try? JSONDecoder().decode(SaveEnvelope.self, from: data))?.version ?? 0
-        if version == 8 { return migrateByInjecting(defaults: ["spawnMultiplier": 1,
+        if version == 8 { return migrateByInjecting(from: 8, defaults: ["spawnMultiplier": 1,
                                                                  "cardInventory": [:],
                                                                  "starCount": 0,
                                                                  "completedAlbumIDs": [],
                                                                  "pendingCardPacks": [],
                                                                  "jokerCards": 0,
                                                                  "rareJokerCards": 0], into: data) }
-        if version == 9 { return migrateByInjecting(defaults: ["cardInventory": [:],
+        if version == 9 { return migrateByInjecting(from: 9, defaults: ["cardInventory": [:],
                                                                 "starCount": 0,
                                                                 "completedAlbumIDs": [],
                                                                 "pendingCardPacks": [],
@@ -311,23 +390,36 @@ enum GameStore {
                                                                 "pendingOutgoingTrades": [],
                                                                 "pendingIncomingTrades": [],
                                                                 "cardsSentToday": 0], into: data) }
-        if version == 10 { return migrateByInjecting(defaults: ["pendingOutgoingTrades": [],
+        if version == 10 { return migrateByInjecting(from: 10, defaults: ["pendingOutgoingTrades": [],
                                                                  "pendingIncomingTrades": [],
                                                                  "cardsSentToday": 0], into: data) }
-        if version == 11 { return migrateByInjecting(defaults: ["adsWatchedToday": 0], into: data) }
-        if version == 12 { return migrateByInjecting(defaults: ["purchasedBoardRows": 0], into: data) }
-        if version == 13 { return migrateByInjecting(defaults: [:], into: data) }   // passLastClaimDate optional — no default needed
-        if version == 14 { return migrateByInjecting(defaults: ["loyaltyClubDayIndex": 0,
+        if version == 11 { return migrateByInjecting(from: 11, defaults: ["adsWatchedToday": 0], into: data) }
+        if version == 12 { return migrateByInjecting(from: 12, defaults: ["purchasedBoardRows": 0], into: data) }
+        if version == 13 { return migrateByInjecting(from: 13, defaults: [:], into: data) }   // passLastClaimDate optional — no default needed
+        if version == 14 { return migrateByInjecting(from: 14, defaults: ["loyaltyClubDayIndex": 0,
                                                                   "loyaltyClubStreak": 0], into: data) }
-        if version == 15 { return migrateByInjecting(defaults: ["eventProgress": ["eventId": "", "coinsEarned": 0, "claimedMilestones": []]], into: data) }
-        if version == 16 { return migrateByInjecting(defaults: ["inviteProgress": ["invitesSent": 0, "claimedMilestones": []]], into: data) }
+        if version == 15 { return migrateByInjecting(from: 15, defaults: ["eventProgress": ["eventId": "", "coinsEarned": 0, "claimedMilestones": []]], into: data) }
+        if version == 16 { return migrateByInjecting(from: 16, defaults: ["inviteProgress": ["invitesSent": 0, "claimedMilestones": []]], into: data) }
         if version == 17 { return migrateV17toV18(data) }
-        if version == 18 { return migrateByInjecting(defaults: ["ambassadorQuestProgress": 0], into: data) }
-        if version == 19 { return migrateByInjecting(defaults: ["pendingMaterialLots": []], into: data) }
+        if version == 18 { return migrateByInjecting(from: 18, defaults: ["ambassadorQuestProgress": 0], into: data) }
+        if version == 19 { return migrateByInjecting(from: 19, defaults: ["pendingMaterialLots": []], into: data) }
         if version == 20 { return migrateV20toV21(data) }
         if version == 21 { return migrateV21toV22(data) }
         if version == 22 { return migrateV22toV23(data) }
         if version == 23 { return migrateV23toV24(data) }
+        if version == 24 { return migrateV24toV25(data) }
+        if version == 25 { return migrateV25toV26(data) }
+        if version == 26 { return migrateV26toV27(data) }
+        if version == 27 { return migrateV27toV28(data) }
+        if version == 28 { return migrateV28toV29(data) }
+        if version == 29 { return migrateByInjecting(from: 29, defaults: [:], into: data) }   // eventTokenWallets/progressTracks covered by additiveDefaultsSinceV8
+        if version >= 1 && version < 8 {
+            // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
+            // no sensible migration path. Record why, rather than discarding silently (QA-08).
+            print("[GameStore] discarding save from schema v\(version) — predates all migration paths (earliest supported migration starts at v8)")
+            discardedIncompatibleVersion = version
+            return nil
+        }
         guard version == currentVersion else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: data) }
         catch { assertionFailure("GameStore: decode v\(version) failed — \(error)"); return nil }
@@ -335,16 +427,285 @@ enum GameStore {
 
     /// Injects missing keys with default values, stamps the current version, and re-decodes.
     /// Used for additive schema migrations (new nullable/defaultable fields only).
-    private static func migrateByInjecting(defaults: [String: Any], into data: Data) -> GameState? {
+    private static func migrateByInjecting(from sourceVersion: Int,
+                                           defaults: [String: Any],
+                                           into data: Data) -> GameState? {
         guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         for (key, value) in defaults where json[key] == nil { json[key] = value }
-        // Always ensure the newest non-optional fields are present regardless of source version.
-        if json["ambassadorQuestProgress"] == nil { json["ambassadorQuestProgress"] = 0 }
-        if json["pendingMaterialLots"]      == nil { json["pendingMaterialLots"]      = [] }
+        return finishMigration(&json, from: sourceVersion)
+    }
+
+    /// Every field added since v8 that is **not** Optional, with the value a save
+    /// predating it should get.
+    ///
+    /// This exists because the migration table is flat, not chained: a v19 save
+    /// dispatches to exactly one function that jumps straight to `currentVersion`,
+    /// so it never passes through the v20…v26 steps that would have added their
+    /// fields. Swift's synthesized `Decodable` does **not** fall back to a
+    /// property's default value for a missing key — it throws `keyNotFound` — so
+    /// any non-Optional field not listed here makes older saves undecodable and
+    /// silently discarded. (That is why `commerce` had to be added: a genuine v24
+    /// save could not load without it.)
+    ///
+    /// Optional stored properties need no entry — `decodeIfPresent` already
+    /// yields nil for them.
+    private static var additiveDefaultsSinceV8: [String: Any] { [
+        // v10 — card packs
+        "cardInventory": [String: Int](), "starCount": 0, "completedAlbumIDs": [String](),
+        "pendingCardPacks": [String](), "jokerCards": 0, "rareJokerCards": 0,
+        // v11 — card trading
+        "pendingOutgoingTrades": [Any](), "pendingIncomingTrades": [Any](), "cardsSentToday": 0,
+        // v12–v13
+        "adsWatchedToday": 0, "purchasedBoardRows": 0,
+        // v15 — loyalty club
+        "loyaltyClubDayIndex": 0, "loyaltyClubStreak": 0,
+        // v16–v17
+        "eventProgress": ["eventId": "", "coinsEarned": 0, "claimedMilestones": [String]()],
+        "inviteProgress": ["invitesSent": 0, "claimedMilestones": [String]()],
+        // v19–v22
+        "ambassadorQuestProgress": 0, "pendingMaterialLots": [Any](),
+        "materialCounts": [String: [Int]](), "pityStates": [String: Any](),
+        // v24 — superpowers
+        "unlockedSuperpowerSpecies": [String](), "superpowerCooldownEnds": [String: Double](),
+        "lagomorphMergeCount": 0, "lastMergeTimestamp": 0.0, "equineSprintRemaining": 0.0,
+        "pouchItems": [NSNull(), NSNull()], "pouchExpiryTimestamp": 0.0,
+        // v26 — commerce
+        "commerce": ["purchaseCount": 0, "totalSpendMicros": 0,
+                     "wallEventsTotal": 0, "hasReachedFirstWall": false],
+        // v27 — economy correction
+        "deepestUnlockedTier": 0, "dogTagExchangesToday": 0,
+        "dogTagStoreSlots": [Any](),
+        "powerUpInventory": [NSNull(), NSNull(), NSNull(), NSNull(), NSNull(), NSNull()],
+        // v29 — urgent order timer/cooldown (Phase 5, Task 5.2). `urgentOrder`
+        // itself is Optional and needs no entry here.
+        "urgentOrderTimeRemaining": 0.0, "urgentOrderCooldownRemaining": 0.0,
+        // v30 — live-ops primitives (Phase 6a): token wallet + progress track state.
+        "eventTokenWallets": [String: Int](), "progressTracks": [String: Any](),
+    ] }
+
+    /// Fills in every post-v8 default the blob is missing, applies any tier-space
+    /// remap the source version predates, stamps the version, decodes.
+    /// The single exit point shared by all migration paths.
+    ///
+    /// `sourceVersion` matters because the dispatch table is flat: a v19 save jumps
+    /// straight here without passing through v20…v27. The 15→12 tier remap therefore
+    /// cannot live only in `migrateV27toV28` — every path from a pre-v28 save has to
+    /// apply it, exactly once, or those saves arrive at v28 still holding 15-tier
+    /// indices and silently point at the wrong animals.
+    private static func finishMigration(_ json: inout [String: Any],
+                                        from sourceVersion: Int) -> GameState? {
+        for (key, value) in additiveDefaultsSinceV8 where json[key] == nil { json[key] = value }
+        if sourceVersion < 28 { remapAnimalTiersForTwelveTierChains(&json) }
         json["version"] = currentVersion
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migration decode failed — \(error)"); return nil }
+    }
+
+    // MARK: v27 → v28 — 15-tier animal chains become 12-tier
+
+    /// v27 → v28: purely a tier-space remap, and the remap itself runs for every
+    /// pre-v28 source version inside `finishMigration`. Nothing else to do here.
+    private static func migrateV27toV28(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return finishMigration(&json, from: 27)
+    }
+
+    /// v28 → v29: order roles split (Phase 5, Task 5.2). Every persistent order's
+    /// `timeRemaining` key is dropped — it's no longer a field on `AdoptionOrder`
+    /// (structural, so removed rather than left to linger as unused JSON, matching
+    /// the v24→v25 precedent). The new urgent-order fields are purely additive and
+    /// come from `additiveDefaultsSinceV8` via `finishMigration`: old saves start
+    /// with `urgentOrder == nil` and `urgentOrderCooldownRemaining == 0`, which
+    /// `AdoptionBoard.ensureUrgentOrder` reads as "spawn one now."
+    private static func migrateV28toV29(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if var orders = json["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices { orders[i].removeValue(forKey: "timeRemaining") }
+            json["adoptionOrders"] = orders
+        }
+        return finishMigration(&json, from: 28)
+    }
+
+    /// Maps a stored animal tier from the old 15-tier space into the new 12-tier one.
+    ///
+    ///     old 0–8   → 0–8   (Eras 1–3, unchanged)
+    ///     old 9–11  → 8     (the dropped Era 4 collapses onto the last surviving tier)
+    ///     old 12–14 → 9–11  (Era 5 shifts down by three)
+    ///
+    /// Collapsing 9–11 downward is a demotion, chosen because mapping them upward
+    /// would collide with the shifted 12–14 range. Pre-launch this only affects
+    /// development saves.
+    static func remappedAnimalTier(_ old: Int) -> Int {
+        if old <= 8  { return max(0, old) }
+        if old <= 11 { return 8 }
+        return min(11, old - 3)
+    }
+
+    /// Rewrites every animal tier stored anywhere in a save. Sub-object, material
+    /// and tool chains have their own tier spaces and are deliberately untouched.
+    private static func remapAnimalTiersForTwelveTierChains(_ json: inout [String: Any]) {
+
+        /// A BoardItem dict, remapped in place if it belongs to an animal chain.
+        func remapItem(_ item: inout [String: Any]) {
+            guard let chainID = item["chainID"] as? String,
+                  chainID.hasPrefix("animal."),
+                  let tier = item["tier"] as? Int else { return }
+            item["tier"] = remappedAnimalTier(tier)
+        }
+
+        /// A flat `[BoardItem?]`-shaped array (inventory, power-up slots, pouch).
+        func remapItemArray(_ key: String) {
+            guard var array = json[key] as? [Any] else { return }
+            for i in array.indices {
+                guard var item = array[i] as? [String: Any] else { continue }
+                remapItem(&item)
+                array[i] = item
+            }
+            json[key] = array
+        }
+
+        // ── Board ────────────────────────────────────────────────
+        if var board = json["board"] as? [[[String: Any]]] {
+            for r in board.indices {
+                for c in board[r].indices {
+                    guard var item = board[r][c]["item"] as? [String: Any] else { continue }
+                    remapItem(&item)
+                    board[r][c]["item"] = item
+                }
+            }
+            json["board"] = board
+        }
+
+        // ── Item-bearing arrays ──────────────────────────────────
+        remapItemArray("inventory")
+        remapItemArray("powerUpInventory")   // v27
+        remapItemArray("pouchItems")         // v24 — Marsupials Pouch can hold animals
+
+        // ── Pending material lots ([[BoardItem]]) ────────────────
+        // Materials have their own tier space, but the lots are typed as BoardItem
+        // and remapItem is chain-gated, so this is safe and future-proof.
+        if var lots = json["pendingMaterialLots"] as? [[[String: Any]]] {
+            for l in lots.indices {
+                for i in lots[l].indices { remapItem(&lots[l][i]) }
+            }
+            json["pendingMaterialLots"] = lots
+        }
+
+        // ── Adoption orders: what's wanted, and what's paid out ──
+        if var orders = json["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices {
+                if let chainID = orders[i]["wantedChainID"] as? String,
+                   chainID.hasPrefix("animal."),
+                   let tier = orders[i]["wantedTier"] as? Int {
+                    orders[i]["wantedTier"] = remappedAnimalTier(tier)
+                }
+                // Phase 2 board-item rewards carry payloadID/payloadTier.
+                if var rewards = orders[i]["rewards"] as? [[String: Any]] {
+                    for r in rewards.indices {
+                        guard let payloadID = rewards[r]["payloadID"] as? String,
+                              payloadID.hasPrefix("animal."),
+                              let tier = rewards[r]["payloadTier"] as? Int else { continue }
+                        rewards[r]["payloadTier"] = remappedAnimalTier(tier)
+                    }
+                    orders[i]["rewards"] = rewards
+                }
+            }
+            json["adoptionOrders"] = orders
+        }
+
+        // ── Quest / daily-challenge goals ────────────────────────
+        // QuestGoal.reachTier encodes as {"reachTier": {"_0": "animal", "tier": N, "count": C}}
+        func remapGoals(_ key: String) {
+            guard var quests = json[key] as? [Any] else { return }
+            for i in quests.indices {
+                guard var quest = quests[i] as? [String: Any],
+                      var goal  = quest["goal"] as? [String: Any],
+                      var reach = goal["reachTier"] as? [String: Any],
+                      (reach["_0"] as? String) == "animal",
+                      let tier  = reach["tier"] as? Int else { continue }
+                reach["tier"] = remappedAnimalTier(tier)
+                goal["reachTier"] = reach
+                quest["goal"] = goal
+                quests[i] = quest
+            }
+            json[key] = quests
+        }
+        remapGoals("activeQuests")
+        remapGoals("dailyChallenges")
+
+        // ── Dog Tag store stock (v27) ────────────────────────────
+        if var slots = json["dogTagStoreSlots"] as? [[String: Any]] {
+            for i in slots.indices {
+                guard let chainID = slots[i]["chainID"] as? String,
+                      chainID.hasPrefix("animal."),
+                      let tier = slots[i]["tier"] as? Int else { continue }
+                slots[i]["tier"] = remappedAnimalTier(tier)
+            }
+            json["dogTagStoreSlots"] = slots
+        }
+
+        // ── Scalars carrying an animal tier ──────────────────────
+        if let deepest = json["deepestUnlockedTier"] as? Int {
+            json["deepestUnlockedTier"] = remappedAnimalTier(deepest)
+        }
+        // commerce.lastWallTier records which tier the player was blocked on (v26).
+        if var commerce = json["commerce"] as? [String: Any],
+           let tier = commerce["lastWallTier"] as? Int {
+            commerce["lastWallTier"] = remappedAnimalTier(tier)
+            json["commerce"] = commerce
+        }
+    }
+
+    /// v26 → v27: economy correction (Phase 2).
+    ///
+    /// `BoardItem` gains an optional `rarity` naming the effect a completed
+    /// sub-object carries. Saved top-tier sub-objects predate the roll, so they are
+    /// assigned `.speed` — the most common outcome — rather than re-rolled, which
+    /// would retroactively hand some players a rare effect they never earned.
+    ///
+    /// `deepestUnlockedTier` seeds from the deepest animal tier actually present in
+    /// the save, so existing players don't start recirculation from zero.
+    private static func migrateV26toV27(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        var deepestSeen = 0
+
+        /// Stamps Speed Burst onto a completed sub-object and tracks the deepest animal tier.
+        func patch(_ item: inout [String: Any]) {
+            guard let chainID = item["chainID"] as? String,
+                  let tier = item["tier"] as? Int else { return }
+            if chainID.hasPrefix("animal.") {
+                deepestSeen = max(deepestSeen, tier)
+            } else if chainID.hasPrefix("subobject."),
+                      tier >= subObjectTopTier,
+                      item["rarity"] == nil {
+                item["rarity"] = SubObjectRarity.speed.rawValue
+            }
+        }
+
+        if var board = json["board"] as? [[[String: Any]]] {
+            for r in board.indices {
+                for c in board[r].indices {
+                    guard var item = board[r][c]["item"] as? [String: Any] else { continue }
+                    patch(&item)
+                    board[r][c]["item"] = item
+                }
+            }
+            json["board"] = board
+        }
+
+        if var inventory = json["inventory"] as? [Any] {
+            for i in inventory.indices {
+                guard var item = inventory[i] as? [String: Any] else { continue }
+                patch(&item)
+                inventory[i] = item
+            }
+            json["inventory"] = inventory
+        }
+
+        json["deepestUnlockedTier"] = deepestSeen
+        return finishMigration(&json, from: 26)
     }
 
     /// v17 → v18 migration: animal chains shrunk from 10 tiers (0=stray … 9=ambassador)
@@ -433,13 +794,7 @@ enum GameStore {
             shiftQuestGoals(&challenges); json["dailyChallenges"] = challenges
         }
 
-        // Inject fields added after v17 that this migration path didn't previously include.
-        if json["ambassadorQuestProgress"] == nil { json["ambassadorQuestProgress"] = 0 }
-        if json["pendingMaterialLots"]      == nil { json["pendingMaterialLots"]      = [] }
-        json["version"] = currentVersion
-        guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
-        do { return try JSONDecoder().decode(GameState.self, from: patched) }
-        catch { assertionFailure("GameStore: migrateV17 decode failed — \(error)"); return nil }
+        return finishMigration(&json, from: 17)
     }
 
     /// v20 → v21: replace slot-based toolInventory with materialCounts accumulator.
@@ -482,16 +837,13 @@ enum GameStore {
         json.removeValue(forKey: "toolInventory")
         json["pendingMaterialLots"] = []          // clear mid-session queued lots
 
-        json["version"] = currentVersion
-        guard let reencoded = try? JSONSerialization.data(withJSONObject: json) else { return nil }
-        do { return try JSONDecoder().decode(GameState.self, from: reencoded) }
-        catch { assertionFailure("GameStore: migrateV20toV21 decode failed — \(error)"); return nil }
+        return finishMigration(&json, from: 20)
     }
 
     /// v21 → v22: additive migration — injects an empty pityStates dict so the field
     /// decodes cleanly on saves that predate the 15-tier chain expansion.
     private static func migrateV21toV22(_ data: Data) -> GameState? {
-        return migrateByInjecting(defaults: ["pityStates": [:]], into: data)
+        return migrateByInjecting(from: 21, defaults: ["pityStates": [:]], into: data)
     }
 
     /// v22 → v23: pityStates type changed from [String:Int] to [String:PityState].
@@ -501,15 +853,12 @@ enum GameStore {
         guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         // Overwrite (or inject) pityStates with an empty dict safe for [String: PityState].
         json["pityStates"] = [String: Any]()
-        json["version"] = currentVersion
-        guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
-        do { return try JSONDecoder().decode(GameState.self, from: patched) }
-        catch { assertionFailure("GameStore: migrateV22toV23 decode failed — \(error)"); return nil }
+        return finishMigration(&json, from: 22)
     }
 
     /// v23 → v24: adds all Superpower System fields (purely additive — all have Swift defaults).
     private static func migrateV23toV24(_ data: Data) -> GameState? {
-        return migrateByInjecting(defaults: [
+        return migrateByInjecting(from: 23, defaults: [
             "unlockedSuperpowerSpecies": [String](),
             "superpowerCooldownEnds":    [String: Double](),
             "lagomorphMergeCount":       0,
@@ -518,6 +867,52 @@ enum GameStore {
             "equineSprintRemaining":     0.0,
             "pouchItems":               [NSNull(), NSNull()],
             "pouchExpiryTimestamp":      0.0,
+        ], into: data)
+    }
+
+    /// v24 → v25: AdoptionOrder's three fixed reward fields (rewardDogTags,
+    /// rewardCoins, rewardCardPack) collapse into a single `rewards: [OrderReward]`
+    /// list (Phase 1, Task 1.1). Structural, not additive — the old keys are removed
+    /// so the field doesn't linger as unused JSON.
+    ///
+    /// `commerce` (Phase 1, Task 1.4) is a separate persisted addition landing in a
+    /// later v25→v26 migration — not touched here.
+    private static func migrateV24toV25(_ data: Data) -> GameState? {
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        if var orders = json["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices {
+                var rewards: [[String: Any]] = []
+                if let tags = orders[i]["rewardDogTags"] as? Int, tags > 0 {
+                    rewards.append(["kind": "dogTags", "amount": tags])
+                }
+                if let coins = orders[i]["rewardCoins"] as? Int, coins > 0 {
+                    rewards.append(["kind": "coins", "amount": coins])
+                }
+                // CardPackType is a String-rawValue enum with no custom encode(to:),
+                // so it encodes as a plain JSON string — verified against a real v24
+                // save (rewardCardPack: "star1"), not just the struct definition.
+                if let pack = orders[i]["rewardCardPack"] as? String {
+                    rewards.append(["kind": "cardPack", "amount": 1, "payloadID": pack])
+                }
+                orders[i]["rewards"] = rewards
+                orders[i].removeValue(forKey: "rewardDogTags")
+                orders[i].removeValue(forKey: "rewardCoins")
+                orders[i].removeValue(forKey: "rewardCardPack")
+            }
+            json["adoptionOrders"] = orders
+        }
+
+        return finishMigration(&json, from: 24)
+    }
+
+    /// v25 → v26: adds `commerce: PlayerCommerceState` (purely additive — every field
+    /// has a Swift default; only the four non-Optional fields need explicit JSON values,
+    /// since synthesized Decodable already treats Optional stored properties as absent-ok).
+    private static func migrateV25toV26(_ data: Data) -> GameState? {
+        return migrateByInjecting(from: 25, defaults: [
+            "commerce": ["purchaseCount": 0, "totalSpendMicros": 0,
+                         "wallEventsTotal": 0, "hasReachedFirstWall": false],
         ], into: data)
     }
 

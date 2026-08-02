@@ -27,6 +27,7 @@ enum ChainCategory: String, Codable, CaseIterable {
     case material    // wood / metal / cement building supplies (Phase 3)
     case subObject   // per-family 4-stage merge chain; top tier becomes a power-up consumable
     case powerUp     // power-up consumable item (drag onto spawner to apply)
+    case currency    // kibble / coin chains that spawn on the board — Phase 4
 }
 
 // ============================================================
@@ -67,11 +68,29 @@ struct BoardItem: Identifiable, Equatable, Codable {
     var chainID: ChainID
     var tier: Int
 
+    /// For completed (top-tier) sub-objects only: the effect rolled when this
+    /// item was merged into existence. `nil` for every other item, and for the
+    /// inert tier 0–2 intermediates. Optional so pre-v27 saves still decode.
+    var rarity: SubObjectRarity? = nil
+
+    /// Phase 4, Task 4.4: non-nil while this item is encased in a bubble —
+    /// the `Date.timeIntervalSince1970` it was bubbled at. `nil` for every
+    /// normal item. See `bubbleDecaySeconds` for how long it stays poppable
+    /// for full value before decaying into a lesser, auto-collectible reward.
+    var bubbledAt: Double? = nil
+
     /// The tier definition (display + values). `nil` only if a save references a
     /// chain this build doesn't know — callers treat that as an empty cell.
     var def: ChainTier? { ContentRegistry.shared.tier(chainID, tier) }
     var chain: MergeChain? { ContentRegistry.shared.chain(chainID) }
     var isTopTier: Bool { chain.map { tier >= $0.maxTier } ?? false }
+
+    /// True once a bubbled item has passed `bubbleDecaySeconds` without being
+    /// popped — it can still be collected, just for less.
+    func isBubbleDecayed(now: Double = Date().timeIntervalSince1970) -> Bool {
+        guard let bubbledAt else { return false }
+        return now - bubbledAt >= bubbleDecaySeconds
+    }
 }
 
 // ============================================================
@@ -99,6 +118,8 @@ struct ContentRegistry {
         for chain in [Self.makeWoodChain(), Self.makeMetalChain(), Self.makeCementChain(), Self.makeToolboxChain()] { register(chain) }
         // Phase 2: per-family 4-stage sub-object chains (data layer only — no drops yet).
         for species in AnimalSpecies.allCases { register(Self.makeSubObjectChain(species)) }
+        // Phase 4, Task 4.1: kibble/coin merge chains that spawn on the board.
+        for chain in [Self.makeKibbleCurrencyChain(), Self.makeCoinCurrencyChain()] { register(chain) }
     }
 
     private mutating func register(_ chain: MergeChain) {
@@ -142,6 +163,10 @@ struct ContentRegistry {
     /// Toolbox is a single-tier consumable (category .tool) awarded by quests.
     /// Double-tapping it on the board distributes random materials to the Materials tab.
     static let toolboxChainID: ChainID = "tool.toolbox"
+
+    /// Stable chain ids for the two currency chains (Phase 4, Task 4.1).
+    static let kibbleCurrencyChainID: ChainID = "currency.kibble"
+    static let coinCurrencyChainID:   ChainID = "currency.coin"
 
     /// Convenience: a random chain id from a category, drawn from a candidate list.
     static func randomChainID(in category: ChainCategory, from candidates: [ChainID]) -> ChainID? {
@@ -278,6 +303,50 @@ struct ContentRegistry {
                           displayName: "Tap to collect!", tiers: [tier])
     }
 
+    // MARK: Currency chain builders (Phase 4, Task 4.1)
+
+    /// Kibble and Coin merge chains that spawn on the board via family spawners
+    /// (`SubObjectSystem.resolveSpawnerDrop`), independent of which animal chains
+    /// are unlocked. Merge two to reach a richer tier, or tap to collect the
+    /// current tier's value immediately — the same sell-vs-order shaped tradeoff
+    /// as Phase 2c, one level down. See `kibbleCurrencyValue`/`coinCurrencyValue`
+    /// in AnimalSpecies.swift for the payout formula and its rationale.
+    private static func makeKibbleCurrencyChain() -> MergeChain {
+        let tiers: [(name: String, short: String, symbol: String, color: Color, score: Int)] = [
+            ("Kibble Scoop", "Scoop", "pawprint",         Color(red: 0.72, green: 0.58, blue: 0.38), 20),
+            ("Kibble Bowl",  "Bowl",  "pawprint.fill",    Color(red: 0.64, green: 0.50, blue: 0.30), 45),
+            ("Kibble Bag",   "Bag",   "bag.fill",         Color(red: 0.56, green: 0.42, blue: 0.24), 80),
+            ("Kibble Sack",  "Sack",  "shippingbox.fill", Color(red: 0.48, green: 0.34, blue: 0.18), 130),
+            ("Kibble Crate", "Crate", "archivebox.fill",  Color(red: 0.40, green: 0.27, blue: 0.13), 200),
+            ("Kibble Vault", "Vault", "cube.box.fill",    Color(red: 0.32, green: 0.20, blue: 0.09), 290),
+        ]
+        return MergeChain(id: kibbleCurrencyChainID, category: .currency, displayName: "Kibble",
+                          tiers: tiers.map { t in
+            ChainTier(name: t.name, shortLabel: t.short, symbol: t.symbol,
+                      color: t.color, tint: nil,
+                      badge: t.short == "Vault" ? "checkmark.seal.fill" : nil,
+                      scoreValue: t.score, xpValue: t.score / 5)
+        })
+    }
+
+    private static func makeCoinCurrencyChain() -> MergeChain {
+        let tiers: [(name: String, short: String, symbol: String, color: Color, score: Int)] = [
+            ("Copper Coin", "Copper", "circle.fill",      Color(red: 0.80, green: 0.62, blue: 0.20), 20),
+            ("Coin Stack",  "Stack",  "coin.fill",        Color(red: 0.85, green: 0.68, blue: 0.15), 45),
+            ("Coin Pouch",  "Pouch",  "bag.fill",         Color(red: 0.78, green: 0.58, blue: 0.10), 80),
+            ("Coin Purse",  "Purse",  "shippingbox.fill", Color(red: 0.68, green: 0.48, blue: 0.06), 130),
+            ("Coin Chest",  "Chest",  "archivebox.fill",  Color(red: 0.58, green: 0.40, blue: 0.04), 200),
+            ("Coin Vault",  "Vault",  "cube.box.fill",    Color(red: 0.46, green: 0.32, blue: 0.02), 290),
+        ]
+        return MergeChain(id: coinCurrencyChainID, category: .currency, displayName: "Coins",
+                          tiers: tiers.map { t in
+            ChainTier(name: t.name, shortLabel: t.short, symbol: t.symbol,
+                      color: t.color, tint: nil,
+                      badge: t.short == "Vault" ? "checkmark.seal.fill" : nil,
+                      scoreValue: t.score, xpValue: t.score / 5)
+        })
+    }
+
     // MARK: Sub-object chain builders (Phase 2)
 
     /// Builds a 4-tier sub-object chain for a species. The top tier (index 3) is a
@@ -343,11 +412,13 @@ struct ContentRegistry {
         )
     }
 
-    /// Builds a 15-tier animal chain from a species.
+    /// Builds an animal chain from a species — one tier per entry in `tierNames`
+    /// (12 as of Phase 2b).
     /// scoreValue = (index + 1) * 25, xpValue = (index + 1) * xpPerMergeBase (1-based).
-    /// Badge ("medal.fill") is on the top tier (index 14). Colors come from
-    /// QuestGoal.animalTierAppearance so all 15 tiers have distinct hues.
+    /// Badge ("medal.fill") is on the top tier. Colors come from
+    /// QuestGoal.animalTierAppearance so every tier has a distinct hue.
     private static func makeAnimalChain(_ s: AnimalSpecies) -> MergeChain {
+        let topIndex = s.tierNames.count - 1
         let tiers = s.tierNames.enumerated().map { (index, tierName) -> ChainTier in
             ChainTier(
                 name: tierName,
@@ -355,7 +426,7 @@ struct ContentRegistry {
                 symbol: s.sfSymbol,
                 color: QuestGoal.animalTierAppearance(tier: index).color,
                 tint: s.tintColor,
-                badge: index == 14 ? "medal.fill" : nil,
+                badge: index == topIndex ? "medal.fill" : nil,
                 scoreValue: (index + 1) * 25,
                 xpValue: (index + 1) * xpPerMergeBase
             )

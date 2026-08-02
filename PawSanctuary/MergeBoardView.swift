@@ -109,23 +109,13 @@ struct MergeBoardView: View {
             }
 
             if viewModel.showUnlockBanner {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        Image(systemName: "lock.open.fill").font(.system(size: 32))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("New Row Unlocked!").font(.headline).foregroundColor(.white)
-                            Text("7 more spaces are now open for rescued animals!")
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                        }
-                        Spacer()
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 0.2, green: 0.55, blue: 0.35))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 70)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                BannerView(
+                    title: "New Row Unlocked!",
+                    detail: "7 more spaces are now open for rescued animals!",
+                    background: AnyShapeStyle(Color(red: 0.2, green: 0.55, blue: 0.35)),
+                    bottomPadding: 70
+                ) {
+                    Image(systemName: "lock.open.fill").font(.system(size: 32))
                 }
             }
 
@@ -140,103 +130,65 @@ struct MergeBoardView: View {
 
             // Level-up banner — slides up from bottom
             if viewModel.showLevelUpBanner {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.yellow.opacity(0.25))
-                                .frame(width: 46, height: 46)
-                            Text("Lv.\(viewModel.playerLevel)")
-                                .font(.system(size: 13, weight: .heavy))
-                                .foregroundColor(.yellow)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(viewModel.levelUpBannerTitle)
-                                .font(.headline).foregroundColor(.white)
-                            Text(viewModel.levelUpBannerDetail)
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                        }
-                        Spacer()
+                BannerView(
+                    title: viewModel.levelUpBannerTitle,
+                    detail: viewModel.levelUpBannerDetail,
+                    background: AnyShapeStyle(LinearGradient(
+                        colors: [Color(red: 0.20, green: 0.45, blue: 0.30),
+                                 Color(red: 0.35, green: 0.60, blue: 0.40)],
+                        startPoint: .leading, endPoint: .trailing)),
+                    bottomPadding: 80
+                ) {
+                    ZStack {
+                        Circle().fill(Color.yellow.opacity(0.25)).frame(width: 46, height: 46)
+                        Text("Lv.\(viewModel.playerLevel)")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.yellow)
                     }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color(red: 0.20, green: 0.45, blue: 0.30),
-                                     Color(red: 0.35, green: 0.60, blue: 0.40)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(99)
             }
 
             // Area-built celebration banner
             if viewModel.showAreaBuiltBanner {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.72, green: 0.50, blue: 0.10).opacity(0.25))
-                                .frame(width: 46, height: 46)
-                            Image(systemName: "hammer.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(Color(red: 0.88, green: 0.68, blue: 0.15))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(viewModel.areaBuiltBannerTitle)
-                                .font(.headline).foregroundColor(.white)
-                            Text(viewModel.areaBuiltBannerDetail)
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                        }
-                        Spacer()
+                BannerView(
+                    title: viewModel.areaBuiltBannerTitle,
+                    detail: viewModel.areaBuiltBannerDetail,
+                    background: AnyShapeStyle(LinearGradient(
+                        colors: [Color(red: 0.48, green: 0.32, blue: 0.08),
+                                 Color(red: 0.65, green: 0.48, blue: 0.12)],
+                        startPoint: .leading, endPoint: .trailing)),
+                    bottomPadding: 80
+                ) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.72, green: 0.50, blue: 0.10).opacity(0.25))
+                            .frame(width: 46, height: 46)
+                        Image(systemName: "hammer.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(Color(red: 0.88, green: 0.68, blue: 0.15))
                     }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color(red: 0.48, green: 0.32, blue: 0.08),
-                                     Color(red: 0.65, green: 0.48, blue: 0.12)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(98)
             }
 
             // Superpower unlock celebration banner
             if viewModel.showSuperpowerUnlockBanner, let sp = viewModel.superpowerUnlockBannerSpecies {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.purple.opacity(0.25))
-                                .frame(width: 46, height: 46)
-                            Image(systemName: sp.superpower.sfSymbol)
-                                .font(.system(size: 22))
-                                .foregroundColor(.purple)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Superpower Unlocked!")
-                                .font(.headline).foregroundColor(.white)
-                            Text("\(sp.spawnerName): \(sp.superpower.name) — \(sp.superpower.description)")
-                                .font(.caption).foregroundColor(.white.opacity(0.85))
-                                .lineLimit(2)
-                        }
-                        Spacer()
+                BannerView(
+                    title: "Superpower Unlocked!",
+                    detail: "\(sp.spawnerName): \(sp.superpower.name) — \(sp.superpower.description)",
+                    background: AnyShapeStyle(LinearGradient(
+                        colors: [Color(red: 0.35, green: 0.10, blue: 0.55),
+                                 Color(red: 0.55, green: 0.25, blue: 0.75)],
+                        startPoint: .leading, endPoint: .trailing)),
+                    bottomPadding: 80
+                ) {
+                    ZStack {
+                        Circle().fill(Color.purple.opacity(0.25)).frame(width: 46, height: 46)
+                        Image(systemName: sp.superpower.sfSymbol)
+                            .font(.system(size: 22))
+                            .foregroundColor(.purple)
                     }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color(red: 0.35, green: 0.10, blue: 0.55),
-                                     Color(red: 0.55, green: 0.25, blue: 0.75)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 10))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 .zIndex(97)
             }
@@ -402,11 +354,16 @@ struct MergeBoardView: View {
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .sheet(item: $activeRoute) { route in routeContent(route) }
+        .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your save is from an older version of the app and could not be restored. A new game has been started.")
+        }
         .onChange(of: viewModel.showKibbleSheet) { _, show in
             if show { activeRoute = .kibbleRefill; viewModel.showKibbleSheet = false }
         }
         .onAppear {
-            storeManager.onPurchaseComplete = { viewModel.applyPurchase($0) }
+            storeManager.onPurchaseComplete = { viewModel.applyPurchase($0, priceUSD: $1) }
             viewModel.isPassActive = storeManager.isPassActive
             // Cancel stale notifications whenever the app becomes visible
             NotificationManager.shared.cancelAll()
@@ -428,12 +385,27 @@ struct MergeBoardView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .background, .inactive:
-                // Flush save
-                viewModel.persist()
+            case .background:
+                // Mark when we left, so returning to .active can credit regen
+                // that the (now-suspended) live timer missed.
+                viewModel.appDidEnterBackground()
+                // Flush save synchronously — a detached Task.detached save may never
+                // get scheduled before iOS suspends the process from here.
+                viewModel.persistNow()
                 // Schedule all re-engagement notifications
                 scheduleAllNotifications()
+            case .inactive:
+                // Transient (Control Centre, a notification banner, app switcher
+                // preview, or the moment on the way back to .active) — not the real
+                // suspension point, so an async flush is fine and avoids a
+                // synchronous main-thread encode on every one of these.
+                viewModel.appDidEnterBackground()
+                viewModel.persist()
+                scheduleAllNotifications()
             case .active:
+                // Catch up on kibble regen / producer cooldowns / adoption
+                // orders for the time spent backgrounded.
+                viewModel.appDidBecomeActive()
                 // Cancel everything — the player is here now
                 NotificationManager.shared.cancelAll()
             default:
@@ -467,12 +439,13 @@ struct MergeBoardView: View {
         // 2. Daily rewards (persistent daily — schedule once, keeps firing)
         NotificationManager.shared.scheduleDailyRewards()
 
-        // 3. Adoption order expiry warnings
-        for order in viewModel.adoptionOrders where !order.isComplete && !order.isClaimed {
+        // 3. Urgent order expiry warning — the persistent slots have no timer
+        // (Phase 5, Task 5.2), so there's exactly one order left that can expire.
+        if let urgent = viewModel.urgentOrder, !urgent.isComplete && !urgent.isClaimed {
             NotificationManager.shared.scheduleOrderExpiry(
-                orderID:       order.id.uuidString,
-                timeRemaining: order.timeRemaining,
-                summary:       order.orderDescription)
+                orderID:       urgent.id.uuidString,
+                timeRemaining: viewModel.urgentOrderTimeRemaining,
+                summary:       urgent.orderDescription)
         }
 
         // 4. Re-engagement nudge (48 hours)
@@ -569,18 +542,21 @@ struct MergeBoardView: View {
                               ? Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.12)
                               : Color(red: 0.92, green: 0.95, blue: 1.0)))
 
-                    // Shop button
-                    Button(action: { activeRoute = .shop }) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "cart.fill")
-                                .font(.system(size: 18))
-                            Text("Shop")
-                                .font(.system(size: 9, weight: .semibold))
+                    // Shop button — hidden until the D7 monetization gate flips
+                    // (Task 3.4): a fresh account sees no store push at all.
+                    if viewModel.isMonetizationUnlocked {
+                        Button(action: { activeRoute = .shop }) {
+                            VStack(spacing: 2) {
+                                Image(systemName: "cart.fill")
+                                    .font(.system(size: 18))
+                                Text("Shop")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
                     }
                 }
                 .padding(.horizontal)
@@ -687,9 +663,11 @@ struct MergeBoardView: View {
                 #endif
             }
         case .kibbleRefill:
-            KibbleRefillSheet(viewModel: viewModel)
+            KibbleRefillSheet(viewModel: viewModel, storeManager: storeManager)
         case .mergeProgression(let chainID):
             MergeProgressionView(chainID: chainID)
+        case .bubblePop(let pos):
+            BubblePopSheet(viewModel: viewModel, position: pos)
         }
     }
 
@@ -768,7 +746,13 @@ struct MergeBoardView: View {
                             }
                         }
                         .frame(width: cellSize, height: cellSize)
-                        .onTapGesture { viewModel.boardCellTapped(at: pos) }
+                        .onTapGesture {
+                            if viewModel.isActiveBubble(at: pos) {
+                                activeRoute = .bubblePop(pos)
+                            } else {
+                                viewModel.boardCellTapped(at: pos)
+                            }
+                        }
                         .gesture(
                             DragGesture(minimumDistance: 5, coordinateSpace: .global)
                                 .onChanged { v in
@@ -1111,113 +1095,40 @@ private struct PassDailyClaimView: View {
 // MARK: - KIBBLE REFILL SHEET
 // ============================================================
 
-/// Shown when a player tries to spawn without enough kibble.
-/// Offers a rewarded-ad top-up (+25, up to 4x/day) and dog-tag exchanges.
+/// The designed wall moment (Phase 3, Tasks 3.1/3.3/3.4): shown when a player
+/// tries to spawn without enough kibble. Pre-gate (D7 session-one silence)
+/// it's just the status card and the nearest unfinished order — no ad, no
+/// exchange, no bundle. Post-gate it's the full ladder: rewarded ad first
+/// (free, capped), then the Dog Tag exchange, then a paid bundle — followed
+/// by the nearest unfinished order either way, so the player leaves seeing
+/// what's still open rather than just what they bought.
 private struct KibbleRefillSheet: View {
     let viewModel: MergeBoardViewModel
+    let storeManager: StoreManager
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Current kibble status
-                    HStack(spacing: 10) {
-                        Image(systemName: "pawprint.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(Color(red: 0.28, green: 0.15, blue: 0.02))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("You're out of kibble")
-                                .font(.headline)
-                                .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
-                            Text("\(viewModel.kibble) / \(kibbleRegenCap) — refills 1 every 2 min")
-                                .font(.caption)
-                                .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
-                        }
-                        Spacer()
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 14)
-                        .fill(Color(red: 1.0, green: 0.97, blue: 0.90)))
+                    kibbleStatusCard
 
-                    // Watch Ad section
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Watch an Ad").font(.subheadline.bold())
-                            .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        if viewModel.remainingAdWatches > 0 {
-                            Button(action: {
-                                viewModel.watchRewardedAd()
-                                dismiss()
-                            }) {
-                                HStack {
-                                    Image(systemName: "play.rectangle.fill")
-                                        .font(.system(size: 16))
-                                    Text("Watch Ad for +\(viewModel.effectiveAdKibble) Kibble")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Spacer()
-                                    Text("\(viewModel.remainingAdWatches) left today")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.white.opacity(0.85))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16).padding(.vertical, 12)
-                                .background(RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(red: 0.25, green: 0.55, blue: 0.35)))
-                            }
-                        } else {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
-                                Text("No more ads available today")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.gray.opacity(0.12)))
-                        }
+                    if viewModel.isMonetizationUnlocked {
+                        watchAdSection
+                        Divider()
+                        dogTagExchangeSection
+                        Divider()
+                        KibbleRefillBundleRow(viewModel: viewModel, storeManager: storeManager)
+                    } else {
+                        Text("Kibble refills on its own — check back in a bit!")
+                            .font(.subheadline)
+                            .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
                     }
 
-                    Divider()
-
-                    // Dog Tag exchange section
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Exchange Dog Tags").font(.subheadline.bold())
-                            .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        ForEach(DogTagKibbleExchange.all, id: \.dogTagCost) { exchange in
-                            let canAfford = viewModel.dogTags >= exchange.dogTagCost
-                            Button(action: {
-                                viewModel.exchangeTagsForKibble(exchange)
-                                dismiss()
-                            }) {
-                                HStack {
-                                    Image(systemName: "tag.fill")
-                                        .font(.system(size: 14))
-                                    Text("\(exchange.dogTagCost) Dog Tags")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Spacer()
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "pawprint.fill")
-                                            .font(.system(size: 11))
-                                        Text("+\(exchange.kibbleGain) Kibble")
-                                            .font(.system(size: 14, weight: .bold))
-                                    }
-                                }
-                                .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
-                                .padding(.horizontal, 16).padding(.vertical, 12)
-                                .background(RoundedRectangle(cornerRadius: 12)
-                                    .fill(canAfford
-                                          ? Color(red: 0.20, green: 0.40, blue: 0.65)
-                                          : Color(red: 0.92, green: 0.88, blue: 0.78)))
-                            }
-                            .disabled(!canAfford)
-                        }
-                        if viewModel.dogTags == 0 {
-                            Text("Earn Dog Tags by merging animals to the Ambassador tier.")
-                                .font(.caption)
-                                .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
-                                .padding(.top, 2)
-                        }
+                    if let (order, timeText) = viewModel.nearestIncompleteOrder {
+                        nearestOrderFooter(order, timeText: timeText)
                     }
                 }
                 .padding()
@@ -1234,54 +1145,262 @@ private struct KibbleRefillSheet: View {
         }
         .presentationDetents([.medium, .large])
     }
+
+    private var kibbleStatusCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: 28))
+                .foregroundColor(Color(red: 0.28, green: 0.15, blue: 0.02))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("You're out of kibble")
+                    .font(.headline)
+                    .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                Text("\(viewModel.kibble) / \(kibbleRegenCap) — refills 1 every 2 min")
+                    .font(.caption)
+                    .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+            }
+            Spacer()
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color(red: 1.0, green: 0.97, blue: 0.90)))
+    }
+
+    @ViewBuilder
+    private var watchAdSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Watch an Ad").font(.subheadline.bold())
+                .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
+            if viewModel.remainingAdWatches > 0 {
+                Button(action: {
+                    viewModel.watchRewardedAd()
+                    dismiss()
+                }) {
+                    HStack {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 16))
+                        Text("Watch Ad for +\(viewModel.effectiveAdKibble) Kibble")
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                        Text("\(viewModel.remainingAdWatches) left today")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(red: 0.25, green: 0.55, blue: 0.35)))
+                }
+            } else {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
+                    Text("No more ads available today")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(red: 0.55, green: 0.55, blue: 0.55))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.12)))
+            }
+        }
+    }
+
+    private var dogTagExchangeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Exchange Dog Tags").font(.subheadline.bold())
+                .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
+            // One rung at a time: each exchange makes the next dearer,
+            // and the ladder resets tomorrow (Task 2.4).
+            let exchange = viewModel.currentTagExchange
+            let canAfford = viewModel.dogTags >= exchange.dogTagCost
+            Button(action: {
+                viewModel.exchangeTagsForKibble()
+                dismiss()
+            }) {
+                HStack {
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 14))
+                    Text("\(exchange.dogTagCost) Dog Tags")
+                        .font(.system(size: 14, weight: .semibold))
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 11))
+                        Text("+\(exchange.kibbleGain) Kibble")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                }
+                .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(canAfford
+                          ? Color(red: 0.20, green: 0.40, blue: 0.65)
+                          : Color(red: 0.92, green: 0.88, blue: 0.78)))
+            }
+            .disabled(!canAfford)
+            Text(exchange.isAtFlatRate
+                 ? "Today's discounts are used up — the rate is flat until tomorrow."
+                 : "Today's price. The next exchange costs more; resets tomorrow.")
+                .font(.caption)
+                .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+            if viewModel.dogTags == 0 {
+                Text("Earn Dog Tags by merging animals to the Ambassador tier.")
+                    .font(.caption)
+                    .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    private func nearestOrderFooter(_ order: AdoptionOrder, timeText: String?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: order.iconSymbol)
+                .font(.system(size: 18))
+                .foregroundColor(order.iconTint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(order.family.name) is still waiting for \(order.orderDescription)")
+                    .font(.caption.bold())
+                    .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                Text(timeText.map { "\($0) left" } ?? "Open — no rush")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 0.98, green: 0.94, blue: 0.90)))
+    }
+}
+
+/// The "bundle" rung of the Task 3.1 ladder: the Starter Bundle framed as a
+/// welcome offer before the player's first purchase (Task 3.4's first-purchase
+/// offer), the smallest Energy Pack afterward.
+private struct KibbleRefillBundleRow: View {
+    let viewModel: MergeBoardViewModel
+    let storeManager: StoreManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if viewModel.commerce.hasEverPurchased {
+                Text("Or Refill With a Bundle").font(.subheadline.bold())
+                    .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
+                if let contents = IAPProduct.energySmall.energyPackContents {
+                    EnergyPackRow(iap: .energySmall, contents: contents, storeManager: storeManager)
+                }
+            } else {
+                Label("Welcome Offer", systemImage: "gift.fill")
+                    .font(.subheadline.bold())
+                    .foregroundColor(Color(red: 0.75, green: 0.35, blue: 0.15))
+                if let product = storeManager.products.first(where: { $0.id == IAPProduct.starterBundle.rawValue }) {
+                    ShopItemRow(product: product, iap: .starterBundle, storeManager: storeManager)
+                } else {
+                    ShopItemPreviewRow(product: .starterBundle)
+                }
+            }
+        }
+    }
 }
 
 // ============================================================
-// MARK: - WATCH AD STRIP (legacy — kept for potential reuse)
+// MARK: - BUBBLE POP SHEET
 // ============================================================
 
-private struct WatchAdStripView: View {
+/// Shown when the player taps a still-active bubble (Phase 4, Task 4.4).
+/// "Converts a moment of success into a decision at the instant the player
+/// feels good" (Merge2_Reference_Blueprint.md §23) — pop now for the full
+/// item via ad or Dog Tags, or close this and let it decay into a smaller,
+/// guaranteed coin reward later.
+private struct BubblePopSheet: View {
     let viewModel: MergeBoardViewModel
+    let position: GridPosition
+    @Environment(\.dismiss) private var dismiss
+
+    private var item: BoardItem? { viewModel.board[position.row][position.col].item }
+
+    private var decayedValue: Int {
+        guard let item else { return 0 }
+        return max(1, Int((Double(animalSellValue(tier: item.tier)) * bubbleDecayFloor).rounded()))
+    }
 
     var body: some View {
-        Button(action: { viewModel.watchRewardedAd() }) {
-            HStack(spacing: 8) {
-                if viewModel.isWatchingAd {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.8)
-                    Text("Loading ad...")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                } else {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white)
-                    Text("Watch Ad")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                    HStack(spacing: 2) {
-                        Image(systemName: "pawprint.fill")
-                            .font(.system(size: 10))
-                        Text("+\(adKibbleReward)")
-                            .font(.system(size: 12, weight: .bold))
+        NavigationStack {
+            VStack(spacing: 20) {
+                if let item, let def = item.def {
+                    VStack(spacing: 10) {
+                        ZStack {
+                            Circle().fill(Color.cyan.opacity(0.18)).frame(width: 84, height: 84)
+                            Image(systemName: def.symbol)
+                                .font(.system(size: 34))
+                                .foregroundColor(def.tint ?? def.color)
+                        }
+                        Text("🫧 Bubbled: \(def.name)")
+                            .font(.headline)
+                        Text("Pop it now for the full reward, or leave it — it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes.")
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
                     }
-                    .foregroundColor(.white.opacity(0.9))
-                    Spacer()
-                    Text("\(viewModel.remainingAdWatches) left today")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.8))
+
+                    VStack(spacing: 10) {
+                        if viewModel.remainingAdWatches > 0 {
+                            Button(action: {
+                                viewModel.popBubbleWithAd(at: position)
+                                dismiss()
+                            }) {
+                                HStack {
+                                    Image(systemName: "play.rectangle.fill")
+                                    Text("Watch Ad to Pop")
+                                    Spacer()
+                                    Text("\(viewModel.remainingAdWatches) left today")
+                                        .font(.caption).foregroundColor(.white.opacity(0.85))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16).padding(.vertical, 12)
+                                .background(RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(red: 0.25, green: 0.55, blue: 0.35)))
+                            }
+                        }
+
+                        let cost = bubblePopDogTagCost(tier: item.tier)
+                        let canAfford = viewModel.dogTags >= cost
+                        Button(action: {
+                            viewModel.popBubbleWithDogTags(at: position)
+                            dismiss()
+                        }) {
+                            HStack {
+                                Image(systemName: "tag.fill")
+                                Text("Pop with \(cost) Dog Tags")
+                                Spacer()
+                            }
+                            .foregroundColor(canAfford ? .white : Color(red: 0.50, green: 0.45, blue: 0.40))
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(canAfford
+                                      ? Color(red: 0.20, green: 0.40, blue: 0.65)
+                                      : Color(red: 0.92, green: 0.88, blue: 0.78)))
+                        }
+                        .disabled(!canAfford)
+                    }
+                    .padding(.horizontal)
+                } else {
+                    Text("This bubble is gone.").foregroundColor(.secondary)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 10)
-                .fill(viewModel.isWatchingAd
-                      ? Color(red: 0.45, green: 0.45, blue: 0.45)
-                      : Color(red: 0.25, green: 0.55, blue: 0.35)))
+            .padding()
+            .navigationTitle("Bubble")
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Not Now") { dismiss() }
+                }
+            }
+            #endif
         }
-        .disabled(viewModel.isWatchingAd)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isWatchingAd)
+        .presentationDetents([.medium])
     }
 }
 
@@ -1291,8 +1410,8 @@ private struct WatchAdStripView: View {
 
 /// Cycles the global spawn multiplier (1X → 2X → 4X → 8X → 1X).
 /// Higher tiers unlock at player levels 5 / 10 / 20.
-/// Each tap of a board animal-spawner costs `spawnMultiplier` kibble
-/// and produces a piece at tier `spawnMultiplier - 1`.
+/// The multiplier selects the tier produced (1/2/4/8 → tier 0/1/2/3); each tap
+/// costs `2^tier` kibble, which is energy-neutral against merging it by hand.
 private struct SpawnMultiplierButton: View {
     let viewModel: MergeBoardViewModel
 
@@ -1355,7 +1474,11 @@ private struct SpawnMultiplierButton: View {
 // ============================================================
 
 /// Appears in the bottom bar when an animal cell is selected.
-/// Tapping sells the animal for coins scaled to its merge tier.
+///
+/// Shows both halves of the Phase 2c decision: what selling pays now, and what an
+/// adoption order would pay for the same animal. Selling is always available but
+/// always worse (~2.4×), and a choice the player cannot see is not a choice —
+/// before this, only the sell price was on screen.
 private struct SellAnimalButton: View {
     let viewModel: MergeBoardViewModel
 
@@ -1366,29 +1489,36 @@ private struct SellAnimalButton: View {
         return viewModel.board[pos.row][pos.col].item
     }
 
+    private let sellTint = Color(red: 0.55, green: 0.35, blue: 0.02)
+
     var body: some View {
         if let item = selectedItem {
-            let value = viewModel.sellValue(forTier: item.tier)
+            let value      = viewModel.sellValue(forTier: item.tier)
+            let orderValue = viewModel.orderValue(forTier: item.tier)
             Button(action: { viewModel.sellSelectedAnimal() }) {
                 VStack(spacing: 3) {
                     ZStack {
                         Circle()
-                            .fill(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.18))
+                            .fill(sellTint.opacity(0.18))
                             .frame(width: 38, height: 38)
                         Image(systemName: "dollarsign.circle.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
+                            .foregroundColor(sellTint)
                     }
                     Text("Sell")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.8))
+                        .foregroundColor(sellTint.opacity(0.8))
                     Text("+\(value)")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
+                    // The road not taken: what an order would pay for this animal.
+                    Text("order \(orderValue)")
+                        .font(.system(size: 7, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
                 .frame(width: 70).padding(.vertical, 8)
                 .background(RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(red: 0.55, green: 0.35, blue: 0.02).opacity(0.10)))
+                    .fill(sellTint.opacity(0.10)))
             }
         }
     }
@@ -1403,6 +1533,7 @@ private enum SheetRoute: Identifiable, Equatable {
     case task(TaskSheet)
     case kibbleRefill
     case mergeProgression(String)
+    case bubblePop(GridPosition)
 
     var id: String {
         switch self {
@@ -1410,6 +1541,7 @@ private enum SheetRoute: Identifiable, Equatable {
         case .task(let t):                return "task-\(t.rawValue)"
         case .kibbleRefill:               return "kibbleRefill"
         case .mergeProgression(let cid):  return "progression-\(cid)"
+        case .bubblePop(let pos):         return "bubble-\(pos.row)-\(pos.col)"
         }
     }
 }

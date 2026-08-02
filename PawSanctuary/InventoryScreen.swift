@@ -465,13 +465,15 @@ struct InventoryScreenView: View {
         }
     }
 
+    /// Appearance is driven by the effect rolled onto the item when it was
+    /// completed (Task 2.2), not by its tier.
     private func powerUpAppearance(for item: BoardItem?) -> (icon: String, label: String, tint: Color) {
-        guard let item else { return ("", "", .clear) }
-        switch item.tier {
-        case 0: return ("bolt.circle.fill",          "Speed Burst",       Color(red: 0.90, green: 0.72, blue: 0.05))
-        case 1: return ("map.fill",                  "Map Supplies",      Color(red: 0.20, green: 0.65, blue: 0.35))
-        case 2: return ("arrow.clockwise.circle.fill","Spawner Refill",   Color(red: 0.25, green: 0.50, blue: 0.88))
-        default: return ("star.circle.fill",         "High-Tier Drop",   Color(red: 0.60, green: 0.20, blue: 0.88))
+        guard let item, let rarity = item.rarity else { return ("", "", .clear) }
+        switch rarity {
+        case .speed:          return ("bolt.circle.fill",  "Speed Burst",    Color(red: 0.90, green: 0.72, blue: 0.05))
+        case .mapSupplies:    return ("map.fill",           "Map Supplies",   Color(red: 0.20, green: 0.65, blue: 0.35))
+        case .boardItemGrant: return ("shippingbox.fill",   "Board Item",     Color(red: 0.25, green: 0.50, blue: 0.88))
+        case .highTierDrop:   return ("star.circle.fill",   "High-Tier Drop", Color(red: 0.60, green: 0.20, blue: 0.88))
         }
     }
 
