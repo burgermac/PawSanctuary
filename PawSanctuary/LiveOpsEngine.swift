@@ -192,6 +192,19 @@ final class ProgressTrack: ProgressTracking {
         }
     }
 
+    /// Whether `milestone`'s reward on `lane` has already been claimed. Not
+    /// part of `ProgressTracking` — `claimable`'s OR-combined design (the free
+    /// lane counts regardless of paid-lane state) can answer "is *something*
+    /// claimable here" but can't disentangle which lane once both a UI needs
+    /// to render simultaneously (Phase 6b, Pass — two lanes on screen at
+    /// once, specs/Spec_Phase6b_Pass.md §3.5), since OR isn't invertible: if
+    /// the free lane is still available, `claimable(paidLaneUnlocked: true)`
+    /// reads `true` whether or not the paid lane specifically is claimed.
+    func isClaimed(trackID: String, milestone: Int, paidLane: Bool) -> Bool {
+        let state = states[trackID] ?? TrackState()
+        return paidLane ? state.claimedPaid.contains(milestone) : state.claimedFree.contains(milestone)
+    }
+
     // MARK: Persistence
 
     func restore(from s: GameState) {

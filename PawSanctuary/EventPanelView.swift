@@ -9,8 +9,16 @@
 //  the old EventMilestone/EventProgress path is left inert, not deleted (see
 //  specs/Spec_Phase6b_MilestoneTrack.md §3.6).
 //
+//  Phase 6b, Pass (specs/Spec_Phase6b_Pass.md §3.5): a track whose milestones
+//  carry paidRewards renders a second, paid lane per row — locked behind an
+//  Event Pass purchase until viewModel.passUnlockedEventIDs contains the
+//  event's ID. A pure milestone track (empty paidRewards everywhere) renders
+//  exactly as before; hasPaidLane is derived from the milestone data itself,
+//  not a separate EventDefinition flag, so it can't drift out of sync with it.
+//
 
 import SwiftUI
+import StoreKit
 
 // ============================================================
 // MARK: - SHEET VIEW
@@ -19,10 +27,23 @@ import SwiftUI
 struct EventSheetView: View {
     let viewModel: MergeBoardViewModel
     let event: EventDefinition
+    let storeManager: StoreManager
     @Environment(\.dismiss) private var dismiss
 
     private var milestones: [TrackMilestone] {
         ProgressTrackRegistry.tracks[event.id] ?? []
+    }
+
+    /// Derived from the milestone data itself rather than a separate
+    /// `EventDefinition` field — see the file-header note above.
+    private var hasPaidLane: Bool {
+        milestones.contains { !$0.paidRewards.isEmpty }
+    }
+    private var isPaidLaneUnlocked: Bool {
+        viewModel.passUnlockedEventIDs.contains(event.id)
+    }
+    private var eventPassProduct: Product? {
+        storeManager.products.first { $0.id == IAPProduct.eventPass.rawValue }
     }
 
     var body: some View {
@@ -31,6 +52,9 @@ struct EventSheetView: View {
                 VStack(spacing: 20) {
                     header
                     progressSection
+                    if hasPaidLane && !isPaidLaneUnlocked {
+                        passUnlockSection
+                    }
                     milestonesSection
                 }
                 .padding(24)
@@ -123,6 +147,37 @@ struct EventSheetView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.45)))
     }
 
+    /// One purchase for the whole event, not per-milestone — buying unlocks
+    /// every paid-lane reward, including milestones already reached, per
+    /// `ProgressTrack.claimable`'s existing retroactive behavior.
+    private var passUnlockSection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "star.circle.fill")
+                .font(.system(size: 22))
+                .foregroundColor(event.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Event Pass")
+                    .font(.subheadline.bold())
+                    .foregroundColor(event.accentColor)
+                Text("Unlock the paid rewards lane below — including milestones you've already reached.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            if let product = eventPassProduct {
+                Button(action: { Task { await storeManager.purchase(product) } }) {
+                    Text(product.displayPrice)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(event.accentColor))
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.45)))
+    }
+
     private var milestonesSection: some View {
         VStack(spacing: 10) {
             ForEach(milestones, id: \.index) { milestone in
@@ -159,61 +214,128 @@ private struct MilestoneRowView: View {
     }
     private var isClaimed: Bool { isReached && !canClaim }
 
-    var body: some View {
-        HStack(spacing: 12) {
-            // Tier badge
-            ZStack {
-                Circle()
-                    .fill(isClaimed ? Color.green.opacity(0.8)
-                          : isReached ? event.accentColor
-                          : Color.gray.opacity(0.3))
-                    .frame(width: 36, height: 36)
-                if isClaimed {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                } else {
-                    Text("\(milestone.index)")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(isReached ? .white : .secondary)
-                }
-            }
+    /// Whether *this milestone* carries a paid reward — derived per-row from
+    /// the data rather than the track-wide `EventSheetView.hasPaidLane`, so a
+    /// track that mixes paid and free-only milestones (not expected today,
+    /// but not precluded by the data model) degrades gracefully row by row.
+    private var hasPaidLane: Bool { !milestone.paidRewards.isEmpty }
+    private var isPaidLaneUnlocked: Bool { viewModel.passUnlockedEventIDs.contains(event.id) }
 
-            // Reward description
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(milestone.threshold) coins")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                HStack(spacing: 8) {
-                    ForEach(Array(milestone.freeRewards.enumerated()), id: \.offset) { _, reward in
-                        rewardPill(reward)
+    /// `claimable`'s free/paid OR-combination can't answer "is specifically
+    /// the paid lane claimed" once both lanes render at once (see
+    /// `ProgressTrack.isClaimed`'s doc comment) — the paid lane's state is
+    /// queried directly instead, unlike the free lane's `canClaim`/`isClaimed`
+    /// above, which are left exactly as they were before this task.
+    private var paidIsClaimed: Bool {
+        viewModel.progressTrack.isClaimed(trackID: event.id, milestone: milestone.index, paidLane: true)
+    }
+    private var paidCanClaim: Bool {
+        isPaidLaneUnlocked && isReached && !paidIsClaimed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: hasPaidLane ? 10 : 0) {
+            HStack(spacing: 12) {
+                // Tier badge — free-lane state only, unchanged from before this task.
+                ZStack {
+                    Circle()
+                        .fill(isClaimed ? Color.green.opacity(0.8)
+                              : isReached ? event.accentColor
+                              : Color.gray.opacity(0.3))
+                        .frame(width: 36, height: 36)
+                    if isClaimed {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                    } else {
+                        Text("\(milestone.index)")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(isReached ? .white : .secondary)
                     }
                 }
+
+                // Free-lane reward description
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(milestone.threshold) coins")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(Array(milestone.freeRewards.enumerated()), id: \.offset) { _, reward in
+                            rewardPill(reward)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Free-lane action
+                if isClaimed {
+                    Text("Claimed")
+                        .font(.caption.bold())
+                        .foregroundColor(.green)
+                } else if canClaim {
+                    Button(action: {
+                        viewModel.claimTrackMilestone(trackID: event.id, milestone: milestone.index, paidLane: false)
+                    }) {
+                        Text("Claim!")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 18).padding(.vertical, 9)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(event.accentColor))
+                    }
+                } else {
+                    Text("\(milestone.threshold - viewModel.progressTrack.progress(trackID: event.id)) to go")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 60)
+                }
             }
 
-            Spacer()
+            if hasPaidLane {
+                Divider().overlay(event.accentColor.opacity(0.25))
+                HStack(spacing: 12) {
+                    Image(systemName: "star.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(isPaidLaneUnlocked ? event.accentColor : .secondary)
+                        .frame(width: 36)
 
-            // Action
-            if isClaimed {
-                Text("Claimed")
-                    .font(.caption.bold())
-                    .foregroundColor(.green)
-            } else if canClaim {
-                Button(action: {
-                    viewModel.claimTrackMilestone(trackID: event.id, milestone: milestone.index, paidLane: false)
-                }) {
-                    Text("Claim!")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 18).padding(.vertical, 9)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(event.accentColor))
+                    HStack(spacing: 8) {
+                        ForEach(Array(milestone.paidRewards.enumerated()), id: \.offset) { _, reward in
+                            rewardPill(reward)
+                                .opacity(isPaidLaneUnlocked ? 1.0 : 0.4)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Paid-lane action
+                    if !isPaidLaneUnlocked {
+                        Image(systemName: "lock.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else if paidIsClaimed {
+                        Text("Claimed")
+                            .font(.caption.bold())
+                            .foregroundColor(.green)
+                    } else if paidCanClaim {
+                        Button(action: {
+                            viewModel.claimTrackMilestone(trackID: event.id, milestone: milestone.index, paidLane: true)
+                        }) {
+                            Text("Claim!")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 18).padding(.vertical, 9)
+                                .background(RoundedRectangle(cornerRadius: 12).fill(event.accentColor))
+                        }
+                    } else {
+                        Text("\(milestone.threshold - viewModel.progressTrack.progress(trackID: event.id)) to go")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 60)
+                    }
                 }
-            } else {
-                Text("\(milestone.threshold - viewModel.progressTrack.progress(trackID: event.id)) to go")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 60)
             }
         }
         .padding(12)
@@ -225,10 +347,10 @@ private struct MilestoneRowView: View {
         )
     }
 
-    /// Only the reward kinds a milestone track actually pays today (kibble,
-    /// dog tags — Spec_Phase6b_MilestoneTrack.md §4) get a dedicated pill;
-    /// anything else renders as a plain amount rather than guessing an icon
-    /// for a kind this track doesn't use yet.
+    /// Kibble, dog tags (Spec_Phase6b_MilestoneTrack.md §4), and card packs
+    /// (Spec_Phase6b_Pass.md §4, the paid lane's hero reward) get a dedicated
+    /// pill; anything else renders as a plain amount rather than guessing an
+    /// icon for a kind neither track uses yet.
     @ViewBuilder
     private func rewardPill(_ reward: OrderReward) -> some View {
         switch reward.kind {
@@ -240,6 +362,16 @@ private struct MilestoneRowView: View {
             Label("+\(reward.amount) Tags", systemImage: "tag.fill")
                 .font(.subheadline.bold())
                 .foregroundColor(.blue)
+        case .cardPack:
+            if let raw = reward.payloadID, let pack = CardPackType(rawValue: raw) {
+                Label(pack.displayName, systemImage: pack.sfSymbol)
+                    .font(.subheadline.bold())
+                    .foregroundColor(pack.accentColor)
+            } else {
+                Text("+\(reward.amount)")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.secondary)
+            }
         default:
             Text("+\(reward.amount)")
                 .font(.subheadline.bold())
