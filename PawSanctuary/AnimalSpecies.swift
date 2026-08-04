@@ -775,6 +775,11 @@ enum IAPProduct: String, CaseIterable {
     case dogTagsLarge  = "com.pawsanctuary.dogtags.large"
     case starterBundle = "com.pawsanctuary.bundle.starter"
     case sanctuaryPass = "com.pawsanctuary.pass.monthly"
+    /// Unlocks the paid lane of whichever event is currently active (Phase 6b,
+    /// Pass). Deliberately not named/branded like `sanctuaryPass` — that's a
+    /// permanent, recurring subscription; this is a per-event, one-time
+    /// consumable unlock. See specs/Spec_Phase6b_Pass.md §0/§3.3.
+    case eventPass = "com.pawsanctuary.eventpass"
     // Energy Packs — bundle of kibble + dog tags + spawner + card pack
     case energySmall  = "com.pawsanctuary.energy.small"    // ~$0.99
     case energyMedium = "com.pawsanctuary.energy.medium"   // ~$2.99
@@ -791,6 +796,7 @@ enum IAPProduct: String, CaseIterable {
         case .dogTagsLarge:  return "Dog Tag Jackpot"
         case .starterBundle: return "Sanctuary Starter Pack"
         case .sanctuaryPass: return "Sanctuary Pass (Monthly)"
+        case .eventPass:     return "Event Pass"
         case .energySmall:   return "Small Energy Pack"
         case .energyMedium:  return "Medium Energy Pack"
         case .energyLarge:   return "Large Energy Pack"
@@ -803,6 +809,7 @@ enum IAPProduct: String, CaseIterable {
         case .dogTagsSmall, .dogTagsMedium, .dogTagsLarge: return "tag.fill"
         case .starterBundle:                               return "gift.fill"
         case .sanctuaryPass:                               return "medal.fill"
+        case .eventPass:                                   return "star.circle.fill"
         case .energySmall, .energyMedium,
              .energyLarge, .energyXL:                     return "bolt.circle.fill"
         }

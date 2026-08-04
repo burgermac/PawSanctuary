@@ -906,6 +906,30 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.progressTracks, state.progressTracks)
     }
 
+    // MARK: v30 → v31 (Phase 6b, Event Pass paid-lane unlock)
+
+    func testV30toV31MigrationInjectsEmptyPassUnlockState() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "passUnlockedEventIDs")
+        obj["version"] = 30
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v30 save should migrate to v31")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.passUnlockedEventIDs.isEmpty)
+    }
+
+    /// A fresh v31 save with real data round-trips exactly — not just the
+    /// migration-from-older-save path above.
+    func testPassUnlockedEventIDsRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.passUnlockedEventIDs = ["adoption_drive_aug2026"]
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertEqual(decoded.passUnlockedEventIDs, state.passUnlockedEventIDs)
+    }
+
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
     /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
     func testEveryMigratedTierResolvesInTheRegistry() throws {

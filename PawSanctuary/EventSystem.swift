@@ -133,6 +133,29 @@ enum EventRegistry {
                 Color(red: 0.70, green: 0.90, blue: 0.88),
             ]
         ),
+        // Phase 6b, Pass screen-verification content — a continuous 30-day
+        // track (per D5's second cadence clause) proving the two-lane,
+        // paid-unlock flow end to end. Starts the instant Adoption Drive goes
+        // inactive (endDate above is exclusive) so the two never overlap
+        // under the current single-active-event model — see
+        // specs/Spec_Phase6b_Pass.md §0. Real milestone data (both lanes)
+        // lives in ProgressTrackRegistry.tracks, not here — `milestones: []`
+        // is correct and intentional, same posture as Adoption Drive above.
+        // NOT the real 6c rolling calendar.
+        EventDefinition(
+            id: "founders_circle_aug2026",
+            name: "Founders' Circle",
+            tagline: "A season of rewards for the sanctuary's founding rescuers.",
+            startDate: date("2026-08-05"),
+            endDate:   date("2026-09-04"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
@@ -141,11 +164,15 @@ enum EventRegistry {
 }
 
 // ============================================================
-// MARK: - MILESTONE TRACK RIDER (Phase 6b)
+// MARK: - EVENT TOKEN RIDER (Phase 6b)
 // ============================================================
 
 /// Attaches an `.eventToken` reward to a fraction of newly-generated orders
-/// while `eventID`'s event is active — the faucet for its progress track.
+/// while `eventID`'s event is active — the faucet for any track-based event
+/// type (Milestone track, Pass). Generic: nothing about this class is
+/// milestone-specific, only its original name was (renamed from
+/// `MilestoneTrackRiderProvider` in specs/Spec_Phase6b_Pass.md §3.1 so the
+/// Pass event type could reuse it instead of a near-duplicate class).
 /// Registered/unregistered by `MergeBoardViewModel.checkEventLifecycle()` as
 /// the active event changes; never constructed directly by UI code.
 ///
@@ -153,7 +180,7 @@ enum EventRegistry {
 /// derived from a model — `riderFrequency` mirrors Phase 2's `.boardItem`
 /// recirculation rider, the closest existing precedent.
 @MainActor
-final class MilestoneTrackRiderProvider: OrderRewardProvider {
+final class EventTokenRiderProvider: OrderRewardProvider {
     let eventID: String
     let tokensPerRider: Int
     let riderFrequency: Double

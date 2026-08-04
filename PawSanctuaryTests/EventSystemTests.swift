@@ -10,17 +10,17 @@ import XCTest
 @testable import PawSanctuary
 
 @MainActor
-final class MilestoneTrackRiderProviderTests: XCTestCase {
+final class EventTokenRiderProviderTests: XCTestCase {
 
     func testRidersCarryTheDeclaredEventTokenAndAmount() {
-        let provider = MilestoneTrackRiderProvider(eventID: "test_event", tokensPerRider: 20,
-                                                    riderFrequency: 1.0)   // always fires
+        let provider = EventTokenRiderProvider(eventID: "test_event", tokensPerRider: 20,
+                                                riderFrequency: 1.0)   // always fires
         let riders = provider.riders(playerLevel: 1)
         XCTAssertEqual(riders, [OrderReward(kind: .eventToken, amount: 20, payloadID: "test_event")])
     }
 
     func testNeverFiresWhenFrequencyIsZero() {
-        let provider = MilestoneTrackRiderProvider(eventID: "test_event", riderFrequency: 0)
+        let provider = EventTokenRiderProvider(eventID: "test_event", riderFrequency: 0)
         for _ in 0..<100 {
             XCTAssertEqual(provider.riders(playerLevel: 1), [])
         }
@@ -30,7 +30,7 @@ final class MilestoneTrackRiderProviderTests: XCTestCase {
     /// distribution test (LiveOpsEngineTests.swift) -- same no-injected-RNG
     /// convention, so this is inherently probabilistic.
     func testRiderFrequencyMatchesTheDeclaredRate() {
-        let provider = MilestoneTrackRiderProvider(eventID: "test_event", riderFrequency: 0.33)
+        let provider = EventTokenRiderProvider(eventID: "test_event", riderFrequency: 0.33)
         let trials = 20_000
         var fired = 0
         for _ in 0..<trials {

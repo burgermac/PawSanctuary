@@ -154,12 +154,16 @@ class MergeBoardViewModel {
     // Events
     var eventProgress: EventProgress = EventProgress()
 
+    /// Event IDs whose Event Pass paid lane has been purchased (Phase 6b,
+    /// Pass). Per-event, not global. See specs/Spec_Phase6b_Pass.md §3.2.
+    var passUnlockedEventIDs: Set<String> = []
+
     var activeEvent: EventDefinition? { EventRegistry.currentEvent }
 
     /// The rider provider currently registered for the live event, if any —
     /// tracked so `checkEventLifecycle()` can unregister it by identity when
     /// the event changes or ends. Not persisted; re-derived every launch.
-    private var activeMilestoneRiderProvider: MilestoneTrackRiderProvider?
+    private var activeEventRiderProvider: EventTokenRiderProvider?
 
     // Invite-a-friend
     var inviteProgress: InviteProgress = InviteProgress()
@@ -897,6 +901,7 @@ class MergeBoardViewModel {
         s.pouchItems                = pouchItems
         s.pouchExpiryTimestamp      = pouchExpiryTimestamp
         s.commerce                  = commerce
+        s.passUnlockedEventIDs      = passUnlockedEventIDs
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -966,6 +971,7 @@ class MergeBoardViewModel {
         pouchItems                = s.pouchItems
         pouchExpiryTimestamp      = s.pouchExpiryTimestamp
         commerce                  = s.commerce
+        passUnlockedEventIDs      = s.passUnlockedEventIDs
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -2936,24 +2942,34 @@ class MergeBoardViewModel {
     /// silently accepted).
     func checkEventLifecycle() {
         let currentID = EventRegistry.currentEvent?.id
-        guard activeMilestoneRiderProvider?.eventID != currentID else { return }
-        if let old = activeMilestoneRiderProvider {
+        guard activeEventRiderProvider?.eventID != currentID else { return }
+        if let old = activeEventRiderProvider {
             OrderRewardRegistry.unregister(old)
-            activeMilestoneRiderProvider = nil
+            activeEventRiderProvider = nil
         }
         if let currentID {
-            let provider = MilestoneTrackRiderProvider(eventID: currentID)
+            let provider = EventTokenRiderProvider(eventID: currentID)
             OrderRewardRegistry.register(provider)
-            activeMilestoneRiderProvider = provider
+            activeEventRiderProvider = provider
         }
     }
 
-    /// Claims a milestone-track reward. Free lane only — a pure milestone
-    /// track has no paid lane; that's the Pass event type's differentiator
-    /// (Spec_Phase6b_MilestoneTrack.md §2). No-ops (via `ProgressTrack.claim`'s
-    /// own guards) if the milestone isn't reached or is already claimed.
-    func claimMilestoneTrack(trackID: String, milestone: Int) {
-        let rewards = progressTrack.claim(trackID: trackID, milestone: milestone, paidLane: false)
+    /// Claims a track-milestone reward, free or paid lane (Phase 6b, Pass —
+    /// generalized from the Milestone track's free-lane-only
+    /// `claimMilestoneTrack`, see specs/Spec_Phase6b_Pass.md §3.4). No-ops
+    /// (via `ProgressTrack.claim`'s own guards) if the milestone isn't reached
+    /// or is already claimed.
+    ///
+    /// The `passUnlockedEventIDs` guard is defense-in-depth, not the primary
+    /// gate — `EventSheetView` shouldn't offer a paid-lane claim button before
+    /// purchase, but `ProgressTrack.claim` itself has no concept of
+    /// "unlocked," only "claimed," so this is the one place that actually
+    /// enforces it.
+    func claimTrackMilestone(trackID: String, milestone: Int, paidLane: Bool) {
+        if paidLane {
+            guard passUnlockedEventIDs.contains(trackID) else { return }
+        }
+        let rewards = progressTrack.claim(trackID: trackID, milestone: milestone, paidLane: paidLane)
         guard !rewards.isEmpty else { return }
         applyRewards(rewards)
         persist()
@@ -3084,6 +3100,13 @@ class MergeBoardViewModel {
         if product == .sanctuaryPass {
             isPassActive = true
             claimPassDaily()
+        }
+        if product == .eventPass, let eventID = activeEvent?.id {
+            // Unlocks whichever event is live at purchase time — correct under
+            // the current single-active-event model (specs/Spec_Phase6b_Pass.md
+            // §0). No active event -> activeEvent is nil -> safe no-op; the
+            // storefront must never offer this purchase out of context (§3.3).
+            passUnlockedEventIDs.insert(eventID)
         }
         // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
         //

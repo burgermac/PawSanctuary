@@ -437,8 +437,11 @@ struct ShopItemRow: View {
     let iap: IAPProduct
     var storeManager: StoreManager
     var body: some View {
-        // Energy packs are shown in the dedicated EnergyPackShopSection — skip here
-        if iap.energyPackContents != nil { EmptyView() } else {
+        // Energy packs are shown in the dedicated EnergyPackShopSection — skip here.
+        // Event Pass is purchasable only from the active event's own sheet
+        // (EventSheetView) — out of context here there's no event to attach the
+        // purchase to (specs/Spec_Phase6b_Pass.md §3.3).
+        if iap.energyPackContents != nil || iap == .eventPass { EmptyView() } else {
         HStack {
             Image(systemName: iap.icon).font(.title2)
             VStack(alignment: .leading, spacing: 2) {

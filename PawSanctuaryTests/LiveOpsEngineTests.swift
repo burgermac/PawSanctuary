@@ -258,6 +258,28 @@ final class ProgressTrackTests: XCTestCase {
         XCTAssertEqual(captured.progressTracks["t"]?.progress, 20)
         XCTAssertEqual(captured.progressTracks["t"]?.claimedFree, [0])
     }
+
+    /// Regression for the OR-combined-ness of `claimable`: with the free lane
+    /// still available, `claimable(paidLaneUnlocked: true)` reads `true`
+    /// regardless of the paid lane's own state — `isClaimed` has to track
+    /// each lane independently instead.
+    func testIsClaimedTracksLanesIndependently() {
+        let track = makeTrack()
+        track.advance(trackID: "t", by: 10)
+
+        XCTAssertFalse(track.isClaimed(trackID: "t", milestone: 0, paidLane: false))
+        XCTAssertFalse(track.isClaimed(trackID: "t", milestone: 0, paidLane: true))
+
+        _ = track.claim(trackID: "t", milestone: 0, paidLane: true)
+        XCTAssertFalse(track.isClaimed(trackID: "t", milestone: 0, paidLane: false),
+                       "claiming the paid lane must not mark the free lane claimed")
+        XCTAssertTrue(track.isClaimed(trackID: "t", milestone: 0, paidLane: true))
+        XCTAssertEqual(track.claimable(trackID: "t", paidLaneUnlocked: true).map(\.index), [0],
+                       "free lane still available -> claimable(paidLaneUnlocked: true) still true even though paid is already claimed, which is exactly why isClaimed exists")
+
+        _ = track.claim(trackID: "t", milestone: 0, paidLane: false)
+        XCTAssertTrue(track.isClaimed(trackID: "t", milestone: 0, paidLane: false))
+    }
 }
 
 @MainActor

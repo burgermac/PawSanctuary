@@ -131,6 +131,65 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .dogTags, amount: 8)],
                            paidRewards: []),
         ],
+        // "Founders' Circle" (EventSystem.swift) — Phase 6b, Pass
+        // screen-verification content. First cut, not derived from a model —
+        // see specs/Spec_Phase6b_Pass.md §4: 10 milestones at linear steps of
+        // 60 tokens (same rider mechanism/frequency as Adoption Drive above,
+        // reused via EventTokenRiderProvider), free-lane dog tags gated to
+        // the back half, paid-lane roughly 2.2x the free kibble amount plus
+        // dog tags throughout, one .cardPack as the final milestone's hero
+        // reward.
+        "founders_circle_aug2026": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 25)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 55),
+                                         OrderReward(kind: .dogTags, amount: 2)]),
+            TrackMilestone(index: 1, threshold: 120,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 40)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 90),
+                                         OrderReward(kind: .dogTags, amount: 3)]),
+            TrackMilestone(index: 2, threshold: 180,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 110),
+                                         OrderReward(kind: .dogTags, amount: 4)]),
+            TrackMilestone(index: 3, threshold: 240,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 60),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 130),
+                                         OrderReward(kind: .dogTags, amount: 5)]),
+            TrackMilestone(index: 4, threshold: 300,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 165),
+                                         OrderReward(kind: .dogTags, amount: 6)]),
+            TrackMilestone(index: 5, threshold: 360,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 90),
+                                         OrderReward(kind: .dogTags, amount: 5)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 200),
+                                         OrderReward(kind: .dogTags, amount: 8)]),
+            TrackMilestone(index: 6, threshold: 420,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 100),
+                                         OrderReward(kind: .dogTags, amount: 6)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 220),
+                                         OrderReward(kind: .dogTags, amount: 10)]),
+            TrackMilestone(index: 7, threshold: 480,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 120),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 260),
+                                         OrderReward(kind: .dogTags, amount: 12)]),
+            TrackMilestone(index: 8, threshold: 540,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 140),
+                                         OrderReward(kind: .dogTags, amount: 10)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 300),
+                                         OrderReward(kind: .dogTags, amount: 15)]),
+            TrackMilestone(index: 9, threshold: 600,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 160),
+                                         OrderReward(kind: .dogTags, amount: 15)],
+                           paidRewards: [OrderReward(kind: .kibble, amount: 350),
+                                         OrderReward(kind: .dogTags, amount: 20),
+                                         OrderReward(kind: .cardPack, amount: 1,
+                                                      payloadID: CardPackType.star4.rawValue)]),
+        ],
     ]
 }
 
@@ -190,6 +249,19 @@ final class ProgressTrack: ProgressTracking {
             states[trackID] = state
             return def.freeRewards
         }
+    }
+
+    /// Whether `milestone`'s reward on `lane` has already been claimed. Not
+    /// part of `ProgressTracking` — `claimable`'s OR-combined design (the free
+    /// lane counts regardless of paid-lane state) can answer "is *something*
+    /// claimable here" but can't disentangle which lane once both a UI needs
+    /// to render simultaneously (Phase 6b, Pass — two lanes on screen at
+    /// once, specs/Spec_Phase6b_Pass.md §3.5), since OR isn't invertible: if
+    /// the free lane is still available, `claimable(paidLaneUnlocked: true)`
+    /// reads `true` whether or not the paid lane specifically is claimed.
+    func isClaimed(trackID: String, milestone: Int, paidLane: Bool) -> Bool {
+        let state = states[trackID] ?? TrackState()
+        return paidLane ? state.claimedPaid.contains(milestone) : state.claimedFree.contains(milestone)
     }
 
     // MARK: Persistence
