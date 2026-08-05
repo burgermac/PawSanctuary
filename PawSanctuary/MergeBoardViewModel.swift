@@ -3151,5 +3151,11 @@ class MergeBoardViewModel {
         commerce.purchaseCount += 1
         commerce.totalSpendMicros += Int(truncating: NSDecimalNumber(decimal: priceUSD * 1_000_000))
         commerce.lastPurchaseDate = Date()
+        // BUG-02-class fix: every grant above (kibble, dog tags, Sanctuary Pass,
+        // Event Pass unlock) was only ever applied in memory. Consumable IAPs in
+        // particular have no recovery path once StoreManager.purchase() finishes
+        // the transaction — a crash before some unrelated action happens to
+        // persist() would silently and permanently lose a paid purchase.
+        persist()
     }
 }
