@@ -610,6 +610,7 @@ class MergeBoardViewModel {
         enqueueToast(Toast(kind: .info(
             "\(trio.species.name) Trio exchanged for \(value) coins!"
         )))
+        persist()
     }
 
     private func producerIsNeeded(_ producer: ProducerTile, by goals: [QuestGoal]) -> Bool {
@@ -1322,6 +1323,7 @@ class MergeBoardViewModel {
         kibbleEngine.dogTags -= level.dogTagCost
         board[target.position.row][target.position.col].producer = ProducerTile(level: level)
         recalcBoardIsFull()
+        persist()
     }
 
     // MARK: Dog Tag store (Task 2.3c)
@@ -1346,6 +1348,7 @@ class MergeBoardViewModel {
         dogTagStore.markPurchased(slotID: slot.id)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
+        persist()
         return true
     }
 
@@ -1915,10 +1918,12 @@ class MergeBoardViewModel {
 
     func unlockInventoryRow1() {
         inventoryStore.unlockRow1(deductingFrom: &kibbleEngine.dogTags)
+        persist()
     }
 
     func unlockInventoryRow2() {
         inventoryStore.unlockRow2(deductingFrom: &kibbleEngine.dogTags)
+        persist()
     }
 
     @discardableResult
@@ -1932,6 +1937,7 @@ class MergeBoardViewModel {
             board[pos.row][pos.col].producer = nil
             selectedCell = nil
             recalcBoardIsFull()
+            persist()
         } else {
             triggerToast(.inventoryFull)
         }
@@ -2055,6 +2061,7 @@ class MergeBoardViewModel {
         }
         lastOpenedCards = opened
         checkAlbumCompletions()
+        persist()
         return opened
     }
 
@@ -2071,6 +2078,7 @@ class MergeBoardViewModel {
         }
         cardInventory[cardID] = 1
         checkAlbumCompletions()
+        persist()
     }
 
     private func checkAlbumCompletions() {
@@ -2511,6 +2519,7 @@ class MergeBoardViewModel {
         case .legendary: placeToolbox(); placeToolbox(); placeToolbox()
         default: break
         }
+        persist()
     }
 
     private func placeToolbox() {
@@ -2839,6 +2848,7 @@ class MergeBoardViewModel {
         if reward.dogTags > 0   { text += "  +\(reward.dogTags) Tags" }
         if reward.cardPack != nil { text += "  + Card Pack" }
         enqueueToast(Toast(kind: .info(text)))
+        persist()
     }
 
     // MARK: Rewarded ads
@@ -2916,6 +2926,7 @@ class MergeBoardViewModel {
         if r.bonusXP      > 0 { grantXP(r.bonusXP) }
         if cachedActiveBonuses.areaEventCoins > 0 { earnCoins(cachedActiveBonuses.areaEventCoins) }
         presentAreaBuiltBanner(title: "\(area.displayName) Built!", detail: r.primaryMessage())
+        persist()
     }
 
     /// Shows the area-built/upgraded banner and schedules its auto-dismiss. Shared by both
@@ -3051,6 +3062,7 @@ class MergeBoardViewModel {
         for _ in 0..<tier.boardItemCount {
             grantRecirculatedBoardItem(tierOffset: tier.boardItemTierOffset)
         }
+        persist()
     }
 
     func claimMonthlyGoal() {
@@ -3062,6 +3074,7 @@ class MergeBoardViewModel {
         for _ in 0..<3 { placeToolbox() }
         // The month's chest is the single richest recirculation payout (Task 2.3b).
         for _ in 0..<2 { grantRecirculatedBoardItem(tierOffset: 1) }
+        persist()
     }
 
     // MARK: Active bonuses
@@ -3112,6 +3125,7 @@ class MergeBoardViewModel {
                                                 playerLevel: progression.playerLevel)
         if cachedActiveBonuses.areaEventCoins > 0 { earnCoins(cachedActiveBonuses.areaEventCoins) }
         presentAreaBuiltBanner(title: "\(area.displayName) Upgraded!", detail: upgrade.bonus.primaryDescription)
+        persist()
     }
 
     // MARK: IAP
