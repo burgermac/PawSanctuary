@@ -230,7 +230,12 @@ class MergeBoardViewModel {
     var lastOpenedCards: [OpenedCard] = []
     var showCardPackOpening = false
     var showCardAlbum = false
-    var showAlbumCompleteCard: CardAlbumDefinition? = nil
+    /// FIFO queue for the "Album Complete!" celebration — a plain single value would
+    /// let a second album completing in the same synchronous pass (rare, but possible
+    /// from one card claim/pack draw) silently clobber the first before it's ever
+    /// rendered. Mirrors the toastQueue pattern below.
+    private(set) var albumCompleteQueue: [CardAlbumDefinition] = []
+    var showAlbumCompleteCard: CardAlbumDefinition? { albumCompleteQueue.first }
 
     // Card trading
     var pendingOutgoingTrades: [CardTrade] = []
@@ -2146,14 +2151,22 @@ class MergeBoardViewModel {
             kibbleEngine.kibble  += withPassBonus(album.rewardKibble)
             kibbleEngine.dogTags += album.rewardDogTags
             earnCoins(album.rewardCoins)
-            showAlbumCompleteCard = album
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(4))
-                // Only clear if this is still the album shown — guards against a second
-                // album completing (rare, but possible from one card claim) and having
-                // its card cut short by the first album's dismiss timer (QA-07).
-                guard self.showAlbumCompleteCard?.id == album.id else { return }
-                self.showAlbumCompleteCard = nil
+            albumCompleteQueue.append(album)
+            if albumCompleteQueue.count == 1 { scheduleAlbumCompleteDismiss(id: album.id) }
+        }
+    }
+
+    /// Auto-removes the front album-complete card and chains the dismiss timer for
+    /// the next one if a second album completed in the same pass. Mirrors
+    /// scheduleAutoDismiss's id-guard so a stale Task can't remove a *later* card
+    /// that happened to reach the front slot before this timer fired.
+    private func scheduleAlbumCompleteDismiss(id: String) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard self.albumCompleteQueue.first?.id == id else { return }
+            self.albumCompleteQueue.removeFirst()
+            if let next = self.albumCompleteQueue.first {
+                self.scheduleAlbumCompleteDismiss(id: next.id)
             }
         }
     }
@@ -2931,7 +2944,10 @@ class MergeBoardViewModel {
               inviteProgress.canClaim(milestone) else { return }
         inviteProgress.claimedMilestones.append(tier)
         let kibble = withPassBonus(milestone.kibbleReward)
-        if kibble > 0 { kibbleEngine.kibble = min(kibbleRegenCap, kibbleEngine.kibble + kibble) }
+        // Uncapped, like every other reward-granting path — see ShopView.swift's own
+        // documented invariant: "quest rewards can exceed the cap." Clamping here
+        // silently discarded the reward whenever the player was near/at the cap.
+        if kibble > 0 { kibbleEngine.kibble += kibble }
         if milestone.dogTagsReward > 0 { kibbleEngine.dogTags += milestone.dogTagsReward }
         persist()
     }
@@ -3082,7 +3098,8 @@ class MergeBoardViewModel {
               eventProgress.canClaim(milestone) else { return }
         eventProgress.claimedMilestones.append(tier)
         let kibble = withPassBonus(milestone.kibbleReward)
-        kibbleEngine.kibble = min(kibbleRegenCap, kibbleEngine.kibble + kibble)
+        // Uncapped, like every other reward-granting path — see claimInviteMilestone.
+        kibbleEngine.kibble += kibble
         if milestone.dogTagsReward > 0 { kibbleEngine.dogTags += milestone.dogTagsReward }
         persist()
     }
