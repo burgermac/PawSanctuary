@@ -1784,6 +1784,13 @@ class MergeBoardViewModel {
     /// landing normally. Called only for below-top-tier animal merges — top
     /// tier has its own Ambassador celebration and is excluded at the call site.
     private func maybeBubbleMergedItem(at pos: GridPosition) {
+        guard let item = board[pos.row][pos.col].item, item.tier >= bubbleMinTier else { return }
+        guard isBubbleEligibleForQuestOrOrder(
+            chainID: item.chainID, tier: item.tier,
+            orders: adoptionBoardCoordinator.adoptionOrders,
+            urgentOrder: adoptionBoardCoordinator.urgentOrder,
+            quests: quests.activeQuests
+        ) else { return }
         guard Double.random(in: 0..<1) < bubbleChance else { return }
         board[pos.row][pos.col].item?.bubbledAt = Date().timeIntervalSince1970
     }
