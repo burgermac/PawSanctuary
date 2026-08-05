@@ -1039,6 +1039,13 @@ class MergeBoardViewModel {
 
         kibbleEngine.applyOfflineProgress(secs: secs, bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
 
+        // Sprint (Equines .pony): a plain per-tick countdown, foreground-only —
+        // without this it pauses instead of expiring on wall-clock time, letting the
+        // "double kibble regen for 60s" buff be stretched indefinitely by backgrounding.
+        if equineSprintRemaining > 0 {
+            equineSprintRemaining = max(0, equineSprintRemaining - elapsed)
+        }
+
         // Producer cooldowns
         for r in 0..<rows {
             for c in 0..<cols {
@@ -1249,6 +1256,10 @@ class MergeBoardViewModel {
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
             // Task 2.1: priced from the selected tier, same as the family spawner.
+            // Unlike the family spawner branch above, these are NOT unlimited — they carry
+            // a real per-level cooldown/chargesRemaining (30-60s, 5-12 charges) that this
+            // branch used to skip entirely, making any legacy tile an unlimited free spawner.
+            guard producer.isReady else { selectedCell = pos; return }
             let cost = spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
             guard kibbleEngine.kibble >= cost else {
                 // Which chain would be picked is randomized below and never reached —
@@ -1266,6 +1277,9 @@ class MergeBoardViewModel {
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
             let spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             finishSpawn(item: BoardItem(chainID: chainID, tier: spawnTier), at: target, cost: cost)
+            producer.cooldownRemaining = producer.level.cooldown
+            producer.chargesRemaining -= 1
+            board[pos.row][pos.col].producer = producer.chargesRemaining > 0 ? producer : nil
         } else {
             if producer.isReady {
                 let empty = emptyUnlockedCells.filter { $0.position != pos }
@@ -1606,6 +1620,11 @@ class MergeBoardViewModel {
                 board[to.row][to.col].producer   = srcProducer
                 board[from.row][from.col].producer = nil
             }
+            // Every other occupancy-changing board write in this file recalculates
+            // the cached emptyUnlockedCells/boardIsFull afterward — this branch was
+            // the one exception, letting a later spawn overwrite the producer the
+            // player just placed.
+            recalcBoardIsFull()
             selectedCell = nil
             return
         }
@@ -2417,7 +2436,10 @@ class MergeBoardViewModel {
         var changed = true
         while changed {
             changed = false
-            let cells = flatBoard.filter { $0.item != nil }
+            // Bubbled items can't be either side of a merge — same rule the normal
+            // drag-merge path enforces (srcItem.bubbledAt/dstItem.bubbledAt == nil) —
+            // otherwise a mass-merge could pop a bubble and destroy its pending reward.
+            let cells = flatBoard.filter { $0.item != nil && $0.item?.bubbledAt == nil }
             // Build a frequency map: chainID+tier → [positions]
             var groups: [String: [GridPosition]] = [:]
             for cell in cells {
@@ -2434,6 +2456,12 @@ class MergeBoardViewModel {
                 mergeCount += 1
                 lastMergeTimestamp = Date().timeIntervalSince1970
                 updateAllAfterMerge(chainID: itemA.chainID, tier: next)
+                // Same as the normal drag-merge path — otherwise a family reaching its
+                // unlock tier via Stampede never actually unlocks its superpower, and
+                // Fetch!/Multiply/Antler Drop/Current all silently miss Stampede merges.
+                let mergedSpecies = AnimalSpecies(rawValue: itemA.chainID.replacingOccurrences(of: "animal.", with: ""))
+                if let sp = mergedSpecies { checkSuperpowerUnlock(species: sp, tier: next) }
+                applyPassivePowers(mergedSpecies: mergedSpecies, mergePos: b, emptyPos: a)
                 changed = true
             }
         }

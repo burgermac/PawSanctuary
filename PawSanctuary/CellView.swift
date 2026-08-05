@@ -276,6 +276,18 @@ struct ProducerTileContent: View {
                         .background(Circle().fill(Color.purple))
                         .offset(x: 3, y: producer.speedBurstActive ? 2 : -3)
                 }
+                // Scout (Avians .bird): preview of this spawner's next drop, rolled and
+                // cached the moment it last spawned. Only the sub-object case is worth a
+                // badge — an animal coming next is the default, unremarkable outcome.
+                if producer.scoutPreviewIsSubObject == true {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(3)
+                        .background(Circle().fill(Color.teal))
+                        .offset(x: 3, y: (producer.speedBurstActive ? 2 : -3)
+                                          + (producer.nextDropGuaranteedHighTier ? 5 : 0))
+                }
             }
         }
     }
