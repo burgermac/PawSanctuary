@@ -349,6 +349,14 @@ class MergeBoardViewModel {
         get { inventoryStore.selectedOverflowProducerSlot }
         set { inventoryStore.selectedOverflowProducerSlot = newValue }
     }
+    var familySpawnerStorage: [String: ProducerTile] {
+        get { inventoryStore.familySpawnerStorage }
+        set { inventoryStore.familySpawnerStorage = newValue }
+    }
+    var selectedFamilySpawnerSpecies: AnimalSpecies? {
+        get { inventoryStore.selectedFamilySpawnerSpecies }
+        set { inventoryStore.selectedFamilySpawnerSpecies = newValue }
+    }
     var inventoryOccupied: Int        { inventoryStore.inventoryOccupied }
     var producerStorageOccupied: Int  { inventoryStore.producerStorageOccupied }
     var inventoryCapacity: Int        { inventoryStore.inventoryCapacity }
@@ -1928,6 +1936,19 @@ class MergeBoardViewModel {
 
     func overflowSlotTapped(_ slot: Int) {
         inventoryStore.overflowSlotTapped(slot)
+    }
+
+    func familySpawnerSlotTapped(species: AnimalSpecies) {
+        inventoryStore.familySpawnerSlotTapped(species: species)
+    }
+
+    func placeFamilySpawnerOnBoard() {
+        guard inventoryStore.selectedFamilySpawnerSpecies != nil else { return }
+        let empty = emptyUnlockedCells
+        guard let target = empty.first else { triggerToast(.boardFull); return }
+        guard let producer = inventoryStore.consumeSelectedFamilySpawner() else { return }
+        board[target.position.row][target.position.col].producer = producer
+        recalcBoardIsFull()
     }
 
     func placeDesignatedProducerOnBoard() {
