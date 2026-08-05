@@ -158,6 +158,9 @@ class MergeBoardViewModel {
     /// Pass). Per-event, not global. See specs/Spec_Phase6b_Pass.md §3.2.
     var passUnlockedEventIDs: Set<String> = []
 
+    /// Trade IDs already granted via `claimIncomingTrade` — see GameState.claimedTradeIDs.
+    var claimedTradeIDs: Set<UUID> = []
+
     var activeEvent: EventDefinition? { EventRegistry.currentEvent }
 
     /// The rider provider currently registered for the live event, if any —
@@ -911,6 +914,7 @@ class MergeBoardViewModel {
         s.pouchExpiryTimestamp      = pouchExpiryTimestamp
         s.commerce                  = commerce
         s.passUnlockedEventIDs      = passUnlockedEventIDs
+        s.claimedTradeIDs           = claimedTradeIDs
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -981,6 +985,7 @@ class MergeBoardViewModel {
         pouchExpiryTimestamp      = s.pouchExpiryTimestamp
         commerce                  = s.commerce
         passUnlockedEventIDs      = s.passUnlockedEventIDs
+        claimedTradeIDs           = s.claimedTradeIDs
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -2123,7 +2128,19 @@ class MergeBoardViewModel {
 
     // MARK: Card Trading
 
+    /// Commits the daily card-send reset if the calendar day has changed. Mirrors
+    /// KibbleEngine.rollOverExchangeDayIfNeeded — remainingDailyTrades only fakes
+    /// the reset for display; without committing it here, cardsSentToday itself
+    /// never actually resets and keeps compounding day over day (a send on any
+    /// day after the counter first exceeded maxDailyCardSends would immediately
+    /// clamp remainingDailyTrades back to 0 for the rest of that day).
+    private func rollOverCardSendDayIfNeeded() {
+        guard let last = lastCardSendDate, !Calendar.current.isDateInToday(last) else { return }
+        cardsSentToday = 0
+    }
+
     func sendDuplicateCard(_ cardID: String, to friend: GameCenterFriend) {
+        rollOverCardSendDayIfNeeded()
         guard cardInventory[cardID, default: 0] > 1 else { return }
         guard remainingDailyTrades > 0, gcIsAuthenticated else { return }
         cardInventory[cardID]! -= 1
@@ -2140,12 +2157,30 @@ class MergeBoardViewModel {
         cardsSentToday  += 1
         lastCardSendDate = Date()
         persist()
-        Task { await CardTradeBackend.upload(trade) }
+        Task { @MainActor in
+            let uploaded = await CardTradeBackend.upload(trade)
+            guard !uploaded else { return }
+            // Never reached CloudKit — roll back rather than leave the sender
+            // permanently down a card for a trade the recipient can never see.
+            self.cardInventory[cardID, default: 0] += 1
+            self.pendingOutgoingTrades.removeAll { $0.id == trade.id }
+            self.cardsSentToday = max(0, self.cardsSentToday - 1)
+            self.enqueueToast(Toast(kind: .info("Trade to \(friend.displayName) failed to send — card returned.")))
+            self.persist()
+        }
     }
 
     func claimIncomingTrade(_ trade: CardTrade) {
         guard let idx = pendingIncomingTrades.firstIndex(where: { $0.id == trade.id }) else { return }
+        guard !claimedTradeIDs.contains(trade.id) else {
+            // Already granted locally — the CloudKit record must still be
+            // pending (markClaimed never confirmed) and got re-fetched.
+            // Drop it silently rather than grant the card a second time.
+            pendingIncomingTrades.remove(at: idx)
+            return
+        }
         pendingIncomingTrades.remove(at: idx)
+        claimedTradeIDs.insert(trade.id)
         cardInventory[trade.cardID, default: 0] += 1
         checkAlbumCompletions()
         persist()
@@ -2171,7 +2206,9 @@ class MergeBoardViewModel {
         guard gcIsAuthenticated else { return }
         let fetched = await CardTradeBackend.fetchIncoming(for: gcLocalPlayerID)
         let existingIDs = Set(pendingIncomingTrades.map(\.id))
-        let newTrades = fetched.filter { !existingIDs.contains($0.id) }
+        // Exclude already-claimed trades too — their CloudKit record can still
+        // read "pending" if markClaimed never confirmed (see claimIncomingTrade).
+        let newTrades = fetched.filter { !existingIDs.contains($0.id) && !claimedTradeIDs.contains($0.id) }
         if !newTrades.isEmpty {
             pendingIncomingTrades.append(contentsOf: newTrades)
             persist()

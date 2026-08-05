@@ -193,6 +193,12 @@ struct GameState: Codable {
     /// does. Deliberately not named anything containing "sanctuary" or
     /// reusing IAPProduct.sanctuaryPass — see specs/Spec_Phase6b_Pass.md §0.
     var passUnlockedEventIDs: Set<String> = []
+
+    /// Trade IDs already granted locally via `claimIncomingTrade` (v33, bug fix).
+    /// Guards against re-granting the same card if `CardTradeBackend.markClaimed`
+    /// never confirms on CloudKit — the record stays `pending` and would otherwise
+    /// be re-fetched into `pendingIncomingTrades` and claimed a second time.
+    var claimedTradeIDs: Set<UUID> = []
 }
 
 // ============================================================
@@ -274,7 +280,12 @@ enum GameStore {
     ///      `overflowProducerStorage` (invisible — the Producers tab only ever
     ///      rendered shop producers) are swept into their correct per-species
     ///      slot so existing saves recover spawners the old scheme lost track of.
-    static let currentVersion = 32
+    /// v33: claimedTradeIDs added (bug fix, not a phase task). Makes
+    ///      claimIncomingTrade idempotent against a still-`pending` CloudKit
+    ///      record being re-fetched after markClaimed fails to confirm — without
+    ///      it the same incoming trade could be claimed, and its card granted,
+    ///      more than once. Purely additive.
+    static let currentVersion = 33
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -442,6 +453,7 @@ enum GameStore {
         if version == 29 { return migrateByInjecting(from: 29, defaults: [:], into: data) }   // eventTokenWallets/progressTracks covered by additiveDefaultsSinceV8
         if version == 30 { return migrateByInjecting(from: 30, defaults: [:], into: data) }   // passUnlockedEventIDs covered by additiveDefaultsSinceV8
         if version == 31 { return migrateByInjecting(from: 31, defaults: [:], into: data) }   // familySpawnerStorage: sweep runs in finishMigration for every sourceVersion < 32
+        if version == 32 { return migrateByInjecting(from: 32, defaults: [:], into: data) }   // claimedTradeIDs covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -515,6 +527,8 @@ enum GameStore {
         // v32 — family spawner storage (bug fix). Base default; `finishMigration`
         // overwrites this with any stray family spawners it recovers.
         "familySpawnerStorage": [String: Any](),
+        // v33 — claimed-incoming-trade guard (bug fix).
+        "claimedTradeIDs": [String](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

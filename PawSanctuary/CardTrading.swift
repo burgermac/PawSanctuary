@@ -198,15 +198,20 @@ enum CardTradeBackend {
     private static var database: CKDatabase { CKContainer.default().publicCloudDatabase }
 
     /// Uploads a newly-created trade so the recipient's device can fetch it.
-    static func upload(_ trade: CardTrade) async {
+    /// Returns whether the record actually reached CloudKit — callers that
+    /// already spent the card locally need this to roll back on failure.
+    @discardableResult
+    static func upload(_ trade: CardTrade) async -> Bool {
         guard isCloudAvailable else {
             print("[CardTradeBackend] upload skipped — no iCloud account signed in")
-            return
+            return false
         }
         do {
             _ = try await database.save(trade.toCKRecord())
+            return true
         } catch {
             print("[CardTradeBackend] upload failed for trade \(trade.id): \(error.localizedDescription)")
+            return false
         }
     }
 
