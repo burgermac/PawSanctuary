@@ -159,6 +159,12 @@ class QuestCoordinator {
             if RescueStage.bondedPair.tierIndex   <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.bondedPair.tierIndex,   count: 3)) }
             if RescueStage.communityFav.tierIndex  <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.communityFav.tierIndex, count: 2)) }
             if RescueStage.ambassador.tierIndex    <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.ambassador.tierIndex,   count: 1)) }
+            // RescueStage tops out at tierIndex 8, but Phase 2b's animal chains run to tier 11
+            // ("Mythic"/"Ancient"/"Primordial" — see AnimalSpecies.animalTierAppearance). Target
+            // those top three tiers directly so the endgame of every chain is a reachable objective.
+            if 9  <= maxTier { pool.append(.reachTier(.animal, tier: 9,  count: 1)) }
+            if 10 <= maxTier { pool.append(.reachTier(.animal, tier: 10, count: 1)) }
+            if 11 <= maxTier { pool.append(.reachTier(.animal, tier: 11, count: 1)) }
             if let sid = supplyID {
                 pool.append(.reachTier(.supply, tier: 4, count: 1))
                 pool.append(.mergeInChain(sid, count: 6))
@@ -284,6 +290,12 @@ class QuestCoordinator {
                 .reachTier(.animal, tier: RescueStage.foster.tierIndex, count: 2),
                 .reachTier(.animal, tier: RescueStage.adopted.tierIndex, count: 1),
                 .reachTier(.animal, tier: RescueStage.bondedPair.tierIndex, count: 1),
+                // RescueStage tops out at tierIndex 8; target the top three tiers
+                // (9-11, "Mythic"/"Ancient"/"Primordial") directly, same as the
+                // legendary quest pool in generateQuest, so they stay reachable.
+                .reachTier(.animal, tier: 9, count: 1),
+                .reachTier(.animal, tier: 10, count: 1),
+                .reachTier(.animal, tier: 11, count: 1),
                 .mergeAny(count: 10),
                 .spawnBase(count: 12),
             ]
