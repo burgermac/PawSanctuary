@@ -930,6 +930,63 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.passUnlockedEventIDs, state.passUnlockedEventIDs)
     }
 
+    // MARK: v31 → v32 (bug fix: family spawners get dedicated per-species storage)
+
+    func testV31toV32MigrationInjectsEmptyFamilySpawnerStorage() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "familySpawnerStorage")
+        obj["version"] = 31
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v31 save should migrate to v32")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.familySpawnerStorage.isEmpty)
+    }
+
+    /// The actual bug fix: any `.familySpawner` tile stranded in the old shared-key
+    /// `producerStorage` slot or in `overflowProducerStorage` (where every family
+    /// spawner collided on `ProducerLevel.familySpawner`'s single rawValue) must be
+    /// recovered into `familySpawnerStorage`, keyed by species — and removed from
+    /// its old location so it isn't duplicated.
+    func testV31toV32MigrationRecoversStrandedFamilySpawners() throws {
+        var state = makeSampleState()
+        let catSpawner = ProducerTile(level: .familySpawner, cooldownRemaining: 0, species: .cat)
+        let dogSpawner = ProducerTile(level: .familySpawner, cooldownRemaining: 0, species: .dog)
+        // Simulate the pre-fix world: the first family spawner retired claimed the
+        // shared designated slot; the second fell through to overflow, alongside an
+        // unrelated legacy producer that must be left untouched by the sweep.
+        state.producerStorage[ProducerLevel.familySpawner.rawValue] = catSpawner
+        state.overflowProducerStorage = [dogSpawner, ProducerTile(level: .fosterHome, cooldownRemaining: 5)]
+
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "familySpawnerStorage")
+        obj["version"] = 31
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v31 save should migrate to v32 and recover stranded spawners")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.familySpawnerStorage["cat"]?.species, .cat)
+        XCTAssertEqual(loaded.familySpawnerStorage["dog"]?.species, .dog)
+        XCTAssertNil(loaded.producerStorage[ProducerLevel.familySpawner.rawValue],
+                     "the recovered spawner must be removed from its old slot, not duplicated")
+        let remainingOverflow = loaded.overflowProducerStorage.compactMap { $0 }
+        XCTAssertEqual(remainingOverflow.count, 1)
+        XCTAssertEqual(remainingOverflow.first?.level, .fosterHome,
+                       "the unrelated legacy producer must survive the sweep untouched")
+    }
+
+    /// A fresh v32 save with real data round-trips exactly — not just the
+    /// migration-from-older-save path above.
+    func testFamilySpawnerStorageRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.familySpawnerStorage = ["cat": ProducerTile(level: .familySpawner, species: .cat)]
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertEqual(decoded.familySpawnerStorage["cat"]?.species, .cat)
+    }
+
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
     /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
     func testEveryMigratedTierResolvesInTheRegistry() throws {

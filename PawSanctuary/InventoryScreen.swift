@@ -61,6 +61,8 @@ struct InventoryScreenView: View {
                 placeButton(label: "Return to Board") { viewModel.placeDesignatedProducerOnBoard() }
             } else if viewModel.selectedOverflowProducerSlot != nil {
                 placeButton(label: "Return to Board") { viewModel.placeOverflowProducerOnBoard() }
+            } else if viewModel.selectedFamilySpawnerSpecies != nil {
+                placeButton(label: "Return to Board") { viewModel.placeFamilySpawnerOnBoard() }
             }
         case 3:
             if viewModel.selectedPowerUpSlot != nil {
@@ -230,10 +232,69 @@ struct InventoryScreenView: View {
                 .font(.system(size: 11)).foregroundColor(.secondary)
                 .multilineTextAlignment(.center).padding(.horizontal)
 
+            if !unlockedFamilySpecies.isEmpty {
+                Text("Family Spawners").font(.subheadline.bold())
+                    .foregroundColor(Color(red: 0.45, green: 0.3, blue: 0.15))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
+                ForEach(unlockedFamilySpecies, id: \.rawValue) { species in
+                    familySpawnerRow(species: species)
+                }
+            }
+
             ForEach(ProducerLevel.allCases.filter(\.isShopProducer), id: \.rawValue) { level in
                 designatedProducerRow(level: level)
             }
         }
+    }
+
+    /// Every unlocked family, in `AnimalSpecies.allCases` order for a stable display
+    /// order (`unlockedAnimalChainIDs` itself has no guaranteed ordering).
+    private var unlockedFamilySpecies: [AnimalSpecies] {
+        let unlockedIDs = Set(viewModel.unlockedAnimalChainIDs)
+        return AnimalSpecies.allCases.filter { unlockedIDs.contains(ContentRegistry.animalChainID($0)) }
+    }
+
+    private func familySpawnerRow(species: AnimalSpecies) -> some View {
+        let occupant   = viewModel.familySpawnerStorage[species.rawValue]
+        let isSelected = viewModel.selectedFamilySpawnerSpecies == species
+
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(species.tintColor.opacity(0.15)).frame(width: 44, height: 44)
+                Image(systemName: species.spawnerSFSymbol)
+                    .font(.system(size: 20)).foregroundColor(species.tintColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(species.spawnerName).font(.subheadline.bold()).foregroundColor(.primary)
+                if let p = occupant {
+                    Text("\(p.chargesRemaining) charge\(p.chargesRemaining == 1 ? "" : "s") remaining")
+                        .font(.caption).foregroundColor(species.tintColor)
+                } else {
+                    Text("Empty").font(.caption).foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            if occupant != nil {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(isSelected ? .green : species.tintColor.opacity(0.5))
+            } else {
+                Image(systemName: "circle.dashed")
+                    .font(.system(size: 22)).foregroundColor(.gray.opacity(0.3))
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(isSelected ? species.tintColor.opacity(0.18)
+                              : Color(red: 0.96, green: 0.93, blue: 0.98).opacity(0.8))
+            .shadow(color: .black.opacity(0.05), radius: 3))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .strokeBorder(isSelected ? species.tintColor : Color.clear, lineWidth: 2))
+        .padding(.horizontal)
+        .onTapGesture { viewModel.familySpawnerSlotTapped(species: species) }
     }
 
     private func designatedProducerRow(level: ProducerLevel) -> some View {

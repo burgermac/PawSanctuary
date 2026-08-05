@@ -297,7 +297,9 @@ enum ProducerLevel: Int, CaseIterable, Codable {
     case shelterBox  = 12  // produces supply.shelter  tier 0, 25 s cooldown, no merge-up
 
     // Phase 3 — per-family spawner. Uses ProducerTile.species to identify which family.
-    // Does NOT appear in the shop or producer storage (use isShopProducer to gate).
+    // Does NOT appear in the shop (isShopProducer is false) or in the shared per-level
+    // producerStorage/overflowProducerStorage — it has its own per-species storage,
+    // InventoryStore.familySpawnerStorage, since every family shares this one rawValue.
     case familySpawner = 20
 
     /// True only for supply producers sold in the Dog Tag shop.
@@ -408,7 +410,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .groomingBox:   return 15
         case .feedBox:       return 20
         case .shelterBox:    return 25
-        case .familySpawner: return 1   // not in storage — value unused
+        case .familySpawner: return 1   // familySpawnerStorage has no level gate — value unused
         }
     }
 }
@@ -1219,7 +1221,16 @@ let legendaryBonusShare = 0.15
 
 /// Chance a below-top-tier animal merge gets bubbled instead of landing
 /// normally. Top tier is excluded — it has its own Ambassador celebration.
+/// Also gated by `bubbleMinTier` and quest/order relevance — see `maybeBubbleMergedItem`.
 let bubbleChance = 0.15
+
+/// Minimum 0-based tier before a merge result is eligible to bubble at all — merges
+/// below this always land normally. Keeps the mechanic out of the first few stages of
+/// every family, before a player has learned the core loop. (Design tuning call,
+/// 4 Aug 2026 — the mechanic itself, and the ad/Dog-Tags pop it's gated behind, stay
+/// as designed per `Merge2_Reference_Blueprint.md §23`; only the frequency/targeting
+/// changed.)
+let bubbleMinTier = 5
 
 /// How long a bubble stays poppable for full value before decaying.
 let bubbleDecaySeconds: Double = 600   // 10 minutes
@@ -1230,6 +1241,33 @@ let bubbleDecayFloor = 0.50
 /// Dog Tags to pop a bubble instantly, scaled like the Dog Tag store's
 /// tier-based pricing rather than a flat fee.
 func bubblePopDogTagCost(tier: Int) -> Int { 3 + tier }
+
+/// True when landing this (chainID, tier) would help complete an active order or
+/// quest — i.e. bubbling it would obstruct near-term progress rather than just
+/// interrupt a routine merge. Only items meeting this bar are eligible to bubble
+/// once past `bubbleMinTier` (design tuning call, 4 Aug 2026). A free function, not
+/// a `MergeBoardViewModel` method, so it's unit-testable against constructed
+/// orders/quests without needing a full ViewModel instance.
+///
+/// - An order (persistent slot or the urgent order) wanting exactly this chain+tier.
+/// - An active quest working this exact chain (`.mergeInChain`) — any further merge
+///   of it is material toward that quest, not just this one landing spot.
+/// - An active quest whose `.reachTier` target is exactly this tier — reaching a
+///   *further* tier from here needs this piece free to merge again.
+func isBubbleEligibleForQuestOrOrder(chainID: ChainID, tier: Int,
+                                     orders: [AdoptionOrder], urgentOrder: AdoptionOrder?,
+                                     quests: [Quest]) -> Bool {
+    if orders.contains(where: { $0.wantedChainID == chainID && $0.wantedTier == tier }) { return true }
+    if let urgent = urgentOrder, urgent.wantedChainID == chainID, urgent.wantedTier == tier { return true }
+    return quests.contains { quest in
+        guard !quest.isComplete else { return false }
+        switch quest.goal {
+        case .mergeInChain(let id, _):           return id == chainID
+        case .reachTier(let category, let t, _): return category == .animal && t == tier
+        default:                                 return false
+        }
+    }
+}
 
 /// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
 func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }

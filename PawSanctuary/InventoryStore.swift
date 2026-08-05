@@ -36,10 +36,15 @@ class InventoryStore {
     }
 
     /// Designated producer storage: one slot per ProducerLevel, keyed by rawValue.
+    /// Never holds `.familySpawner` tiles — see `familySpawnerStorage`.
     var producerStorage: [Int: ProducerTile] = [:]
     /// Overflow: up to `totalProducerOverflowSlots` slots for producers retired before
-    /// their designated slot unlocks.
+    /// their designated slot unlocks. Never holds `.familySpawner` tiles.
     var overflowProducerStorage: [ProducerTile?] = Array(repeating: nil, count: totalProducerOverflowSlots)
+    /// Per-species storage for family spawners, keyed by `AnimalSpecies.rawValue`. A
+    /// dedicated slot per family — `producerStorage`'s per-level keying can't be reused
+    /// here because every family spawner shares the single `.familySpawner` rawValue.
+    var familySpawnerStorage: [String: ProducerTile] = [:]
 
     var showInventory: Bool = false
 
@@ -47,6 +52,7 @@ class InventoryStore {
     var selectedInventorySlot: Int? = nil
     var selectedProducerLevel: ProducerLevel? = nil
     var selectedOverflowProducerSlot: Int? = nil
+    var selectedFamilySpawnerSpecies: AnimalSpecies? = nil
 
     // Cached counts (private setter; only updated by recalc helpers)
     private(set) var inventoryOccupied: Int = 0
@@ -70,6 +76,7 @@ class InventoryStore {
     func recalcProducerStorageOccupied() {
         producerStorageOccupied = producerStorage.count
             + overflowProducerStorage.compactMap { $0 }.count
+            + familySpawnerStorage.count
     }
 
     // MARK: Material accumulator
@@ -213,8 +220,15 @@ class InventoryStore {
     // MARK: Producer storage interaction
 
     /// Retires a producer from the board into storage.
-    /// Returns `false` if both the designated slot and overflow are full.
+    /// Returns `false` if there's nowhere to put it (family spawner slot already
+    /// occupied for that species, or both the designated slot and overflow are full).
     func retireProducer(_ producer: ProducerTile, playerLevel: Int) -> Bool {
+        if producer.level == .familySpawner {
+            guard let species = producer.species, familySpawnerStorage[species.rawValue] == nil else { return false }
+            familySpawnerStorage[species.rawValue] = producer
+            recalcProducerStorageOccupied()
+            return true
+        }
         let level = producer.level
         let key   = level.rawValue
         if playerLevel >= level.storageUnlockLevel && producerStorage[key] == nil {
@@ -234,6 +248,7 @@ class InventoryStore {
               producerStorage[level.rawValue] != nil else { return }
         selectedProducerLevel = selectedProducerLevel == level ? nil : level
         selectedOverflowProducerSlot = nil
+        selectedFamilySpawnerSpecies = nil
     }
 
     func overflowSlotTapped(_ slot: Int) {
@@ -241,6 +256,24 @@ class InventoryStore {
               overflowProducerStorage[slot] != nil else { return }
         selectedOverflowProducerSlot = selectedOverflowProducerSlot == slot ? nil : slot
         selectedProducerLevel = nil
+        selectedFamilySpawnerSpecies = nil
+    }
+
+    func familySpawnerSlotTapped(species: AnimalSpecies) {
+        guard familySpawnerStorage[species.rawValue] != nil else { return }
+        selectedFamilySpawnerSpecies = selectedFamilySpawnerSpecies == species ? nil : species
+        selectedProducerLevel = nil
+        selectedOverflowProducerSlot = nil
+    }
+
+    /// Removes and returns the selected family spawner.
+    func consumeSelectedFamilySpawner() -> ProducerTile? {
+        guard let species = selectedFamilySpawnerSpecies,
+              let producer = familySpawnerStorage[species.rawValue] else { return nil }
+        familySpawnerStorage.removeValue(forKey: species.rawValue)
+        selectedFamilySpawnerSpecies = nil
+        recalcProducerStorageOccupied()
+        return producer
     }
 
     /// Removes and returns the selected designated-slot producer.
@@ -291,6 +324,7 @@ class InventoryStore {
         }
         producerStorage         = s.producerStorage
         overflowProducerStorage = s.overflowProducerStorage
+        familySpawnerStorage    = s.familySpawnerStorage
         // Pad/trim in case the saved array predates the current slot count.
         var slots = s.powerUpInventory
         if slots.count < 6 { slots.append(contentsOf: Array(repeating: nil, count: 6 - slots.count)) }
@@ -306,6 +340,7 @@ class InventoryStore {
         s.materialCounts          = materialCounts
         s.producerStorage         = producerStorage
         s.overflowProducerStorage = overflowProducerStorage
+        s.familySpawnerStorage    = familySpawnerStorage
         s.powerUpInventory        = powerUpInventory
     }
 }

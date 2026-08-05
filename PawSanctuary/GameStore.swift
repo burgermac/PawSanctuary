@@ -62,9 +62,19 @@ struct GameState: Codable {
     var materialCounts: [ChainID: [Int]]
     /// Designated storage: one slot per ProducerLevel, keyed by rawValue.
     /// Slots are shown as grayed-out until playerLevel >= level.storageUnlockLevel.
+    /// Never holds `.familySpawner` tiles — see `familySpawnerStorage` below.
     var producerStorage: [Int: ProducerTile]
     /// Overflow: producers retired before their designated slot unlocked land here temporarily.
+    /// Never holds `.familySpawner` tiles — see `familySpawnerStorage` below.
     var overflowProducerStorage: [ProducerTile?]
+    /// Per-species storage for family spawners (v32). Keyed by `AnimalSpecies.rawValue`.
+    /// Every family spawner shares the single `ProducerLevel.familySpawner` rawValue, so
+    /// they can't use `producerStorage`'s per-level keying — that would let only one
+    /// family spawner exist in storage at a time, system-wide, with every other one
+    /// silently falling into `overflowProducerStorage` where the Producers tab (which
+    /// only ever showed shop producers) couldn't display it. This is a dedicated slot
+    /// per unlocked family instead.
+    var familySpawnerStorage: [String: ProducerTile] = [:]
 
     // Sanctuary map (Phase 4) — stable area IDs for completed builds.
     var completedAreaIDs: [String]
@@ -257,7 +267,14 @@ enum GameStore {
     /// v31: Event Pass paid-lane unlock (Phase 6b, Pass). GameState gains
     ///      passUnlockedEventIDs (Set of event IDs whose paid lane was
     ///      purchased). Purely additive.
-    static let currentVersion = 31
+    /// v32: family spawners get dedicated per-species storage (bug fix, not a
+    ///      phase task). `familySpawnerStorage: [String: ProducerTile]` added.
+    ///      All `.familySpawner` tiles previously stranded in `producerStorage`
+    ///      (only one, system-wide, could ever occupy that shared-key slot) or
+    ///      `overflowProducerStorage` (invisible — the Producers tab only ever
+    ///      rendered shop producers) are swept into their correct per-species
+    ///      slot so existing saves recover spawners the old scheme lost track of.
+    static let currentVersion = 32
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -424,6 +441,7 @@ enum GameStore {
         if version == 28 { return migrateV28toV29(data) }
         if version == 29 { return migrateByInjecting(from: 29, defaults: [:], into: data) }   // eventTokenWallets/progressTracks covered by additiveDefaultsSinceV8
         if version == 30 { return migrateByInjecting(from: 30, defaults: [:], into: data) }   // passUnlockedEventIDs covered by additiveDefaultsSinceV8
+        if version == 31 { return migrateByInjecting(from: 31, defaults: [:], into: data) }   // familySpawnerStorage: sweep runs in finishMigration for every sourceVersion < 32
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -494,6 +512,9 @@ enum GameStore {
         "eventTokenWallets": [String: Int](), "progressTracks": [String: Any](),
         // v31 — Event Pass paid-lane unlock (Phase 6b, Pass).
         "passUnlockedEventIDs": [String](),
+        // v32 — family spawner storage (bug fix). Base default; `finishMigration`
+        // overwrites this with any stray family spawners it recovers.
+        "familySpawnerStorage": [String: Any](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space
@@ -509,10 +530,49 @@ enum GameStore {
                                         from sourceVersion: Int) -> GameState? {
         for (key, value) in additiveDefaultsSinceV8 where json[key] == nil { json[key] = value }
         if sourceVersion < 28 { remapAnimalTiersForTwelveTierChains(&json) }
+        if sourceVersion < 32 { recoverStrandedFamilySpawners(&json) }
         json["version"] = currentVersion
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migration decode failed — \(error)"); return nil }
+    }
+
+    // MARK: v32 — family spawners get dedicated per-species storage
+
+    /// Sweeps `producerStorage` and `overflowProducerStorage` for any
+    /// `.familySpawner` tile (rawValue 20, shared by every family) and moves it
+    /// into `familySpawnerStorage`, keyed by species. Runs for every save
+    /// predating v32, regardless of which dispatch path got it here — the
+    /// migration table is flat, so a v19 save reaches `finishMigration`
+    /// directly without passing through a hypothetical v31→v32 step.
+    private static func recoverStrandedFamilySpawners(_ json: inout [String: Any]) {
+        var recovered: [String: Any] = (json["familySpawnerStorage"] as? [String: Any]) ?? [:]
+
+        func isFamilySpawner(_ tile: [String: Any]) -> String? {
+            guard let level = tile["level"] as? Int, level == ProducerLevel.familySpawner.rawValue,
+                  let species = tile["species"] as? String else { return nil }
+            return species
+        }
+
+        if var producerStorage = json["producerStorage"] as? [String: Any] {
+            for (key, value) in producerStorage {
+                guard let tile = value as? [String: Any], let species = isFamilySpawner(tile) else { continue }
+                if recovered[species] == nil { recovered[species] = tile }
+                producerStorage.removeValue(forKey: key)
+            }
+            json["producerStorage"] = producerStorage
+        }
+
+        if var overflow = json["overflowProducerStorage"] as? [Any] {
+            for i in overflow.indices {
+                guard let tile = overflow[i] as? [String: Any], let species = isFamilySpawner(tile) else { continue }
+                if recovered[species] == nil { recovered[species] = tile }
+                overflow[i] = NSNull()
+            }
+            json["overflowProducerStorage"] = overflow
+        }
+
+        json["familySpawnerStorage"] = recovered
     }
 
     // MARK: v27 → v28 — 15-tier animal chains become 12-tier
