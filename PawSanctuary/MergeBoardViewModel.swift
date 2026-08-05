@@ -110,7 +110,18 @@ class MergeBoardViewModel {
 
     var rows = boardRows   // always 9 — fixed board size
     let cols = 7
-    var board: [[BoardCell]] = []
+    var board: [[BoardCell]] = [] {
+        didSet {
+            // Nine Lives can only undo if nothing else has touched the board since
+            // the merge — any other mutation invalidates the pending snapshot, so a
+            // whole-board revert can't be used to keep an intervening action's
+            // rewards (e.g. selling something) while also undoing an unrelated
+            // merge. tickProducers()'s per-second cooldown write-backs are passive
+            // upkeep, not a player action, so they're exempted via the suppress flag.
+            guard !suppressUndoInvalidation else { return }
+            preMoveSnapshot = nil
+        }
+    }
     var score: Int = 0
     var animatingCell: GridPosition? = nil
     var rescueCount: Int = 0
@@ -263,6 +274,7 @@ class MergeBoardViewModel {
 
     // Superpower session-only state (not persisted).
     var preMoveSnapshot: BoardSnapshot? = nil
+    private var suppressUndoInvalidation = false
     var leapMode: Bool = false
     var leapSourceCell: GridPosition? = nil
     var showPouchPanel: Bool = false
@@ -1305,6 +1317,8 @@ class MergeBoardViewModel {
     }
 
     private func tickProducers() {
+        suppressUndoInvalidation = true
+        defer { suppressUndoInvalidation = false }
         for row in 0..<rows {
             for col in 0..<cols {
                 guard var p = board[row][col].producer else { continue }
@@ -1637,8 +1651,12 @@ class MergeBoardViewModel {
                srcItem.chainID == dstItem.chainID,
                srcItem.tier == dstItem.tier,
                let next = ContentRegistry.shared.nextTier(srcItem.chainID, after: srcItem.tier) {
-                // Nine Lives snapshot — taken before the board state changes.
-                preMoveSnapshot = BoardSnapshot(board: board, inventory: inventoryStore.inventory)
+                // Nine Lives snapshot — captured before the board state changes, but
+                // not assigned to preMoveSnapshot until the very end of this merge.
+                // Assigning it now would immediately self-invalidate via board's
+                // didSet, since this merge performs several more board mutations below.
+                let preMergeBoard     = board
+                let preMergeInventory = inventoryStore.inventory
                 board[to.row][to.col].item   = BoardItem(chainID: srcItem.chainID, tier: next)
                 board[from.row][from.col].item = nil
                 SoundManager.shared.playMerge()
@@ -1693,6 +1711,7 @@ class MergeBoardViewModel {
                     try? await Task.sleep(for: .milliseconds(600))
                     self.animatingCell = nil
                 }
+                preMoveSnapshot = BoardSnapshot(board: preMergeBoard, inventory: preMergeInventory)
             } else {
                 board[to.row][to.col].item    = srcItem
                 board[from.row][from.col].item = dstItem
@@ -2403,6 +2422,11 @@ class MergeBoardViewModel {
     func activateSuperpower(for species: AnimalSpecies) {
         guard case .active(let cooldown) = species.superpower.kind else { return }
         guard unlockedSuperpowerSpecies.contains(species.rawValue) else { return }
+        // Leap is a two-tap sequence with an armed source cell — another superpower
+        // firing in between (e.g. Stampede merging that same cell away) could change
+        // or clear it without leapSourceCell knowing. Force Leap to be completed or
+        // explicitly cancelled first.
+        guard !leapMode else { return }
         let now = Date().timeIntervalSince1970
         if let expiry = superpowerCooldownEnds[species.rawValue], now < expiry { return }
         switch species {
@@ -2499,7 +2523,17 @@ class MergeBoardViewModel {
             guard board[pos.row][pos.col].isEmpty, board[pos.row][pos.col].isUnlocked else {
                 enqueueToast(Toast(kind: .info("Tap an empty cell for the destination."))); return
             }
-            board[pos.row][pos.col].item = board[src.row][src.col].item
+            // Re-validate the source wasn't changed by something else while Leap was
+            // armed (activateSuperpower now blocks other superpowers during Leap, but
+            // a drag-merge elsewhere could still touch this cell) — trust nothing
+            // captured back when the source was first selected.
+            guard let srcItem = board[src.row][src.col].item,
+                  let species = AnimalSpecies(rawValue: srcItem.chainID.replacingOccurrences(of: "animal.", with: "")),
+                  species == .lizard else {
+                leapMode = false; leapSourceCell = nil
+                enqueueToast(Toast(kind: .info("That Amphibian is gone — Leap cancelled."))); return
+            }
+            board[pos.row][pos.col].item = srcItem
             board[src.row][src.col].item = nil
             leapMode = false; leapSourceCell = nil
             recalcBoardIsFull()
@@ -3099,7 +3133,9 @@ class MergeBoardViewModel {
         guard let thisWeekStart = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return }
         guard let lastReset = lastWeeklyGoalReset else { lastWeeklyGoalReset = thisWeekStart; return }
         guard lastReset < thisWeekStart else { return }
-        if weeklyGoalGoldClaimed { weeklyGoldCompletions += 1 }
+        // weeklyGoldCompletions is already incremented at claim time (claimWeeklyGoal)
+        // — incrementing it again here for an already-claimed week double-counts the
+        // same gold week, making the monthly chest claimable in half the real weeks.
         coinsEarnedThisWeek     = 0
         weeklyGoalBronzeClaimed = false
         weeklyGoalSilverClaimed = false
