@@ -1037,7 +1037,7 @@ class MergeBoardViewModel {
         guard elapsed >= 1 else { return }
         let secs = Int(elapsed)
 
-        kibbleEngine.applyOfflineProgress(secs: secs)
+        kibbleEngine.applyOfflineProgress(secs: secs, bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
 
         // Producer cooldowns
         for r in 0..<rows {
@@ -1554,12 +1554,18 @@ class MergeBoardViewModel {
             return
         }
 
-        SubObjectSystem.applyPowerUp(effect: effect, to: &producer, viewModel: self,
-                                     powerUpDurationBonus: cachedActiveBonuses.powerUpDurationBonus)
+        let applied = SubObjectSystem.applyPowerUp(effect: effect, to: &producer, viewModel: self,
+                                                    powerUpDurationBonus: cachedActiveBonuses.powerUpDurationBonus)
         board[pos.row][pos.col].producer = producer
+        selectedPowerUpSlot = nil
+
+        guard applied else {
+            // grantRecirculatedBoardItem() already surfaced an .inventoryFull toast.
+            // Leave the power-up in inventory rather than consume it for nothing.
+            return
+        }
 
         inventoryStore.powerUpInventory[slot] = nil
-        selectedPowerUpSlot = nil
 
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
@@ -1898,7 +1904,14 @@ class MergeBoardViewModel {
             if reward.bonusKibble > 0 { kibbleEngine.kibble += reward.bonusKibble }
             if let pack = reward.cardPack { earnCardPack(pack) }
         }
-        if !rewards.isEmpty { checkLevelUnlock() }
+        if !rewards.isEmpty {
+            // KibbleEngine.playerLevel mirrors PlayerProgression.playerLevel (see its
+            // doc comment) so effectiveRegenCap can raise at level 10 without a
+            // circular dependency — must be kept in sync on every level-up, not just
+            // at load time via restore(from:).
+            kibbleEngine.playerLevel = progression.playerLevel
+            checkLevelUnlock()
+        }
     }
 
     // MARK: Inventory wrappers (board-side of cross-boundary operations)
@@ -2821,6 +2834,7 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.skipOrder(at: index,
                                            unlockedChainIDs: progression.unlockedAnimalChainIDs,
                                            playerLevel: progression.playerLevel)
+        persist()
     }
 
     // MARK: Weekly spotlight

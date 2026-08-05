@@ -176,29 +176,36 @@ enum SubObjectSystem {
     /// Applies `effect` to `producer` in-place and triggers any view-model side effects.
     /// `powerUpDurationBonus` (seconds) is added to Speed Burst duration.
     /// Call site must write the mutated producer back to the board.
+    /// Returns whether the effect was actually delivered — only `.boardItemGrant`
+    /// can fail (board and animal inventory both full), and the caller must not
+    /// consume the power-up or report success when it does.
+    @discardableResult
     @MainActor
     static func applyPowerUp(
         effect: PowerUpEffect,
         to producer: inout ProducerTile,
         viewModel: MergeBoardViewModel,
         powerUpDurationBonus: Double = 0
-    ) {
+    ) -> Bool {
         switch effect {
         case .speedBurst(let duration):
             producer.speedBurstActive    = true
             producer.speedBurstRemaining = duration + powerUpDurationBonus
+            return true
 
         case .boardItemGrant:
             // Recirculation, not a rebate. One item from a random unlocked animal
             // chain, two tiers below the player's deepest — meaningful progress
             // without ever paying out more than the merge it replaces.
-            viewModel.grantRecirculatedBoardItem()
+            return viewModel.grantRecirculatedBoardItem() != nil
 
         case .highTierDrop:
             producer.nextDropGuaranteedHighTier = true
+            return true
 
         case .mapSupplies:
             // Award 4 random material items (wood / metal / cement, tier 0–2).
+            // materialCounts is a limitless accumulator (v21) — this cannot fail.
             let chains = [ContentRegistry.woodChainID,
                           ContentRegistry.metalChainID,
                           ContentRegistry.cementChainID]
@@ -206,6 +213,7 @@ enum SubObjectSystem {
                 BoardItem(chainID: chains.randomElement()!, tier: Int.random(in: 0...2))
             }
             viewModel.inventoryStore.absorbMaterialItems(items)
+            return true
         }
     }
 

@@ -3,9 +3,10 @@
 //  PawSanctuary
 //
 //  Players accumulate materials (wood/metal/cement) from Toolboxes and spend
-//  them here to build sanctuary areas. Each area unlocks board rows, new species,
-//  and currency bonuses. Areas unlock sequentially — complete each before the next
-//  becomes available.
+//  them here to build sanctuary areas. Each area unlocks a new species and
+//  currency bonuses. Areas unlock sequentially — complete each before the next
+//  becomes available. (Board rows are unlocked separately, purely by player
+//  level — see boardRowUnlockLevels in AnimalSpecies.swift — not by areas.)
 //
 //  Each area has 4 upgrade tiers. Upgrades cost coins plus higher-tier materials
 //  and grant permanent passive bonuses. The next area unlocks only after the previous
@@ -38,7 +39,6 @@ struct MaterialCost: Codable, Equatable, Identifiable {
 
 /// What the player receives when an area is completed.
 struct AreaReward {
-    var newBoardRow:      Bool            = false
     /// When non-nil, building this area auto-places that family's spawner on the board
     /// and unlocks their animal chain. One spawner per area.
     var newFamilySpawner: AnimalSpecies?  = nil
@@ -48,7 +48,6 @@ struct AreaReward {
 
     func primaryMessage() -> String {
         var parts: [String] = []
-        if newBoardRow { parts.append("New board row") }
         if let sp = newFamilySpawner { parts.append("\(sp.name) Spawner unlocked!") }
         if bonusKibble  > 0 { parts.append("+\(bonusKibble) Kibble") }
         if bonusDogTags > 0 { parts.append("+\(bonusDogTags) Dog Tags") }
@@ -229,7 +228,7 @@ let sanctuaryAreas: [SanctuaryArea] = [
             MaterialCost(chainID: ContentRegistry.woodChainID,  tier: 5, count: 2),
             MaterialCost(chainID: ContentRegistry.metalChainID, tier: 5, count: 1),
         ],
-        reward: AreaReward(newBoardRow: true, newFamilySpawner: .cat, bonusKibble: 10, bonusXP: 40),
+        reward: AreaReward(newFamilySpawner: .cat, bonusKibble: 10, bonusXP: 40),
         requiresPrevious: true,
         upgrades: [
             AreaUpgradeTier(
@@ -284,7 +283,7 @@ let sanctuaryAreas: [SanctuaryArea] = [
             MaterialCost(chainID: ContentRegistry.metalChainID,  tier: 5, count: 1),
             MaterialCost(chainID: ContentRegistry.cementChainID, tier: 5, count: 1),
         ],
-        reward: AreaReward(newBoardRow: true, newFamilySpawner: .rabbit, bonusKibble: 15, bonusDogTags: 5, bonusXP: 60),
+        reward: AreaReward(newFamilySpawner: .rabbit, bonusKibble: 15, bonusDogTags: 5, bonusXP: 60),
         requiresPrevious: true,
         upgrades: [
             AreaUpgradeTier(
@@ -340,7 +339,7 @@ let sanctuaryAreas: [SanctuaryArea] = [
             MaterialCost(chainID: ContentRegistry.metalChainID,  tier: 5, count: 2),
             MaterialCost(chainID: ContentRegistry.cementChainID, tier: 5, count: 2),
         ],
-        reward: AreaReward(newBoardRow: true, newFamilySpawner: .bird, bonusKibble: 20, bonusDogTags: 8, bonusXP: 80),
+        reward: AreaReward(newFamilySpawner: .bird, bonusKibble: 20, bonusDogTags: 8, bonusXP: 80),
         requiresPrevious: true,
         upgrades: [
             AreaUpgradeTier(
@@ -398,7 +397,7 @@ let sanctuaryAreas: [SanctuaryArea] = [
             MaterialCost(chainID: ContentRegistry.metalChainID,  tier: 5, count: 2),
             MaterialCost(chainID: ContentRegistry.cementChainID, tier: 5, count: 2),
         ],
-        reward: AreaReward(newBoardRow: true, newFamilySpawner: .hamster, bonusKibble: 30, bonusDogTags: 12, bonusXP: 120),
+        reward: AreaReward(newFamilySpawner: .hamster, bonusKibble: 30, bonusDogTags: 12, bonusXP: 120),
         requiresPrevious: true,
         upgrades: [
             AreaUpgradeTier(

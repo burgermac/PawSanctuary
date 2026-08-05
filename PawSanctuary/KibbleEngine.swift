@@ -167,13 +167,14 @@ class KibbleEngine {
     // MARK: Offline progress
 
     /// Advances kibble regen by `secs` seconds of elapsed offline time.
-    func applyOfflineProgress(secs: Int) {
+    func applyOfflineProgress(secs: Int, bonusPerRegen: Int = 0) {
         let cap = effectiveRegenCap
         guard kibble < cap, secs >= 1 else { return }
         let need = secondsUntilNextKibble
         if secs >= need {
             let remainder = secs - need
-            let gained    = 1 + remainder / kibbleRegenSecs
+            let regens    = 1 + remainder / kibbleRegenSecs
+            let gained    = regens * (1 + bonusPerRegen)
             kibble = min(cap, kibble + gained)
             secondsUntilNextKibble = (kibble >= cap)
                 ? kibbleRegenSecs

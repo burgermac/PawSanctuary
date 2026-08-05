@@ -1250,11 +1250,13 @@ final class PersistenceTests: XCTestCase {
     func testAreaRewardPrimaryMessageIncludesAllComponents() {
         // AreaReward grants at most one family spawner per area (newFamilySpawner is
         // singular) — this test previously exercised a multi-species newSpecies list
-        // that predates that design; updated to match.
-        let reward = AreaReward(newBoardRow: true, newFamilySpawner: .fox,
+        // that predates that design; updated to match. newBoardRow was removed (bug
+        // fix, 5 Aug 2026): it only ever appended banner text — no code actually
+        // unlocked a row from it, so it falsely claimed a reward that never happened.
+        // Board rows are unlocked purely by player level (boardRowUnlockLevels).
+        let reward = AreaReward(newFamilySpawner: .fox,
                                 bonusKibble: 20, bonusDogTags: 5, bonusXP: 60)
         let msg = reward.primaryMessage()
-        XCTAssertTrue(msg.contains("board row"), "Message should mention new board row")
         XCTAssertTrue(msg.contains("Cervids"),   "Message should mention Cervids (fox family)")
         XCTAssertTrue(msg.contains("20"),        "Message should mention kibble amount")
         XCTAssertTrue(msg.contains("5"),         "Message should mention dog tag amount")
