@@ -66,8 +66,16 @@ struct InventoryScreenView: View {
             }
         case 3:
             if viewModel.selectedPowerUpSlot != nil {
-                placeButton(label: "Apply to Spawner",
-                            color: Color(red: 0.50, green: 0.22, blue: 0.72)) {}
+                // Applying a power-up needs a board position (a specific Family
+                // Spawner tile), which this screen doesn't have — the real flow is
+                // "select here, close, tap a spawner" (see suppliesTab's own
+                // instructional text). This button used to do nothing at all; the
+                // one useful thing it can do from in here is perform the "close"
+                // step for the player.
+                placeButton(label: "Choose Spawner on Board",
+                            color: Color(red: 0.50, green: 0.22, blue: 0.72)) {
+                    viewModel.showInventory = false
+                }
             }
         default:
             EmptyView()

@@ -577,6 +577,57 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded2.board[0][0].item?.tier, 0, "Stray tier 0 clamps at 0, not -1")
     }
 
+    // MARK: v20 → v21 (toolInventory collapses into materialCounts)
+    //
+    // Previously untested as an entry version — confirmed (5 Aug 2026 review) the
+    // transform itself was correct, but nothing exercised it, dedicated or swept.
+
+    func testV20toV21MigrationCascadesToolInventoryIntoMaterialCounts() throws {
+        let wood   = ContentRegistry.woodChainID
+        let metal  = ContentRegistry.metalChainID
+        let cement = ContentRegistry.cementChainID
+
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sampleBoardItem = try XCTUnwrap((obj["board"] as? [[[String: Any]]])?[0][0]["item"] as? [String: Any])
+
+        obj.removeValue(forKey: "materialCounts")
+        obj["toolInventory"] = [
+            ["chainID": wood,   "tier": 0],
+            ["chainID": wood,   "tier": 0],   // cascades with the one above into 1x wood tier 1
+            ["chainID": wood,   "tier": 2],
+            ["chainID": metal,  "tier": 3],
+            ["chainID": cement, "tier": 5],   // already top tier — nothing to cascade into
+            ["chainID": "animal.dog", "tier": 0], // not a material chain — must be ignored
+        ]
+        obj["pendingMaterialLots"] = [[sampleBoardItem]]  // mid-session queued lot that must be cleared
+        obj["version"] = 20
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v20 save should migrate to v21")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.materialCounts[wood],   [0, 1, 1, 0, 0, 0],
+                       "two tier-0 wood cascade into one tier-1, plus the standalone tier-2")
+        XCTAssertEqual(loaded.materialCounts[metal],  [0, 0, 0, 1, 0, 0])
+        XCTAssertEqual(loaded.materialCounts[cement], [0, 0, 0, 0, 0, 1])
+        XCTAssertTrue(loaded.pendingMaterialLots.isEmpty,
+                      "mid-session queued lots must be cleared, not carried across the schema change")
+    }
+
+    // MARK: v21 → v22 (pityStates introduced, empty by default)
+
+    func testV21toV22MigrationInjectsEmptyPityStates() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "pityStates")
+        obj["version"] = 21
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v21 save should migrate to v22")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.pityStates.isEmpty)
+    }
+
     func testV24toV25MigrationCollapsesAdoptionOrderRewardsIntoList() throws {
         // Build a v24-style save: AdoptionOrder still has the three flat reward
         // fields (rewardDogTags / rewardCoins / rewardCardPack), no `rewards` key.
@@ -750,7 +801,7 @@ final class PersistenceTests: XCTestCase {
     /// back must still pick up every field added since, or it decodes to nil and is
     /// discarded as corrupt.
     func testOlderSavesStillMigrateAfterTheV27Additions() throws {
-        for version in [12, 19, 23, 24, 25, 26] {
+        for version in [12, 19, 20, 21, 23, 24, 25, 26] {
             let data = try JSONEncoder().encode(makeSampleState())
             var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
             // Strip everything added after v8 — the worst case for a flat chain.
