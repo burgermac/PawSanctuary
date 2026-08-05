@@ -78,7 +78,7 @@ Loyalty Club (unlocks at player level 20) → 7-day reward cycle, separate from 
 ### Progression Loop (weeks → months)
 ```
 Level up via XP → unlocks supply producers, card packs, higher spawn multipliers
-Build Sanctuary Map areas with materials → unlocks new families + board rows
+Build Sanctuary Map areas with materials → unlocks new families (board rows are separate — see Section 8)
 Progress through 15 stages × 15 families (225 unique named items)
 Reach Stage 7 (Era 3) with a family → unlock its Superpower
 Reach top tier (Stage 15) → Ambassador celebration, Sanctuary Star milestones
@@ -362,12 +362,12 @@ The limitless material accumulator (decided during the Sanctuary Map build-out) 
 ## 11. Sanctuary Map & Building
 
 ### Overview
-Not present at all in earlier GDD drafts. Players spend Coins + tiered materials (wood/metal/cement) to build **15 Sanctuary Areas** in a fixed unlock order, starting with the tutorial-only "Antique Dog House" (Canines, day one) through 14 further areas that each unlock one new family's spawner (and, for the first four, a new board row).
+Not present at all in earlier GDD drafts. Players spend Coins + tiered materials (wood/metal/cement) to build **15 Sanctuary Areas** in a fixed unlock order, starting with the tutorial-only "Antique Dog House" (Canines, day one) through 14 further areas that each unlock one new family's spawner. Board rows are **not** part of this system — they're unlocked purely by player level (Section 8). An earlier `AreaReward.newBoardRow` flag on the first four areas claimed otherwise in its completion banner text, but no code ever unlocked a row from it; removed as a bug fix (5 Aug 2026) rather than wired up, since level-gating is what actually shipped and is tuned.
 
 ### Per-Area Structure
 Each area has:
 - A one-time build cost (materials + implicitly gated by `requiresPrevious`)
-- An `AreaReward` — new family spawner, sometimes a new board row, plus bonus Kibble/Dog Tags/XP
+- An `AreaReward` — new family spawner, plus bonus Kibble/Dog Tags/XP
 - **4 upgrade tiers**, each costing Coins + higher-tier materials, granting a permanent `UpgradeBonus` (12 distinct bonus fields: coin multipliers, extra adoption-order slots, weekly-goal discounts, spotlight multiplier bonus, sub-object drop-rate bonus, pity-timer reduction, power-up duration bonus, and more). All active bonuses are summed by `recalcActiveBonuses()`.
 
 Later areas scale materials to higher tiers and larger quantities, so late-game building feels like a genuine investment rather than a passive unlock.
@@ -386,6 +386,8 @@ Entirely new since the last GDD draft.
 
 ### Trading
 Duplicate cards can be sent to Game Center friends (up to a daily send cap), routed through **CloudKit's public database** — this was the one part of the system that was fully stubbed out until this refresh cycle; it's now wired end-to-end (upload/fetch/claim, plus a fix so the sender's UI actually reflects a claimed trade instead of showing "Pending" forever). It still needs the Game Center and CloudKit capabilities toggled on in Xcode, and the CloudKit schema deployed, before it's live — see Section 16.
+
+Three reliability bugs fixed 5 Aug 2026, all edge cases around CloudKit call failures rather than the happy path: the daily send cap's underlying counter never actually reset on a new day (only its on-screen value faked a reset, so it silently collapsed to 1 trade/day forever after the first exhaustion); a claim could be granted twice if the network confirmation back to CloudKit failed after the card was already delivered locally; and a sent card could be deducted and lost for good if the initial upload to CloudKit failed, with the trade orphaned client-side and no way for the recipient to ever see it. All three are now guarded (a real day-rollover, a persisted claimed-trade guard, and a rollback-on-upload-failure path).
 
 ---
 
