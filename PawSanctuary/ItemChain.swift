@@ -28,6 +28,7 @@ enum ChainCategory: String, Codable, CaseIterable {
     case subObject   // per-family 4-stage merge chain; top tier becomes a power-up consumable
     case powerUp     // power-up consumable item (drag onto spawner to apply)
     case currency    // kibble / coin chains that spawn on the board — Phase 4
+    case superpower  // single-use active-superpower piece; drag onto an eligible board item to spend it
 }
 
 // ============================================================
@@ -120,6 +121,10 @@ struct ContentRegistry {
         for species in AnimalSpecies.allCases { register(Self.makeSubObjectChain(species)) }
         // Phase 4, Task 4.1: kibble/coin merge chains that spawn on the board.
         for chain in [Self.makeKibbleCurrencyChain(), Self.makeCoinCurrencyChain()] { register(chain) }
+        // Active-superpower consumable pieces — one per family with an active ability.
+        for species in AnimalSpecies.allCases where species.superpower.isActive {
+            register(Self.makeSuperpowerChain(species))
+        }
     }
 
     private mutating func register(_ chain: MergeChain) {
@@ -150,6 +155,10 @@ struct ContentRegistry {
 
     /// Stable chain id for an animal species, e.g. "animal.dog".
     static func animalChainID(_ s: AnimalSpecies) -> ChainID { "animal.\(s.rawValue)" }
+
+    /// Stable chain id for an active-superpower piece, e.g. "superpower.cat".
+    /// Only defined for species whose `superpower.isActive` is true.
+    static func superpowerChainID(_ s: AnimalSpecies) -> ChainID { "superpower.\(s.rawValue)" }
 
     /// Stable chain ids for the three supply chains.
     static let groomingChainID: ChainID = "supply.grooming"
@@ -301,6 +310,25 @@ struct ContentRegistry {
         )
         return MergeChain(id: toolboxChainID, category: .tool,
                           displayName: "Tap to collect!", tiers: [tier])
+    }
+
+    // MARK: Active-superpower piece builder
+
+    /// Single-tier collectible for an active superpower — reuses that family's
+    /// existing `Superpower` icon/name/tint, so no new art is needed. Never merges
+    /// with itself (single-tier); spent by dragging onto an eligible board item.
+    private static func makeSuperpowerChain(_ species: AnimalSpecies) -> MergeChain {
+        let sp = species.superpower
+        let tier = ChainTier(
+            name: sp.name, shortLabel: sp.name,
+            symbol: sp.sfSymbol,
+            color: species.tintColor,
+            tint: species.tintColor,
+            badge: nil,
+            scoreValue: 0, xpValue: 0
+        )
+        return MergeChain(id: superpowerChainID(species), category: .superpower,
+                          displayName: sp.name, tiers: [tier])
     }
 
     // MARK: Currency chain builders (Phase 4, Task 4.1)

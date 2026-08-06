@@ -862,10 +862,6 @@ class MergeBoardViewModel {
             kibbleEngine.tick(bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
             equineSprintRemaining = max(0, equineSprintRemaining - 1)
         }
-        // Marsupials Pouch: return stored items when timer fires.
-        if pouchExpiryTimestamp > 0 && Date().timeIntervalSince1970 >= pouchExpiryTimestamp {
-            returnPouchItems()
-        }
         let urgentOrderChanged = adoptionBoardCoordinator.tickUrgentOrder(
             unlockedChainIDs: progression.unlockedAnimalChainIDs,
             playerLevel: progression.playerLevel)
@@ -1427,18 +1423,8 @@ class MergeBoardViewModel {
     func boardCellTapped(at pos: GridPosition) {
         HapticManager.shared.lightTap()
 
-        // Leap mode: two-step teleport interaction takes priority over everything else.
+        // Leap mode: teleport-destination tap takes priority over everything else.
         if leapMode { handleLeapTap(at: pos); return }
-
-        // Pouch mode: tap an animal to store it in the Pouch.
-        if showPouchPanel {
-            if !pouchStore(from: pos) {
-                if pouchItems[0] != nil && pouchItems[1] != nil {
-                    enqueueToast(Toast(kind: .info("Pouch is full (2 slots).")))
-                }
-            }
-            return
-        }
 
         // Power-up apply: if a power-up is selected, try to apply it to a family spawner.
         if selectedPowerUpSlot != nil {
@@ -1536,6 +1522,21 @@ class MergeBoardViewModel {
         )
         pityStates[speciesRaw] = pityState
         return rarity
+    }
+
+    /// A family's own sub-object completion has a chance to award its active
+    /// superpower piece instead of a normal rarity roll, once that family has
+    /// reached the unlock tier (checkSuperpowerUnlock's existing gate — reused here
+    /// as a drop-eligibility gate, not a permanent-ability flag). Doesn't touch
+    /// pity — sits alongside the two non-pity-resetting rarity outcomes.
+    /// `chainID` is the sub-object chain, e.g. `subobject.cat`.
+    private func maybeGrantSuperpowerPiece(fromCompletedSubObject chainID: ChainID) -> AnimalSpecies? {
+        let speciesRaw = chainID.replacingOccurrences(of: "subobject.", with: "")
+        guard let species = AnimalSpecies(rawValue: speciesRaw),
+              species.superpower.isActive,
+              unlockedSuperpowerSpecies.contains(species.rawValue) else { return nil }
+        guard Double.random(in: 0..<1) < 0.15 else { return nil }
+        return species
     }
 
     /// Puts `item` on a free board cell, falling back to inventory when the board
@@ -1652,6 +1653,18 @@ class MergeBoardViewModel {
         guard board[to.row][to.col].producer == nil else { return }
 
         if let dstItem = board[to.row][to.col].item {
+            if srcItem.chain?.category == .superpower {
+                // Active-superpower piece spent on a target — a distinct merge outcome,
+                // not an animal-family upgrade, so it skips the score/XP/bubble/
+                // checkSuperpowerUnlock pipeline below entirely.
+                if applySuperpowerMerge(pieceChainID: srcItem.chainID, at: to, target: dstItem) {
+                    board[from.row][from.col].item = nil
+                    recalcBoardIsFull()
+                    SoundManager.shared.playQuestClaim()
+                    HapticManager.shared.successPattern()
+                }
+                return
+            }
             if dstItem.bubbledAt == nil,
                srcItem.chainID == dstItem.chainID,
                srcItem.tier == dstItem.tier,
@@ -1689,7 +1702,14 @@ class MergeBoardViewModel {
                 let mergedChain = ContentRegistry.shared.chain(srcItem.chainID)
                 let isCompletedSubObject = mergedChain?.category == .subObject
                     && next == mergedChain?.maxTier
-                if mergedChain?.category == .powerUp || isCompletedSubObject {
+                if isCompletedSubObject, let sp = maybeGrantSuperpowerPiece(fromCompletedSubObject: srcItem.chainID) {
+                    board[to.row][to.col].item = nil
+                    inventoryStore.addItem(BoardItem(chainID: ContentRegistry.superpowerChainID(sp), tier: 0))
+                    recalcBoardIsFull()
+                    SoundManager.shared.playQuestClaim()
+                    HapticManager.shared.successPattern()
+                    enqueueToast(Toast(kind: .info("\(sp.superpower.name) found! Check your Supplies.")))
+                } else if mergedChain?.category == .powerUp || isCompletedSubObject {
                     if var powerUpItem = board[to.row][to.col].item {
                         // Task 2.2: the effect is rolled here, once, consuming the
                         // family's accumulated pity — not chosen by the player
@@ -2360,6 +2380,18 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Banner copy for the unlock celebration — actives no longer grant a permanent
+    /// button; they become eligible to find their ability as a board piece via the
+    /// family's own sub-object completions (see the drop-chance check alongside
+    /// rollRarityForCompletedSubObject). Passives are unchanged.
+    func superpowerUnlockBannerDetail(for species: AnimalSpecies) -> String {
+        let sp = species.superpower
+        if sp.isActive {
+            return "\(sp.name) pieces may now drop when \(species.spawnerName) sub-objects complete."
+        }
+        return "\(species.spawnerName): \(sp.name) — \(sp.description)"
+    }
+
     /// Place a free tile at a random empty cell. Returns false if the board is full.
     @discardableResult
     private func placeFreeTile(chainID: ChainID, tier: Int) -> Bool {
@@ -2429,74 +2461,90 @@ class MergeBoardViewModel {
         }
     }
 
-    // MARK: Active superpower dispatch
+    // MARK: Active superpower pieces — spent by merging onto an eligible board item
+    //
+    // No more permanent unlock + cooldown button. Each active family's ability is a
+    // single-use `.superpower`-category BoardItem (see ItemChain.makeSuperpowerChain)
+    // found via the sub-object drop system, placed/stored like any other item, and
+    // spent by dragging it onto an eligible target — see attemptMergeOrMove's
+    // `srcItem.chain?.category == .superpower` branch, which calls this dispatcher.
 
-    /// Called by the UI button strip. Checks cooldown and dispatches to the specific handler.
-    func activateSuperpower(for species: AnimalSpecies) {
-        guard case .active(let cooldown) = species.superpower.kind else { return }
-        guard unlockedSuperpowerSpecies.contains(species.rawValue) else { return }
-        // Leap is a two-tap sequence with an armed source cell — another superpower
-        // firing in between (e.g. Stampede merging that same cell away) could change
-        // or clear it without leapSourceCell knowing. Force Leap to be completed or
-        // explicitly cancelled first.
-        guard !leapMode else { return }
-        let now = Date().timeIntervalSince1970
-        if let expiry = superpowerCooldownEnds[species.rawValue], now < expiry { return }
+    /// Returns whether the piece was actually spent. `target` is read-only here —
+    /// each handler owns whatever mutation the target cell needs (or none).
+    private func applySuperpowerMerge(pieceChainID: ChainID, at pos: GridPosition, target: BoardItem) -> Bool {
+        guard let species = AnimalSpecies(rawValue: pieceChainID.replacingOccurrences(of: "superpower.", with: "")) else {
+            return false
+        }
+        guard target.bubbledAt == nil else {
+            enqueueToast(Toast(kind: .info("Can't use that on a bubbled item."))); return false
+        }
         switch species {
-        case .cat:       activateNineLives()
-        case .guineaPig: activateStampede()
-        case .pony:      activateSprint()
-        case .lizard:    initiateLeap()
-        case .parrot:    activateMimic()
-        case .ferret:    activatePouch()
-        default: return
+        case .cat:       return applySplitterPiece(at: pos, target: target)
+        case .guineaPig: return applyStampedePiece(at: pos, target: target)
+        case .pony:      return applySprintPiece(target: target)
+        case .lizard:    return applyLeapPiece(at: pos, target: target)
+        case .parrot:    return applyMimicPiece(target: target)
+        case .ferret:    return applyPouchPiece(at: pos, target: target)
+        default:         return false
         }
-        superpowerCooldownEnds[species.rawValue] = now + cooldown
-        HapticManager.shared.mediumImpact()
     }
 
-    // Nine Lives (Felines .cat): undo last merge.
-    private func activateNineLives() {
-        guard let snap = preMoveSnapshot else {
-            enqueueToast(Toast(kind: .info("No merge to undo yet."))); return
+    /// Nine Lives ("Splitter", Felines .cat): the target drops one tier, and a second
+    /// copy of that same lower tier is placed elsewhere — splitting one merged item
+    /// into two of its prior stage.
+    private func applySplitterPiece(at pos: GridPosition, target: BoardItem) -> Bool {
+        guard target.tier > 0 else {
+            enqueueToast(Toast(kind: .info("That's already at its first stage."))); return false
         }
-        board = snap.board
-        inventoryStore.inventory = snap.inventory
-        rows = board.count
-        recalcBoardIsFull()
-        preMoveSnapshot = nil
-        SoundManager.shared.playQuestClaim()
+        let splitTier = target.tier - 1
+        board[pos.row][pos.col].item = BoardItem(chainID: target.chainID, tier: splitTier)
+        if !placeOrBankItem(BoardItem(chainID: target.chainID, tier: splitTier)) {
+            triggerToast(.inventoryFull)
+        }
+        return true
     }
 
-    // Stampede (Ungulates .guineaPig): merge all same-family same-stage pairs.
-    private func activateStampede() {
+    /// Stampede (Ungulates .guineaPig): instantly merges all same-tier pairs of the
+    /// target's chain, scoped to that one family instead of the whole board.
+    private func applyStampedePiece(at pos: GridPosition, target: BoardItem) -> Bool {
+        guard target.chain?.category == .animal else {
+            enqueueToast(Toast(kind: .info("Not a valid target for that."))); return false
+        }
+        let hasPartner = flatBoard.contains {
+            $0.position != pos && $0.item?.chainID == target.chainID
+                && $0.item?.tier == target.tier && $0.item?.bubbledAt == nil
+        }
+        guard hasPartner else {
+            enqueueToast(Toast(kind: .info("No matching pair to stampede yet."))); return false
+        }
+        runStampede(scopedTo: target.chainID)
+        return true
+    }
+
+    /// Repeatedly merges same-tier pairs of one chain until none remain — same loop
+    /// shape the old whole-board Stampede used, just parameterized to one chainID.
+    private func runStampede(scopedTo chainID: ChainID) {
         var changed = true
         while changed {
             changed = false
-            // Bubbled items can't be either side of a merge — same rule the normal
-            // drag-merge path enforces (srcItem.bubbledAt/dstItem.bubbledAt == nil) —
-            // otherwise a mass-merge could pop a bubble and destroy its pending reward.
-            let cells = flatBoard.filter { $0.item != nil && $0.item?.bubbledAt == nil }
-            // Build a frequency map: chainID+tier → [positions]
-            var groups: [String: [GridPosition]] = [:]
-            for cell in cells {
-                guard let item = cell.item else { continue }
-                let key = "\(item.chainID)|\(item.tier)"
-                groups[key, default: []].append(cell.position)
+            let positions = flatBoard
+                .filter { $0.item?.chainID == chainID && $0.item?.bubbledAt == nil }
+                .map(\.position)
+            var groups: [Int: [GridPosition]] = [:]
+            for p in positions {
+                guard let tier = board[p.row][p.col].item?.tier else { continue }
+                groups[tier, default: []].append(p)
             }
-            for (_, positions) in groups where positions.count >= 2 {
-                let a = positions[0]; let b = positions[1]
+            for (_, tierPositions) in groups where tierPositions.count >= 2 {
+                let a = tierPositions[0]; let b = tierPositions[1]
                 guard let itemA = board[a.row][a.col].item else { continue }
-                guard let next = ContentRegistry.shared.nextTier(itemA.chainID, after: itemA.tier) else { continue }
-                board[b.row][b.col].item = BoardItem(chainID: itemA.chainID, tier: next)
+                guard let next = ContentRegistry.shared.nextTier(chainID, after: itemA.tier) else { continue }
+                board[b.row][b.col].item = BoardItem(chainID: chainID, tier: next)
                 board[a.row][a.col].item = nil
                 mergeCount += 1
                 lastMergeTimestamp = Date().timeIntervalSince1970
-                updateAllAfterMerge(chainID: itemA.chainID, tier: next)
-                // Same as the normal drag-merge path — otherwise a family reaching its
-                // unlock tier via Stampede never actually unlocks its superpower, and
-                // Fetch!/Multiply/Antler Drop/Current all silently miss Stampede merges.
-                let mergedSpecies = AnimalSpecies(rawValue: itemA.chainID.replacingOccurrences(of: "animal.", with: ""))
+                updateAllAfterMerge(chainID: chainID, tier: next)
+                let mergedSpecies = AnimalSpecies(rawValue: chainID.replacingOccurrences(of: "animal.", with: ""))
                 if let sp = mergedSpecies { checkSuperpowerUnlock(species: sp, tier: next) }
                 applyPassivePowers(mergedSpecies: mergedSpecies, mergePos: b, emptyPos: a)
                 changed = true
@@ -2506,94 +2554,72 @@ class MergeBoardViewModel {
         SoundManager.shared.playMerge()
     }
 
-    // Sprint (Equines .pony): double kibble regen for 60 seconds.
-    private func activateSprint() {
+    /// Sprint (Equines .pony): starts the 60s kibble-regen-double buff. The only
+    /// ability that keeps a timer — that duration is the effect itself, not a reuse
+    /// cooldown on the (now consumed, one-shot) piece.
+    private func applySprintPiece(target: BoardItem) -> Bool {
+        guard target.chain?.category == .animal else {
+            enqueueToast(Toast(kind: .info("Not a valid target for that."))); return false
+        }
         equineSprintRemaining = 60.0
         enqueueToast(Toast(kind: .info("Kibble regen doubled for 60 s!")))
-    }
-
-    // Leap (Amphibians .lizard): enter two-step teleport mode.
-    private func initiateLeap() {
-        leapMode = true
-        leapSourceCell = nil
-        enqueueToast(Toast(kind: .info("Leap: tap an Amphibian, then an empty cell.")))
-    }
-
-    /// Call from the UI when Leap mode is active and the player taps a cell.
-    func handleLeapTap(at pos: GridPosition) {
-        guard leapMode else { return }
-        if leapSourceCell == nil {
-            // First tap — select the animal to teleport.
-            guard let item = board[pos.row][pos.col].item else { return }
-            guard let species = AnimalSpecies(rawValue: item.chainID.replacingOccurrences(of: "animal.", with: "")),
-                  species == .lizard else {
-                enqueueToast(Toast(kind: .info("Tap an Amphibian tile."))); return
-            }
-            leapSourceCell = pos
-        } else {
-            // Second tap — move to empty destination.
-            guard let src = leapSourceCell else { return }
-            guard board[pos.row][pos.col].isEmpty, board[pos.row][pos.col].isUnlocked else {
-                enqueueToast(Toast(kind: .info("Tap an empty cell for the destination."))); return
-            }
-            // Re-validate the source wasn't changed by something else while Leap was
-            // armed (activateSuperpower now blocks other superpowers during Leap, but
-            // a drag-merge elsewhere could still touch this cell) — trust nothing
-            // captured back when the source was first selected.
-            guard let srcItem = board[src.row][src.col].item,
-                  let species = AnimalSpecies(rawValue: srcItem.chainID.replacingOccurrences(of: "animal.", with: "")),
-                  species == .lizard else {
-                leapMode = false; leapSourceCell = nil
-                enqueueToast(Toast(kind: .info("That Amphibian is gone — Leap cancelled."))); return
-            }
-            board[pos.row][pos.col].item = srcItem
-            board[src.row][src.col].item = nil
-            leapMode = false; leapSourceCell = nil
-            recalcBoardIsFull()
-            SoundManager.shared.playMerge()
-        }
-    }
-
-    // Mimic (Primates .parrot): spawn a Stage-1 of the last merged family.
-    private func activateMimic() {
-        guard let rawValue = lastMergedSpeciesRaw,
-              let species = AnimalSpecies(rawValue: rawValue) else {
-            enqueueToast(Toast(kind: .info("Merge something first!"))); return
-        }
-        let chainID = ContentRegistry.animalChainID(species)
-        if !placeFreeTile(chainID: chainID, tier: 0) {
-            enqueueToast(Toast(kind: .info("Board is full!")))
-        }
-    }
-
-    // Pouch (Marsupials .ferret): store up to 2 animals off-board for 30 s.
-    private func activatePouch() {
-        pouchItems = [nil, nil]
-        pouchExpiryTimestamp = Date().timeIntervalSince1970 + 30
-        showPouchPanel = true
-    }
-
-    /// Move an item from the board into the Pouch. Returns true on success.
-    func pouchStore(from pos: GridPosition) -> Bool {
-        guard let item = board[pos.row][pos.col].item else { return false }
-        if pouchItems[0] == nil { pouchItems[0] = item }
-        else if pouchItems[1] == nil { pouchItems[1] = item }
-        else { return false }
-        board[pos.row][pos.col].item = nil
-        recalcBoardIsFull()
         return true
     }
 
-    /// Auto-return Pouch items to the board (or inventory) when the timer expires.
-    func returnPouchItems() {
-        pouchExpiryTimestamp = 0
-        showPouchPanel = false
-        for item in pouchItems.compactMap({ $0 }) {
-            if !placeFreeTile(chainID: item.chainID, tier: item.tier) {
-                inventoryStore.addItem(item)
-            }
+    /// Leap (Amphibians .lizard): arms the target tile for teleport — the player's
+    /// next tap on an empty cell moves it there (handleLeapTap).
+    private func applyLeapPiece(at pos: GridPosition, target: BoardItem) -> Bool {
+        guard target.chain?.category == .animal else {
+            enqueueToast(Toast(kind: .info("Not a valid target for that."))); return false
         }
-        pouchItems = [nil, nil]
+        leapMode = true
+        leapSourceCell = pos
+        enqueueToast(Toast(kind: .info("Leap: tap an empty cell for the destination.")))
+        return true
+    }
+
+    /// Call from the UI when Leap mode is active and the player taps a cell — picks
+    /// the destination for the tile applyLeapPiece armed.
+    func handleLeapTap(at pos: GridPosition) {
+        guard leapMode, let src = leapSourceCell else { return }
+        guard board[pos.row][pos.col].isEmpty, board[pos.row][pos.col].isUnlocked else {
+            enqueueToast(Toast(kind: .info("Tap an empty cell for the destination."))); return
+        }
+        // Re-validate the source wasn't changed by something else while Leap was
+        // armed — trust nothing captured back when the piece was first merged.
+        guard let srcItem = board[src.row][src.col].item, srcItem.bubbledAt == nil else {
+            leapMode = false; leapSourceCell = nil
+            enqueueToast(Toast(kind: .info("That tile is gone — Leap cancelled."))); return
+        }
+        board[pos.row][pos.col].item = srcItem
+        board[src.row][src.col].item = nil
+        leapMode = false; leapSourceCell = nil
+        recalcBoardIsFull()
+        SoundManager.shared.playMerge()
+    }
+
+    /// Mimic (Primates .parrot): spawns a free Stage-1 tile matching the target's family.
+    private func applyMimicPiece(target: BoardItem) -> Bool {
+        guard target.chain?.category == .animal else {
+            enqueueToast(Toast(kind: .info("Not a valid target for that."))); return false
+        }
+        guard placeFreeTile(chainID: target.chainID, tier: 0) else {
+            enqueueToast(Toast(kind: .info("Board is full!"))); return false
+        }
+        return true
+    }
+
+    /// Pouch (Marsupials .ferret): banks the target directly into inventory —
+    /// permanent, not the old temporary 30s hold (inventory already covers that).
+    private func applyPouchPiece(at pos: GridPosition, target: BoardItem) -> Bool {
+        guard target.chain?.category == .animal else {
+            enqueueToast(Toast(kind: .info("Not a valid target for that."))); return false
+        }
+        guard inventoryStore.addItem(target) else {
+            enqueueToast(Toast(kind: .info("Inventory is full!"))); return false
+        }
+        board[pos.row][pos.col].item = nil
+        return true
     }
 
     private func applyQuestRewards(_ r: QuestRewards) {

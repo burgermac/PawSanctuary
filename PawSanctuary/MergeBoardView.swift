@@ -172,11 +172,13 @@ struct MergeBoardView: View {
                 .zIndex(98)
             }
 
-            // Superpower unlock celebration banner
+            // Superpower unlock celebration banner — a one-time heads-up, not a
+            // persistent UI element. Actives no longer get a button strip; they
+            // become findable as board pieces (see superpowerUnlockBannerDetail).
             if viewModel.showSuperpowerUnlockBanner, let sp = viewModel.superpowerUnlockBannerSpecies {
                 BannerView(
                     title: "Superpower Unlocked!",
-                    detail: "\(sp.spawnerName): \(sp.superpower.name) — \(sp.superpower.description)",
+                    detail: viewModel.superpowerUnlockBannerDetail(for: sp),
                     background: AnyShapeStyle(LinearGradient(
                         colors: [Color(red: 0.35, green: 0.10, blue: 0.55),
                                  Color(red: 0.55, green: 0.25, blue: 0.75)],
@@ -193,58 +195,9 @@ struct MergeBoardView: View {
                 .zIndex(97)
             }
 
-            // Active superpower button strip — one button per family with an unlocked active power.
-            let activeSuperpowers = AnimalSpecies.allCases.filter {
-                $0.superpower.isActive && viewModel.unlockedSuperpowerSpecies.contains($0.rawValue)
-            }
-            if !activeSuperpowers.isEmpty {
-                VStack {
-                    Spacer()
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(activeSuperpowers, id: \.rawValue) { species in
-                                let sp = species.superpower
-                                let now = Date().timeIntervalSince1970
-                                let expiry = viewModel.superpowerCooldownEnds[species.rawValue] ?? 0
-                                let onCooldown = now < expiry
-                                let remaining = max(0, expiry - now)
-                                Button {
-                                    viewModel.activateSuperpower(for: species)
-                                } label: {
-                                    VStack(spacing: 3) {
-                                        ZStack {
-                                            Circle()
-                                                .stroke(onCooldown ? Color.gray.opacity(0.4) : Color.purple, lineWidth: 2)
-                                                .frame(width: 38, height: 38)
-                                            if onCooldown, let cd = sp.cooldownSeconds {
-                                                Circle()
-                                                    .trim(from: 0, to: CGFloat(remaining / cd))
-                                                    .stroke(Color.purple.opacity(0.6), lineWidth: 3)
-                                                    .rotationEffect(.degrees(-90))
-                                                    .frame(width: 38, height: 38)
-                                            }
-                                            Image(systemName: sp.sfSymbol)
-                                                .font(.system(size: 16))
-                                                .foregroundColor(onCooldown ? .gray : .purple)
-                                        }
-                                        Text(onCooldown ? sp.cooldownLabel ?? "" : sp.name)
-                                            .font(.system(size: 8, weight: .semibold))
-                                            .foregroundColor(onCooldown ? .gray : .purple)
-                                    }
-                                }
-                                .disabled(onCooldown)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial)
-                    .padding(.bottom, 60)
-                }
-                .zIndex(96)
-            }
-
-            // Leap mode overlay hint
+            // Leap mode overlay hint — armed by merging a Leap piece onto a target
+            // (see applyLeapPiece), so leapSourceCell is always already set here;
+            // this is purely "pick the destination" now, no source-selection step.
             if viewModel.leapMode {
                 VStack {
                     HStack {
@@ -252,7 +205,7 @@ struct MergeBoardView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.up.right.circle.fill")
                                 .foregroundColor(.cyan)
-                            Text(viewModel.leapSourceCell == nil ? "Tap an Amphibian" : "Tap an empty cell")
+                            Text("Tap an empty cell for the destination")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.white)
                             Button("Cancel") {
@@ -270,53 +223,6 @@ struct MergeBoardView: View {
                     Spacer()
                 }
                 .zIndex(95)
-            }
-
-            // Pouch panel — 2 off-board storage slots with countdown
-            if viewModel.showPouchPanel {
-                VStack {
-                    Spacer()
-                    VStack(spacing: 8) {
-                        HStack {
-                            Image(systemName: "bag.fill").foregroundColor(.orange)
-                            Text("Pouch — tap board animals to store them")
-                                .font(.system(size: 12, weight: .semibold))
-                            Spacer()
-                            let remaining = max(0, viewModel.pouchExpiryTimestamp - Date().timeIntervalSince1970)
-                            Text("\(Int(remaining))s")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(remaining < 10 ? .red : .orange)
-                        }
-                        HStack(spacing: 12) {
-                            ForEach(0..<2, id: \.self) { i in
-                                let item = viewModel.pouchItems[i]
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(item != nil ? Color.orange.opacity(0.2) : Color.gray.opacity(0.1))
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.5)))
-                                        .frame(width: 60, height: 60)
-                                    if let item, let def = item.def {
-                                        VStack(spacing: 1) {
-                                            Image(systemName: def.symbol).font(.system(size: 20))
-                                                .foregroundColor(def.tint ?? def.color)
-                                            Text(def.shortLabel).font(.system(size: 7, weight: .bold))
-                                                .foregroundColor(def.color).lineLimit(1)
-                                        }
-                                    } else {
-                                        Image(systemName: "tray").font(.system(size: 18))
-                                            .foregroundColor(.gray.opacity(0.4))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.15), radius: 8))
-                    .padding(.horizontal, 20).padding(.bottom, 80)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                .zIndex(94)
             }
 
             // Ambassador celebration — sits on top of everything
@@ -350,7 +256,6 @@ struct MergeBoardView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showLevelUpBanner)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showSuperpowerUnlockBanner)
         .animation(.easeInOut(duration: 0.25), value: viewModel.leapMode)
-        .animation(.spring(response: 0.35, dampingFraction: 0.70), value: viewModel.showPouchPanel)
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .sheet(item: $activeRoute) { route in routeContent(route) }
