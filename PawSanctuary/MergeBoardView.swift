@@ -270,6 +270,16 @@ struct MergeBoardView: View {
         .onAppear {
             storeManager.onPurchaseComplete = { viewModel.applyPurchase($0, priceUSD: $1) }
             viewModel.isPassActive = storeManager.isPassActive
+            // The tutorial step above only initialized from the completion flag, never
+            // from actual progress — onChange only fires on a later *change* in
+            // rescueCount/mergeCount, not on the initial load. A force-quit between
+            // tutorial steps (completion flag not yet set) would otherwise replay
+            // "rescue your first animal" for a player who already has animals and
+            // has merged. Sync it once here against the real, persisted counts.
+            if !UserDefaults.standard.bool(forKey: "tutorialCompleted") {
+                if viewModel.mergeCount > 0 { tutorialStep = .quest }
+                else if viewModel.rescueCount > 0 { tutorialStep = .merge }
+            }
             // Cancel stale notifications whenever the app becomes visible
             NotificationManager.shared.cancelAll()
             // Request permission once the player has made some progress
