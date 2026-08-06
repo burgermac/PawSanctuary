@@ -50,9 +50,13 @@ class DogTagStore {
 
         let tiers = Array(max(0, minTier)...maxTier)
         return (0..<dogTagStoreSlotCount).compactMap { i in
-            // Walk the band so the three slots are spread across it rather than
-            // clustering, then fall back to wrapping for a band shorter than 3.
-            guard let tier = tiers.indices.contains(i) ? tiers[i] : tiers.last else { return nil }
+            // Evenly spread the slots across the full band, including its last
+            // (dearest) index — reading tiers[0..<slotCount] directly left the last
+            // tier of a fully-populated 4-wide band structurally unreachable.
+            let spread = dogTagStoreSlotCount > 1
+                ? Int((Double(i) * Double(tiers.count - 1) / Double(dogTagStoreSlotCount - 1)).rounded())
+                : 0
+            guard let tier = tiers.indices.contains(spread) ? tiers[spread] : tiers.last else { return nil }
             guard let chainID = animalChainIDs.randomElement() else { return nil }
             let chainMaxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
             return DogTagStoreSlot(chainID: chainID,

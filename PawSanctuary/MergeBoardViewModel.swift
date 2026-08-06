@@ -2475,6 +2475,13 @@ class MergeBoardViewModel {
         guard let species = AnimalSpecies(rawValue: pieceChainID.replacingOccurrences(of: "superpower.", with: "")) else {
             return false
         }
+        // Leap is an armed two-step sequence (see applyLeapPiece/handleLeapTap) — any
+        // other superpower piece used in between, including a second Leap piece,
+        // could change or clear the armed cell without leapSourceCell knowing. Force
+        // the in-flight Leap to be completed or explicitly cancelled first.
+        guard !leapMode else {
+            enqueueToast(Toast(kind: .info("Finish or cancel Leap first."))); return false
+        }
         guard target.bubbledAt == nil else {
             enqueueToast(Toast(kind: .info("Can't use that on a bubbled item."))); return false
         }
@@ -2493,14 +2500,22 @@ class MergeBoardViewModel {
     /// copy of that same lower tier is placed elsewhere — splitting one merged item
     /// into two of its prior stage.
     private func applySplitterPiece(at pos: GridPosition, target: BoardItem) -> Bool {
+        guard target.chain?.category == .animal else {
+            enqueueToast(Toast(kind: .info("Not a valid target for that."))); return false
+        }
         guard target.tier > 0 else {
             enqueueToast(Toast(kind: .info("That's already at its first stage."))); return false
         }
+        // Confirm there's somewhere for the second copy *before* touching the
+        // target — otherwise a full board+inventory would downgrade the target,
+        // silently lose the copy, and still report success.
+        let hasRoom = !emptyUnlockedCells.isEmpty || inventoryStore.inventory.contains(where: { $0 == nil })
+        guard hasRoom else {
+            triggerToast(.inventoryFull); return false
+        }
         let splitTier = target.tier - 1
         board[pos.row][pos.col].item = BoardItem(chainID: target.chainID, tier: splitTier)
-        if !placeOrBankItem(BoardItem(chainID: target.chainID, tier: splitTier)) {
-            triggerToast(.inventoryFull)
-        }
+        placeOrBankItem(BoardItem(chainID: target.chainID, tier: splitTier))
         return true
     }
 

@@ -29,6 +29,23 @@ class StoreManager {
     /// conversion, an accepted simplification for this phase's plumbing).
     @ObservationIgnored var onPurchaseComplete: ((IAPProduct, Decimal) -> Void)?
 
+    /// Guards against granting the same transaction twice. StoreKit 2 delivers every
+    /// transaction on `Transaction.updates` — including ones this session just made
+    /// via `purchase()` directly — so without this, a single paid purchase could be
+    /// seen and granted once by `purchase()` and again by `listenForTransactions()`.
+    private var grantedTransactionIDs: Set<UInt64> = []
+
+    /// Grants a transaction via `onPurchaseComplete` at most once, regardless of
+    /// which of the two observation paths (direct purchase vs. the update listener)
+    /// sees it first. Restores/family-shared entitlements (no price, or revoked)
+    /// are never new purchases and are left ungranted, same as before.
+    private func grantIfNew(_ tx: StoreKit.Transaction, iap: IAPProduct) {
+        guard let price = tx.price, tx.revocationDate == nil else { return }
+        guard !grantedTransactionIDs.contains(tx.id) else { return }
+        grantedTransactionIDs.insert(tx.id)
+        onPurchaseComplete?(iap, price)
+    }
+
     init() {
         Task {
             await loadProducts()
@@ -68,11 +85,8 @@ class StoreManager {
             switch result {
             case .success(let v):
                 let tx = try checkVerified(v)
-                // A restore or family-shared entitlement can also surface here with
-                // no price and/or a revocation date — not a new purchase, so don't count it.
-                if let iap = IAPProduct(rawValue: product.id),
-                   let price = tx.price, tx.revocationDate == nil {
-                    onPurchaseComplete?(iap, price)
+                if let iap = IAPProduct(rawValue: product.id) {
+                    grantIfNew(tx, iap: iap)
                 }
                 await tx.finish()
             case .pending:
@@ -105,12 +119,7 @@ class StoreManager {
                 let tx = try checkVerified(result)
                 if let iap = IAPProduct(rawValue: tx.productID) {
                     if iap == .sanctuaryPass { isPassActive = tx.revocationDate == nil }
-                    // listenForTransactions() delivers every transaction, including
-                    // restores and family-shared entitlements — those have no price
-                    // and/or a revocation date. A restore is not a new purchase.
-                    if let price = tx.price, tx.revocationDate == nil {
-                        onPurchaseComplete?(iap, price)
-                    }
+                    grantIfNew(tx, iap: iap)
                 }
                 await tx.finish()
             } catch {
