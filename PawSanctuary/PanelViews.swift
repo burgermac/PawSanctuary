@@ -1572,7 +1572,14 @@ struct TaskStripView: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            // LazyHStack, not HStack: this list's length grows with play (a card
+            // per active quest, daily challenge, exchangeable trio, and idle
+            // producer, on top of the fixed cards) and only ~3-4 fit in the
+            // visible strip at once. A plain HStack built every card on every
+            // appearance regardless of visibility -- profiling traced ~290ms of
+            // the board's first-render cost to this view alone, more than the
+            // entire 63-cell board.
+            LazyHStack(spacing: 10) {
                 LevelProgressTaskCard(viewModel: viewModel)
                 SpotlightTaskCard(viewModel: viewModel)
                 if let event = viewModel.activeEvent {
