@@ -377,11 +377,17 @@ enum GameStore {
         discardedIncompatibleVersion = nil
 
         // Make every slot consistent with the winning state, and refresh the
-        // last-known-good backup from a state we just validated.
+        // last-known-good backup from a state we just validated. Local writes
+        // stay synchronous — they're cheap, and callers (see
+        // testRecoversFromBackupWhenMainFileIsCorrupt) depend on the backup
+        // promotion having already happened by the time load() returns. The
+        // iCloud push is the one with unbounded latency (network round trip +
+        // NSUbiquitousKeyValueStore), so it alone is moved off the main thread
+        // (PERF-01) rather than blocking cold launch on it.
         if let data = encode(chosen) {
             writeLocal(data)
             writeBackup(data)
-            writeCloud(data)
+            Task.detached(priority: .utility) { writeCloud(data) }
         }
         return chosen
     }
