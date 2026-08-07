@@ -160,7 +160,10 @@ final class PersistenceTests: XCTestCase {
         XCTAssertTrue(decoded.board[0][0].item?.isTopTier ?? false)   // registry-driven (tier 14 = Moose, top of Cervids' 15-tier chain)
         XCTAssertNil(decoded.board[0][0].producer)
         XCTAssertEqual(decoded.board[0][1].producer?.level, .shelterPod)
-        XCTAssertEqual(decoded.board[0][1].producer?.cooldownRemaining, 17.5)
+        // cooldownRemaining is derived live from a wall-clock readyAt timestamp
+        // (see ProducerTile.readyAt), not an exact stored value — a generous
+        // accuracy avoids flaking on a slow/loaded test run.
+        XCTAssertEqual(decoded.board[0][1].producer?.cooldownRemaining ?? -1, 17.5, accuracy: 2.0)
         XCTAssertEqual(decoded.board[0][1].producer?.chargesRemaining, ProducerLevel.shelterPod.maxCharges)
         XCTAssertNil(decoded.board[0][1].item)
         XCTAssertTrue(decoded.board[0][0].isUnlocked)
@@ -254,9 +257,81 @@ final class PersistenceTests: XCTestCase {
         let tile = ProducerTile(level: .fosterHome, cooldownRemaining: 30, chargesRemaining: 3)
         let decoded = try decoder.decode(ProducerTile.self, from: encoder.encode(tile))
         XCTAssertEqual(decoded.level, .fosterHome)
-        XCTAssertEqual(decoded.cooldownRemaining, 30, accuracy: 0.001)
+        XCTAssertEqual(decoded.cooldownRemaining, 30, accuracy: 2.0)
         XCTAssertEqual(decoded.chargesRemaining, 3)
         XCTAssertEqual(decoded.id, tile.id, "id must survive round-trip")
+    }
+
+    /// A ProducerTile saved before `readyAt` replaced the hand-ticked
+    /// `cooldownRemaining` Double (and `speedBurstEndsAt` replaced
+    /// `speedBurstActive`/`speedBurstRemaining`) must still decode — see
+    /// ProducerTile.init(from:)'s doc comment on why this doesn't need a
+    /// GameStore version bump.
+    func testProducerTileDecodesLegacyCooldownAndBurstShape() throws {
+        let legacyJSON: [String: Any] = [
+            "id": UUID().uuidString,
+            "level": ProducerLevel.shelterPod.rawValue,
+            "cooldownRemaining": 42.0,
+            "chargesRemaining": 2,
+            "speedBurstActive": true,
+            "speedBurstRemaining": 8.0,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: legacyJSON)
+        let decoded = try decoder.decode(ProducerTile.self, from: data)
+
+        XCTAssertEqual(decoded.level, .shelterPod)
+        XCTAssertEqual(decoded.chargesRemaining, 2)
+        XCTAssertFalse(decoded.isReady)
+        XCTAssertEqual(decoded.cooldownRemaining, 42.0, accuracy: 2.0)
+        XCTAssertTrue(decoded.speedBurstActive)
+        XCTAssertEqual(decoded.speedBurstRemaining, 8.0, accuracy: 2.0)
+    }
+
+    /// A legacy blob with no cooldown/burst in progress (the common case —
+    /// most saved producers aren't mid-cooldown) must decode as ready and
+    /// without a burst, the same as it always has.
+    func testProducerTileDecodesLegacyReadyIdleShape() throws {
+        let legacyJSON: [String: Any] = [
+            "id": UUID().uuidString,
+            "level": ProducerLevel.fosterHome.rawValue,
+            "cooldownRemaining": 0.0,
+            "chargesRemaining": ProducerLevel.fosterHome.maxCharges,
+            "speedBurstActive": false,
+            "speedBurstRemaining": 0.0,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: legacyJSON)
+        let decoded = try decoder.decode(ProducerTile.self, from: data)
+
+        XCTAssertTrue(decoded.isReady)
+        XCTAssertFalse(decoded.speedBurstActive)
+    }
+
+    func testStartCooldownSetsReadyAtToLevelDuration() {
+        var tile = ProducerTile(level: .shelterPod)
+        XCTAssertTrue(tile.isReady, "Fresh tile should start ready")
+        tile.startCooldown()
+        XCTAssertFalse(tile.isReady)
+        XCTAssertEqual(tile.cooldownRemaining, ProducerLevel.shelterPod.cooldown, accuracy: 0.5)
+    }
+
+    /// Closed-form check for `applySpeedBurst`: at 2x rate, a burst that
+    /// outlasts the remaining cooldown finishes it in half the remaining time.
+    func testSpeedBurstAppliedWithRoomToSpareHalvesRemaining() {
+        var tile = ProducerTile(level: .shelterPod)
+        tile.startCooldown()   // full-duration cooldown, e.g. well over a minute
+        let remaining = tile.cooldownRemaining
+        tile.applySpeedBurst(duration: remaining)   // burst covers the whole thing
+        XCTAssertEqual(tile.cooldownRemaining, remaining / 2, accuracy: 0.5)
+        XCTAssertTrue(tile.speedBurstActive)
+    }
+
+    /// When the burst is shorter than the remaining cooldown, only the
+    /// burst window runs at 2x — the rest continues at the normal 1x rate
+    /// afterward, so total remaining drops by exactly the burst's duration.
+    func testSpeedBurstShorterThanRemainingOnlyAcceleratesItsOwnWindow() {
+        var tile = ProducerTile(level: .shelterPod, cooldownRemaining: 100)
+        tile.applySpeedBurst(duration: 10)   // 10s burst, well under the 100s remaining
+        XCTAssertEqual(tile.cooldownRemaining, 90, accuracy: 0.5)
     }
 
     func testMaxChargesAreReasonable() {
@@ -280,9 +355,9 @@ final class PersistenceTests: XCTestCase {
                 return
             }
             // Simulate cooldown having elapsed, then fire.
-            p.cooldownRemaining = 0
+            p.readyAt = .distantPast
             XCTAssertTrue(p.isReady, "Producer should be ready before fire \(fireNumber)")
-            p.cooldownRemaining = level.cooldown
+            p.startCooldown()
             p.chargesRemaining -= 1
             producer = p.chargesRemaining > 0 ? p : nil
 
@@ -1196,7 +1271,7 @@ final class PersistenceTests: XCTestCase {
         let key = ProducerLevel.groomingBox.rawValue
         XCTAssertNotNil(decoded.producerStorage[key])
         XCTAssertEqual(decoded.producerStorage[key]?.level, .groomingBox)
-        XCTAssertEqual(decoded.producerStorage[key]?.cooldownRemaining ?? 0, 10, accuracy: 0.001)
+        XCTAssertEqual(decoded.producerStorage[key]?.cooldownRemaining ?? 0, 10, accuracy: 2.0)
         // overflow
         XCTAssertEqual(decoded.overflowProducerStorage[0]?.level, .fosterHome)
         XCTAssertNil(decoded.overflowProducerStorage[1] ?? nil)
@@ -1207,7 +1282,7 @@ final class PersistenceTests: XCTestCase {
         let decoded  = try decoder.decode(ProducerTile.self, from: encoder.encode(producer))
         XCTAssertEqual(decoded.level, .shelterPod)
         XCTAssertEqual(decoded.chargesRemaining, 3)
-        XCTAssertEqual(decoded.cooldownRemaining, 20, accuracy: 0.001)
+        XCTAssertEqual(decoded.cooldownRemaining, 20, accuracy: 2.0)
     }
 
     func testStorageUnlockLevelProgression() {

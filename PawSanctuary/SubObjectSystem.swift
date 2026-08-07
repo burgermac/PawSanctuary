@@ -189,8 +189,7 @@ enum SubObjectSystem {
     ) -> Bool {
         switch effect {
         case .speedBurst(let duration):
-            producer.speedBurstActive    = true
-            producer.speedBurstRemaining = duration + powerUpDurationBonus
+            producer.applySpeedBurst(duration: duration + powerUpDurationBonus)
             return true
 
         case .boardItemGrant:

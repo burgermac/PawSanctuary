@@ -115,10 +115,7 @@ class MergeBoardViewModel {
             // Nine Lives can only undo if nothing else has touched the board since
             // the merge — any other mutation invalidates the pending snapshot, so a
             // whole-board revert can't be used to keep an intervening action's
-            // rewards (e.g. selling something) while also undoing an unrelated
-            // merge. tickProducers()'s per-second cooldown write-backs are passive
-            // upkeep, not a player action, so they're exempted via the suppress flag.
-            guard !suppressUndoInvalidation else { return }
+            // rewards (e.g. selling something) while also undoing an unrelated merge.
             preMoveSnapshot = nil
         }
     }
@@ -279,7 +276,6 @@ class MergeBoardViewModel {
 
     // Superpower session-only state (not persisted).
     var preMoveSnapshot: BoardSnapshot? = nil
-    private var suppressUndoInvalidation = false
     var leapMode: Bool = false
     var leapSourceCell: GridPosition? = nil
     var showPouchPanel: Bool = false
@@ -895,7 +891,14 @@ class MergeBoardViewModel {
             unlockedChainIDs: progression.unlockedAnimalChainIDs,
             playerLevel: progression.playerLevel)
         if urgentOrderChanged { rescheduleRescueExpiring() }
-        tickProducers()
+        // Producer cooldowns and Speed Burst no longer need a per-tick board
+        // write — both are derived live from ProducerTile.readyAt/
+        // speedBurstEndsAt (see their doc comments). tickProducers() used to
+        // live here, decrementing a stored countdown on every board cell that
+        // held a cooling-down producer; since `board` is a plain array on this
+        // `@Observable` class, that mutation forced a full 63-cell board
+        // re-render every second for as long as any shop producer was cooling
+        // down — i.e. most of an active session.
         saveTickCounter = (saveTickCounter + 1) % 5
         if saveTickCounter == 0 { save() }
     }
@@ -1088,15 +1091,9 @@ class MergeBoardViewModel {
             equineSprintRemaining = max(0, equineSprintRemaining - elapsed)
         }
 
-        // Producer cooldowns
-        for r in 0..<rows {
-            for c in 0..<cols {
-                if var p = board[r][c].producer, !p.isReady {
-                    p.cooldownRemaining = max(0, p.cooldownRemaining - elapsed)
-                    board[r][c].producer = p
-                }
-            }
-        }
+        // Producer cooldowns need no offline catch-up: readyAt is a wall-clock
+        // timestamp (see ProducerTile.readyAt's doc comment), so isReady/
+        // cooldownRemaining are already correct the moment this reads them.
 
         adoptionBoardCoordinator.applyOfflineProgress(
             elapsed: elapsed,
@@ -1319,7 +1316,7 @@ class MergeBoardViewModel {
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
             let spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             finishSpawn(item: BoardItem(chainID: chainID, tier: spawnTier), at: target, cost: cost)
-            producer.cooldownRemaining = producer.level.cooldown
+            producer.startCooldown()
             producer.chargesRemaining -= 1
             board[pos.row][pos.col].producer = producer.chargesRemaining > 0 ? producer : nil
         } else {
@@ -1329,7 +1326,7 @@ class MergeBoardViewModel {
                     let chainID = producer.level.targetChainID ?? ContentRegistry.animalChainID(.dog)
                     board[target.position.row][target.position.col].item =
                         BoardItem(chainID: chainID, tier: producer.level.startTier)
-                    producer.cooldownRemaining = producer.level.cooldown
+                    producer.startCooldown()
                     producer.chargesRemaining -= 1
                     board[pos.row][pos.col].producer = producer.chargesRemaining > 0 ? producer : nil
                     recalcBoardIsFull()
@@ -1344,37 +1341,6 @@ class MergeBoardViewModel {
             }
         }
         selectedCell = pos
-    }
-
-    private func tickProducers() {
-        suppressUndoInvalidation = true
-        defer { suppressUndoInvalidation = false }
-        for row in 0..<rows {
-            for col in 0..<cols {
-                guard var p = board[row][col].producer else { continue }
-
-                let snapshot = p
-
-                // Tick down speed-burst timer (applies to all producer types).
-                if p.speedBurstActive {
-                    p.speedBurstRemaining -= 1
-                    if p.speedBurstRemaining <= 0 {
-                        p.speedBurstActive = false
-                        p.speedBurstRemaining = 0
-                    }
-                }
-
-                // Advance cooldown for supply producers.
-                // Family spawners are always ready — skip the cooldown math entirely.
-                if p.level != .familySpawner && !p.isReady {
-                    let increment: Double = p.speedBurstActive ? 2.0 : 1.0
-                    p.cooldownRemaining = max(0, p.cooldownRemaining - increment)
-                }
-
-                // Only write back when something actually changed.
-                if p != snapshot { board[row][col].producer = p }
-            }
-        }
     }
 
     // MARK: Producer shop

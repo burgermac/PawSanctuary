@@ -418,14 +418,35 @@ enum ProducerLevel: Int, CaseIterable, Codable {
 struct ProducerTile: Identifiable, Equatable, Codable {
     var id: UUID
     var level: ProducerLevel
-    var cooldownRemaining: Double
+
+    /// Wall-clock time this producer's cooldown finishes; a time already in the
+    /// past (default `.distantPast`) means ready. Replaces a `cooldownRemaining:
+    /// Double` that used to be decremented by hand every second in
+    /// `MergeBoardViewModel.tickProducers` — that mattered because `board` is a
+    /// plain array on an `@Observable` class, so ticking down a stored countdown
+    /// on any *one* producer forced every one of the 63 board cells to
+    /// re-render every second, all session, for as long as any non-family-
+    /// spawner producer was cooling down (i.e. most of an active session).
+    /// Deriving the countdown from a fixed timestamp instead means advancing
+    /// time — including catching up after the app was backgrounded — is just
+    /// "compare to `Date()`": no per-second board mutation, and no special-
+    /// cased offline-progress math either.
+    var readyAt: Date = .distantPast
     var chargesRemaining: Int
     /// Non-nil for `.familySpawner` tiles; identifies which family's animal chain this spawner produces.
     var species: AnimalSpecies?
 
-    // Phase 4 buff state — persisted so buffs survive saves/restores.
-    var speedBurstActive: Bool = false
-    var speedBurstRemaining: Double = 0      // seconds remaining
+    /// Wall-clock time an active Speed Burst ends; nil (or already past) means
+    /// no burst is running. `applySpeedBurst(duration:)` folds the burst's 2x
+    /// cooldown rate into `readyAt` in closed form at the moment the burst
+    /// starts, for the same reason `readyAt` itself exists — see its doc
+    /// comment. Re-applying a burst while one is already active (stacking two
+    /// power-ups on the same tile inside the same short window) recomputes
+    /// from the then-current remaining time; that's self-consistent and never
+    /// makes the cooldown worse, even though it isn't a perfectly exact model
+    /// of two overlapping acceleration windows — a rare enough edge case that
+    /// the simplification isn't worth the extra bookkeeping.
+    var speedBurstEndsAt: Date? = nil
     var nextDropGuaranteedHighTier: Bool = false
 
     // Phase 6 — Avians Scout preview: non-nil when Scout is unlocked and a spawn has just fired.
@@ -436,30 +457,91 @@ struct ProducerTile: Identifiable, Equatable, Codable {
          chargesRemaining: Int? = nil, species: AnimalSpecies? = nil) {
         self.id = UUID()
         self.level = level
-        self.cooldownRemaining = cooldownRemaining
+        self.readyAt = cooldownRemaining > 0 ? Date().addingTimeInterval(cooldownRemaining) : .distantPast
         self.chargesRemaining = chargesRemaining ?? level.maxCharges
         self.species = species
     }
 
-    // Custom decoder so old saves (without the "species" key) still decode cleanly.
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id               = try c.decode(UUID.self,         forKey: .id)
-        level            = try c.decode(ProducerLevel.self, forKey: .level)
-        cooldownRemaining = try c.decode(Double.self,       forKey: .cooldownRemaining)
-        chargesRemaining = try c.decode(Int.self,           forKey: .chargesRemaining)
-        species              = try c.decodeIfPresent(AnimalSpecies.self, forKey: .species)
-        speedBurstActive     = try c.decodeIfPresent(Bool.self,         forKey: .speedBurstActive)     ?? false
-        speedBurstRemaining  = try c.decodeIfPresent(Double.self,       forKey: .speedBurstRemaining)  ?? 0
-        nextDropGuaranteedHighTier = try c.decodeIfPresent(Bool.self,   forKey: .nextDropGuaranteedHighTier) ?? false
-        scoutPreviewIsSubObject    = try c.decodeIfPresent(Bool.self,   forKey: .scoutPreviewIsSubObject)
+    private enum CodingKeys: String, CodingKey {
+        case id, level, readyAt, chargesRemaining, species, speedBurstEndsAt
+        case nextDropGuaranteedHighTier, scoutPreviewIsSubObject
+        // Legacy keys — decode-only. Old saves persisted a hand-ticked
+        // `cooldownRemaining` Double and `speedBurstActive`/`speedBurstRemaining`
+        // instead of the Date-based fields above; encode(to:) never writes
+        // these again, matching how v24→v25 dropped superseded reward fields
+        // rather than leaving them as unused JSON (see GameStore.swift).
+        case cooldownRemaining, speedBurstActive, speedBurstRemaining
     }
 
-    var isReady: Bool { cooldownRemaining <= 0 }
+    // Custom codable so old saves (missing "species", or still on the legacy
+    // cooldownRemaining/speedBurstActive/speedBurstRemaining shape) decode
+    // cleanly. No GameStore schema version bump needed — same as the earlier
+    // additions here (species, speedBurstActive, ...) — because it's handled
+    // locally at this leaf type and every shape a save might carry, old or
+    // new, still decodes through the existing version dispatch.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id    = try c.decode(UUID.self,          forKey: .id)
+        level = try c.decode(ProducerLevel.self, forKey: .level)
+        if let readyAt = try c.decodeIfPresent(Date.self, forKey: .readyAt) {
+            self.readyAt = readyAt
+        } else {
+            let legacyRemaining = try c.decodeIfPresent(Double.self, forKey: .cooldownRemaining) ?? 0
+            self.readyAt = legacyRemaining > 0 ? Date().addingTimeInterval(legacyRemaining) : .distantPast
+        }
+        chargesRemaining = try c.decode(Int.self, forKey: .chargesRemaining)
+        species          = try c.decodeIfPresent(AnimalSpecies.self, forKey: .species)
+        if let burstEndsAt = try c.decodeIfPresent(Date.self, forKey: .speedBurstEndsAt) {
+            self.speedBurstEndsAt = burstEndsAt
+        } else if try c.decodeIfPresent(Bool.self, forKey: .speedBurstActive) == true {
+            let legacyBurstRemaining = try c.decodeIfPresent(Double.self, forKey: .speedBurstRemaining) ?? 0
+            self.speedBurstEndsAt = legacyBurstRemaining > 0 ? Date().addingTimeInterval(legacyBurstRemaining) : nil
+        }
+        nextDropGuaranteedHighTier = try c.decodeIfPresent(Bool.self, forKey: .nextDropGuaranteedHighTier) ?? false
+        scoutPreviewIsSubObject    = try c.decodeIfPresent(Bool.self, forKey: .scoutPreviewIsSubObject)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(level, forKey: .level)
+        try c.encode(readyAt, forKey: .readyAt)
+        try c.encode(chargesRemaining, forKey: .chargesRemaining)
+        try c.encodeIfPresent(species, forKey: .species)
+        try c.encodeIfPresent(speedBurstEndsAt, forKey: .speedBurstEndsAt)
+        try c.encode(nextDropGuaranteedHighTier, forKey: .nextDropGuaranteedHighTier)
+        try c.encodeIfPresent(scoutPreviewIsSubObject, forKey: .scoutPreviewIsSubObject)
+    }
+
+    var isReady: Bool { readyAt <= Date() }
+    /// Seconds until ready, derived live from `readyAt` — never stale, never ticked by hand.
+    var cooldownRemaining: Double { max(0, readyAt.timeIntervalSinceNow) }
     /// 0 = fully charged, 1 = just fired (used to drive the cooldown ring).
     var cooldownFraction: Double { max(0, min(1, cooldownRemaining / level.cooldown)) }
     /// For family spawners: the animal chain this tile produces. Nil for other producer types.
     var animalChainID: ChainID? { species.map { ContentRegistry.animalChainID($0) } }
+
+    var speedBurstActive: Bool { (speedBurstEndsAt ?? .distantPast) > Date() }
+    var speedBurstRemaining: Double { max(0, (speedBurstEndsAt ?? .distantPast).timeIntervalSinceNow) }
+
+    /// Starts (or restarts) this producer's cooldown at its level's full duration.
+    mutating func startCooldown(now: Date = Date()) {
+        readyAt = now.addingTimeInterval(level.cooldown)
+    }
+
+    /// Folds an accelerated (2x-rate) window into `readyAt` in one step rather
+    /// than needing a per-tick rate multiplier — see `speedBurstEndsAt`'s doc
+    /// comment for the reasoning and the reapplication caveat. Closed form:
+    /// at 2x rate, `remaining` cooldown-seconds burn down in `remaining / 2`
+    /// real seconds; if that's within the burst window, that's the new ready
+    /// time. Otherwise the burst only partially covers the cooldown, and the
+    /// rest continues at the normal 1x rate after the burst ends.
+    mutating func applySpeedBurst(duration: TimeInterval, now: Date = Date()) {
+        let remaining = max(0, readyAt.timeIntervalSince(now))
+        let newRemaining = remaining <= 2 * duration ? remaining / 2 : remaining - duration
+        readyAt = now.addingTimeInterval(newRemaining)
+        speedBurstEndsAt = now.addingTimeInterval(duration)
+    }
 }
 
 // ============================================================

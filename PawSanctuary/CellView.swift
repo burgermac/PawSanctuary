@@ -232,6 +232,17 @@ struct ProducerTileContent: View {
 
     // MARK: Family spawner — species-specific, kibble-based (no cooldown or charge pips)
 
+    /// Deliberately not wrapped in a `TimelineView` the way `supplyProducerContent`
+    /// is: `speedBurstActive` is derived live from `speedBurstEndsAt`, so the
+    /// glow below is never wrong when this cell renders, but nothing forces a
+    /// re-render the instant a burst naturally expires — it can linger until
+    /// the next unrelated board change (any tap/merge/purchase). Family
+    /// spawners are the most common producer on the board, so giving every
+    /// one of them a standing per-second timer to fix a rare, few-second
+    /// cosmetic lag on a decorative glow would reintroduce a smaller version
+    /// of the exact per-second cost this change removes. See `ProducerTile.
+    /// readyAt`'s doc comment for the cooldown case this multi-cell cost
+    /// actually matters for.
     private var familySpawnerContent: some View {
         let sp     = producer.species
         let symbol = sp?.spawnerSFSymbol ?? producer.level.sfSymbol
@@ -294,49 +305,59 @@ struct ProducerTileContent: View {
 
     // MARK: Supply producer — charge/cooldown display
 
+    /// `producer.isReady`/`.cooldownFraction`/`.cooldownRemaining` are derived
+    /// live from `producer.readyAt` (a fixed timestamp), not ticked by hand —
+    /// see `ProducerTile.readyAt`'s doc comment. That means this cell's own
+    /// `producer` value never goes stale, but it also means nothing external
+    /// re-renders this cell once a second anymore to reveal the passage of
+    /// time. `TimelineView` supplies that locally, in this one cell only,
+    /// instead of the old approach of mutating the whole board array every
+    /// second to force every cell to redraw.
     private var supplyProducerContent: some View {
-        VStack(spacing: 1) {
-            ZStack {
-                if !producer.isReady {
-                    Circle()
-                        .trim(from: 0, to: 1 - producer.cooldownFraction)
-                        .stroke(producer.level.tintColor.opacity(0.35), lineWidth: max(2, cellSize * 0.06))
-                        .rotationEffect(.degrees(-90))
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            VStack(spacing: 1) {
+                ZStack {
+                    if !producer.isReady {
+                        Circle()
+                            .trim(from: 0, to: 1 - producer.cooldownFraction)
+                            .stroke(producer.level.tintColor.opacity(0.35), lineWidth: max(2, cellSize * 0.06))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    Image(systemName: producer.isReady ? producer.level.sfSymbol : "clock.fill")
+                        .font(.system(size: iconPts))
+                        .foregroundColor(producer.level.tintColor)
+                        .opacity(producer.isReady ? 1.0 : 0.55)
+                        .symbolEffect(.pulse, options: .repeating, isActive: producer.isReady)
                 }
-                Image(systemName: producer.isReady ? producer.level.sfSymbol : "clock.fill")
-                    .font(.system(size: iconPts))
+                .frame(width: iconPts * 1.1, height: iconPts * 1.1)
+
+                Text(producer.level.displayName)
+                    .font(.system(size: labelPts, weight: .bold))
                     .foregroundColor(producer.level.tintColor)
-                    .opacity(producer.isReady ? 1.0 : 0.55)
-                    .symbolEffect(.pulse, options: .repeating, isActive: producer.isReady)
-            }
-            .frame(width: iconPts * 1.1, height: iconPts * 1.1)
+                    .lineLimit(1).minimumScaleFactor(0.5)
 
-            Text(producer.level.displayName)
-                .font(.system(size: labelPts, weight: .bold))
-                .foregroundColor(producer.level.tintColor)
-                .lineLimit(1).minimumScaleFactor(0.5)
+                if producer.isReady {
+                    Text("Tap!")
+                        .font(.system(size: labelPts, weight: .heavy))
+                        .foregroundColor(.green)
+                } else {
+                    Text(cooldownString(producer.cooldownRemaining))
+                        .font(.system(size: labelPts))
+                        .foregroundColor(.secondary)
+                }
 
-            if producer.isReady {
-                Text("Tap!")
-                    .font(.system(size: labelPts, weight: .heavy))
-                    .foregroundColor(.green)
-            } else {
-                Text(cooldownString(producer.cooldownRemaining))
-                    .font(.system(size: labelPts))
-                    .foregroundColor(.secondary)
-            }
-
-            HStack(spacing: 1) {
-                ForEach(0..<producer.level.maxCharges, id: \.self) { i in
-                    Circle()
-                        .fill(i < producer.chargesRemaining
-                              ? chargePipColor(producer.chargesRemaining)
-                              : Color.gray.opacity(0.25))
-                        .frame(width: dotSize, height: dotSize)
+                HStack(spacing: 1) {
+                    ForEach(0..<producer.level.maxCharges, id: \.self) { i in
+                        Circle()
+                            .fill(i < producer.chargesRemaining
+                                  ? chargePipColor(producer.chargesRemaining)
+                                  : Color.gray.opacity(0.25))
+                            .frame(width: dotSize, height: dotSize)
+                    }
                 }
             }
+            .padding(pad)
         }
-        .padding(pad)
     }
 
     private func cooldownString(_ seconds: Double) -> String {
