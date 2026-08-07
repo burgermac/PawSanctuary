@@ -58,6 +58,7 @@ struct MergeBoardView: View {
 
     var body: some View {
         gameBody
+            .task { viewModel.loadGame() }
             .onChange(of: viewModel.rescueCount) { _, count in
                 if tutorialStep == .rescue && count > 0 {
                     withAnimation(.easeInOut(duration: 0.35)) { tutorialStep = .merge }
@@ -83,17 +84,24 @@ struct MergeBoardView: View {
                 startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
 
-            // Screen content — bottomBar is a safeAreaInset, not a sibling,
-            // so the GeometryReader in boardSection measures the correct height.
-            if viewModel.showInventory {
-                InventoryScreenView(viewModel: viewModel)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if viewModel.showMap {
-                MapView(viewModel: viewModel)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                gameScrollContent
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            // Gated on isLoaded: the board and most of the panel/task-strip
+            // view layer scan board[r][c] for r/c up to viewModel.rows/.cols,
+            // which already hold their real values before loadGame() has
+            // actually populated board — rendering this content one frame
+            // early is an out-of-bounds crash, not just an empty frame.
+            if viewModel.isLoaded {
+                // Screen content — bottomBar is a safeAreaInset, not a sibling,
+                // so the GeometryReader in boardSection measures the correct height.
+                if viewModel.showInventory {
+                    InventoryScreenView(viewModel: viewModel)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if viewModel.showMap {
+                    MapView(viewModel: viewModel)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    gameScrollContent
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
 
             if viewModel.showLoginReward {

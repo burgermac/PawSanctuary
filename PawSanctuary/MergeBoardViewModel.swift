@@ -731,7 +731,35 @@ class MergeBoardViewModel {
 
     // MARK: Init
 
-    init() {
+    /// Deliberately trivial. SwiftUI re-evaluates a `@State` property's
+    /// default-value expression — i.e. re-runs `MergeBoardViewModel()` — on
+    /// every re-render of the owning view, discarding all but the first
+    /// result. Anything with side effects (disk I/O, starting a Timer) does
+    /// NOT get discarded along with the value, so putting real work here used
+    /// to run it in full, on the main thread, every second for the life of
+    /// the app — driven by this class's own 1Hz timer tick invalidating the
+    /// view that reconstructs it. See `loadGame()` and `MergeBoardView`'s
+    /// `.task` call site, which runs exactly once per genuine mount instead.
+    init() {}
+
+    @ObservationIgnored private var didLoadGame = false
+
+    /// True once `loadGame()` has fully populated the board and every other
+    /// piece of session state. `MergeBoardView` gates all real gameplay
+    /// content on this — the board (and quite a bit of the rest of the view
+    /// layer, e.g. `retirableProducers`) scans `board[r][c]` for `r`/`c` up to
+    /// `rows`/`cols`, which already hold their real values before `board`
+    /// itself is populated; rendering that content one frame too early is an
+    /// out-of-bounds crash, not just an empty frame.
+    private(set) var isLoaded = false
+
+    /// Loads the saved game (or starts a fresh one) and boots the live-timer /
+    /// quest / order state. Must be called exactly once, after the view has
+    /// actually appeared — see the doc comment on `init()` for why this can't
+    /// live there.
+    func loadGame() {
+        guard !didLoadGame else { return }
+        didLoadGame = true
         if let saved = GameStore.load() {
             apply(saved)
             if let last = saved.lastActiveDate { applyOfflineProgress(since: last) }
@@ -755,6 +783,7 @@ class MergeBoardViewModel {
         checkMonthlyGoalReset()
         checkEventLifecycle()
         startTimer()
+        isLoaded = true
         // Game Center auth is opt-in, triggered only from the Card Album (see
         // ensureGameCenterAuthenticated()) — NOT here at launch. It used to run
         // unconditionally for every player on every cold start; on top of the two
