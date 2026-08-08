@@ -21,6 +21,10 @@ struct CellView: View {
     var cellSize: CGFloat = 62  // default keeps non-board usages (inventory preview etc.) unchanged
     var unlockedSuperpowerSpecies: [String] = []
     var isLeapSource: Bool = false
+    /// Small directional nudge toward a matching item elsewhere on the board —
+    /// the idle "these two can merge" hint. `.zero` outside a hint pulse; see
+    /// `MergeBoardViewModel.mergeHintPair`.
+    var mergeHintOffset: CGSize = .zero
 
     var body: some View {
         ZStack {
@@ -63,6 +67,7 @@ struct CellView: View {
                     .opacity(isDragging ? 0.25 : 1.0)
                     .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
                     .overlay(bubbleOverlay(for: item))
+                    .offset(mergeHintOffset)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))

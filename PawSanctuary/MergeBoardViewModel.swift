@@ -901,6 +901,83 @@ class MergeBoardViewModel {
         // down — i.e. most of an active session.
         saveTickCounter = (saveTickCounter + 1) % 5
         if saveTickCounter == 0 { save() }
+        updateMergeHint()
+    }
+
+    // MARK: Merge hint (idle nudge)
+    //
+    // After a few seconds of no board interaction, nudge one mergeable pair
+    // toward each other and back, repeating until the player acts. Lives in
+    // its own small pair of properties rather than touching `board` — the
+    // per-second `tickProducers()` bug fixed elsewhere in this file was
+    // exactly this mistake (a passive, repeating visual update mutating the
+    // one array every board-reading view depends on, forcing a full 63-cell
+    // re-render every time it fired). `mergeHintPair`/`mergeHintPulsedIn`
+    // are read only by the two cells actually being hinted.
+
+    /// The two board positions currently nudging toward each other, or `nil`
+    /// if no hint is showing. Read by `MergeBoardView.boardGridView` to offset
+    /// just those two cells.
+    var mergeHintPair: (GridPosition, GridPosition)? = nil
+    /// `true` while the hinted pair is nudged toward each other; `false` at
+    /// rest. MergeBoardView animates the transition between the two.
+    var mergeHintPulsedIn: Bool = false
+
+    @ObservationIgnored private var lastBoardInteractionAt = Date()
+    @ObservationIgnored private var mergeHintPhaseChangedAt = Date()
+
+    private let mergeHintIdleDelay: Double = 4
+    /// Matches `timerTick()`'s own ~1s cadence exactly. A value even slightly
+    /// above 1.0 (e.g. 1.1) aliases against a 1Hz timer whose real fire gaps
+    /// are ~1.00-1.05s: the `>=` check fails on the very next tick and only
+    /// passes on the one after, halving the intended pulse rate. At 1.0 every
+    /// eligible tick clears the threshold, so the phase toggles cleanly once
+    /// per second.
+    private let mergeHintPulseInterval: Double = 1.0
+
+    /// Call from any player-initiated board interaction (tap, drag) to reset
+    /// the idle clock and dismiss any hint currently showing.
+    func noteBoardInteraction() {
+        lastBoardInteractionAt = Date()
+        guard mergeHintPair != nil else { return }
+        mergeHintPair = nil
+        mergeHintPulsedIn = false
+    }
+
+    /// Advances the idle-hint state machine. Called once a second from
+    /// `timerTick()` — cheap (a couple of `Date` comparisons; the O(rows×cols)
+    /// pair search only runs once per idle period, not every tick).
+    private func updateMergeHint() {
+        let now = Date()
+        guard now.timeIntervalSince(lastBoardInteractionAt) >= mergeHintIdleDelay else { return }
+        guard now.timeIntervalSince(mergeHintPhaseChangedAt) >= mergeHintPulseInterval else { return }
+        mergeHintPhaseChangedAt = now
+        if mergeHintPair == nil {
+            guard let pair = findMergeableHintPair() else { return }
+            mergeHintPair = pair
+        }
+        mergeHintPulsedIn.toggle()
+    }
+
+    /// First mergeable pair found scanning the board in row-major order —
+    /// deterministic and cheap, not chosen by any particular relevance metric.
+    /// Excludes bubbled items (not valid merge sources) and pairs already at
+    /// their chain's top tier (merging two of those is a no-op).
+    private func findMergeableHintPair() -> (GridPosition, GridPosition)? {
+        var firstSeen: [String: GridPosition] = [:]
+        for r in 0..<rows {
+            for c in 0..<cols {
+                guard board[r][c].isUnlocked,
+                      let item = board[r][c].item,
+                      item.bubbledAt == nil,
+                      ContentRegistry.shared.nextTier(item.chainID, after: item.tier) != nil else { continue }
+                let key = "\(item.chainID)|\(item.tier)"
+                let pos = GridPosition(row: r, col: c)
+                if let firstPos = firstSeen[key] { return (firstPos, pos) }
+                firstSeen[key] = pos
+            }
+        }
+        return nil
     }
 
     // MARK: Persistence
@@ -1416,6 +1493,7 @@ class MergeBoardViewModel {
     // MARK: Board interaction
 
     func boardCellTapped(at pos: GridPosition) {
+        noteBoardInteraction()
         HapticManager.shared.lightTap()
 
         // Leap mode: teleport-destination tap takes priority over everything else.

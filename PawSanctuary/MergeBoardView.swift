@@ -627,6 +627,21 @@ struct MergeBoardView: View {
 
     // MARK: Board grid (extracted to limit re-render scope)
 
+    /// A small directional offset for `pos`, toward its partner in
+    /// `viewModel.mergeHintPair`, while the hint is in its "nudged toward
+    /// each other" phase. `.zero` for every other cell.
+    private func mergeHintOffset(for pos: GridPosition, cellSize: CGFloat) -> CGSize {
+        guard viewModel.mergeHintPulsedIn, let (a, b) = viewModel.mergeHintPair else { return .zero }
+        let partner: GridPosition
+        if pos == a { partner = b } else if pos == b { partner = a } else { return .zero }
+        let dRow = Double(partner.row - pos.row)
+        let dCol = Double(partner.col - pos.col)
+        let length = (dRow * dRow + dCol * dCol).squareRoot()
+        guard length > 0 else { return .zero }
+        let magnitude = cellSize * 0.22
+        return CGSize(width: dCol / length * magnitude, height: dRow / length * magnitude)
+    }
+
     /// Renders the merge board at the given cell size (computed dynamically from available space).
     func boardGridView(cellSize: CGFloat) -> some View {
         VStack(spacing: cellSpacing) {
@@ -637,6 +652,7 @@ struct MergeBoardView: View {
                         let pos         = GridPosition(row: row, col: col)
                         let isDragging  = viewModel.draggingFrom == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
+                        let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
 
                         ZStack {
                             CellView(
@@ -648,8 +664,10 @@ struct MergeBoardView: View {
                                 isSpotlight: isSpotlight,
                                 cellSize: cellSize,
                                 unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
-                                isLeapSource: viewModel.leapSourceCell == pos
+                                isLeapSource: viewModel.leapSourceCell == pos,
+                                mergeHintOffset: mergeHintOffset
                             )
+                            .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             // Drag ghost — animal or producer icon follows the finger
                             if isDragging {
                                 Group {
@@ -679,7 +697,10 @@ struct MergeBoardView: View {
                         .gesture(
                             DragGesture(minimumDistance: 5, coordinateSpace: .global)
                                 .onChanged { v in
-                                    if viewModel.draggingFrom == nil { viewModel.draggingFrom = pos }
+                                    if viewModel.draggingFrom == nil {
+                                        viewModel.draggingFrom = pos
+                                        viewModel.noteBoardInteraction()
+                                    }
                                     dragOffset = v.translation
                                     // Expand hit zone by 20 pt so the drop is easy to land
                                     isDraggingOverBasket = basketGlobalFrame
