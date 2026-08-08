@@ -183,7 +183,12 @@ struct CardAlbumView: View {
                     .font(.caption).foregroundColor(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    // LazyHStack, not HStack: pendingCardPacks has no cap — every
+                    // level-up/quest/order/event reward appends to it, and it only
+                    // shrinks when the player opens a pack — so it can grow well
+                    // past what's visible in the strip. See TaskStripView for the
+                    // same fix applied to the always-visible task strip.
+                    LazyHStack(spacing: 8) {
                         ForEach(Array(viewModel.pendingCardPacks.enumerated()), id: \.offset) { _, pack in
                             PackChip(pack: pack)
                         }
