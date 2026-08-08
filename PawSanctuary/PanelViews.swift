@@ -1623,6 +1623,16 @@ struct TaskStripView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
+        // Every card in the strip is a fixed taskCardHeight (see the
+        // .frame(width:height:) on each *TaskCard view below). A plain HStack
+        // reports that as its intrinsic height and the ScrollView hugs it; a
+        // LazyHStack can't report an intrinsic cross-axis size the same way,
+        // so without this the ScrollView fell back to expanding into whatever
+        // flexible space its parent VStack offered -- competing with the
+        // board (also flexible, via its GeometryReader) for room and pushing
+        // it down into a fraction of the screen. Pin the height explicitly so
+        // the strip hugs its content again and the board gets the rest.
+        .frame(height: taskCardHeight + 12)
     }
 }
 
