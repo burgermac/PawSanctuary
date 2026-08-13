@@ -31,7 +31,10 @@ import AudioToolbox
 /// flow through a single queue so none can silently cancel another.
 struct Toast: Identifiable, Equatable {
     enum Kind: Equatable {
-        case boardFull
+        // `canMerge` names the way out: with merge-gated row unlocking (C-1), a full
+        // board with no mergeable pair is a genuine deadlock, not just a nudge to
+        // spawn less — so the message must point at whichever exit actually works.
+        case boardFull(canMerge: Bool)
         case inventoryFull
         case info(String)   // daily-challenge bonus, spotlight reward, pass/loyalty claim, etc.
     }
@@ -41,7 +44,10 @@ struct Toast: Identifiable, Equatable {
 
     var message: String {
         switch kind {
-        case .boardFull:     return "Board is Full"
+        case .boardFull(let canMerge):
+            return canMerge
+                ? "Board is Full — merge a matching pair to make room"
+                : "Board is Full — sell an animal to make room"
         case .inventoryFull: return "Inventory Full"
         case .info(let s):   return s
         }
@@ -2184,7 +2190,7 @@ class MergeBoardViewModel {
     func triggerToast(_ type: ToastType) {
         switch type {
         case .inventoryFull: enqueueToast(Toast(kind: .inventoryFull))
-        case .boardFull:     enqueueToast(Toast(kind: .boardFull))
+        case .boardFull:     enqueueToast(Toast(kind: .boardFull(canMerge: findMergeableHintPair() != nil)))
         case .noKibble:      kibbleEngine.showKibbleSheet = true
         }
     }

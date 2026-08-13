@@ -1750,4 +1750,14 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.inviteProgress.invitesSent, 3)
         XCTAssertEqual(decoded.inviteProgress.claimedMilestones, [1, 2])
     }
+
+    // Gap_Analysis_Round2 §2 (C-1): with merge-gated row unlocking, a full board
+    // with no mergeable pair is a genuine deadlock, so the toast must name
+    // whichever exit actually works rather than a generic "Board is Full".
+    func testBoardFullToastNamesTheAvailableExit() {
+        let canMerge = Toast(kind: .boardFull(canMerge: true))
+        XCTAssertTrue(canMerge.message.contains("merge"), "should point at merging when a pair exists")
+        let cannotMerge = Toast(kind: .boardFull(canMerge: false))
+        XCTAssertTrue(cannotMerge.message.contains("sell"), "should point at selling when no pair exists")
+    }
 }
