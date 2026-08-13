@@ -36,10 +36,10 @@
 **Audience:** Casual mobile gamers, animal lovers, ages 18–45
 **Monetization model:** Free-to-play with IAP and an optional subscription
 **Comparable titles:** Travel Town, Tasty Travels, Merge Mansion
-**Differentiator:** 15 named animal families, each with a 15-stage evolutionary arc (Pup → Primordial) instead of generic objects; a per-family Superpower system that rewards developing every family rather than specializing in two or three efficient ones; a card-collection/trading meta-layer running alongside the merge board.
+**Differentiator:** 15 named animal families, each with a 12-stage evolutionary arc (Pup → Primordial) instead of generic objects; a per-family Superpower system that rewards developing every family rather than specializing in two or three efficient ones; a card-collection/trading meta-layer running alongside the merge board.
 
 ### Elevator Pitch
-Players run an animal sanctuary: rescue animals across 15 families, merge them through 15 stages from Infant to Legendary, and build out a Sanctuary Map with materials earned along the way. Each family also spawns themed sub-objects that merge into power-ups, and unlocks a unique Superpower once it matures. A card-collection meta-game, adoption orders from named families, and a full daily/weekly engagement loop round out the retention layer.
+Players run an animal sanctuary: rescue animals across 15 families, merge them through 12 stages from Infant to Legendary, and build out a Sanctuary Map with materials earned along the way. Each family also spawns themed sub-objects that merge into power-ups, and unlocks a unique Superpower once it matures. A card-collection meta-game, adoption orders from named families, and a full daily/weekly engagement loop round out the retention layer.
 
 ### Design Pillars
 1. **Warmth** — every interaction feels like caring for animals, not grinding
