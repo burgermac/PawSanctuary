@@ -1760,4 +1760,14 @@ final class PersistenceTests: XCTestCase {
         let cannotMerge = Toast(kind: .boardFull(canMerge: false))
         XCTAssertTrue(cannotMerge.message.contains("sell"), "should point at selling when no pair exists")
     }
+
+    // Storage has no sell/discard action anywhere (InventoryScreen.swift's only
+    // button per tab is "Place on Board" / "Return to Board"), so a full inventory
+    // is only ever unstuck by making board room first -- same exit as boardFull.
+    func testInventoryFullToastNamesTheAvailableExit() {
+        let canMerge = Toast(kind: .inventoryFull(canMerge: true))
+        XCTAssertTrue(canMerge.message.contains("merge"), "should point at merging when a pair exists")
+        let cannotMerge = Toast(kind: .inventoryFull(canMerge: false))
+        XCTAssertTrue(cannotMerge.message.contains("sell"), "should point at selling when no pair exists")
+    }
 }

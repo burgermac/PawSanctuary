@@ -35,7 +35,11 @@ struct Toast: Identifiable, Equatable {
         // board with no mergeable pair is a genuine deadlock, not just a nudge to
         // spawn less — so the message must point at whichever exit actually works.
         case boardFull(canMerge: Bool)
-        case inventoryFull
+        // Storage has no sell/discard action anywhere (see InventoryScreen.swift —
+        // every tab's only button is "Place on Board" / "Return to Board"), so the
+        // board is the sole place anything ever leaves the game. A full inventory
+        // is only ever unstuck by making board room first, exactly like boardFull.
+        case inventoryFull(canMerge: Bool)
         case info(String)   // daily-challenge bonus, spotlight reward, pass/loyalty claim, etc.
     }
 
@@ -48,7 +52,10 @@ struct Toast: Identifiable, Equatable {
             return canMerge
                 ? "Board is Full — merge a matching pair to make room"
                 : "Board is Full — sell an animal to make room"
-        case .inventoryFull: return "Inventory Full"
+        case .inventoryFull(let canMerge):
+            return canMerge
+                ? "Inventory Full — merge a matching pair on the board to make room"
+                : "Inventory Full — sell an animal on the board to make room"
         case .info(let s):   return s
         }
     }
@@ -2189,7 +2196,7 @@ class MergeBoardViewModel {
     enum ToastType { case inventoryFull, boardFull, noKibble }
     func triggerToast(_ type: ToastType) {
         switch type {
-        case .inventoryFull: enqueueToast(Toast(kind: .inventoryFull))
+        case .inventoryFull: enqueueToast(Toast(kind: .inventoryFull(canMerge: findMergeableHintPair() != nil)))
         case .boardFull:     enqueueToast(Toast(kind: .boardFull(canMerge: findMergeableHintPair() != nil)))
         case .noKibble:      kibbleEngine.showKibbleSheet = true
         }
