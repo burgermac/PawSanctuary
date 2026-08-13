@@ -38,17 +38,43 @@ final class QuestCoordinatorTests: XCTestCase {
                        "A max-level player's legendary quests should eventually cover all three top tiers")
     }
 
-    func testHardDailyChallengePoolCanTargetTopThreeTiers() {
+    func testDailyChallengeReachTierAnchorCanTargetTopThreeTiers() {
         let coordinator = QuestCoordinator()
         let dogID = ContentRegistry.animalChainID(.dog)
         var seenTopTiers: Set<Int> = []
-        for _ in 0..<500 {
-            let challenge = coordinator.makeDailyChallenge(difficulty: .hard, unlockedChainIDs: [dogID])
-            if case .reachTier(.animal, let tier, _) = challenge.goal, tier >= 9 {
-                seenTopTiers.insert(tier)
+        for _ in 0..<2000 {
+            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
+            for challenge in coordinator.dailyChallenges {
+                if case .reachTier(.animal, let tier, _) = challenge.goal, tier >= 9 {
+                    seenTopTiers.insert(tier)
+                }
             }
         }
         XCTAssertEqual(seenTopTiers, [9, 10, 11],
-                       "Hard daily challenges should eventually cover all three top tiers")
+                       "Daily challenges should eventually cover all three top tiers via the reachTier anchor")
+    }
+
+    // Gap_Analysis_Round2.md 3.1: the daily-challenge stagger's whole point is
+    // that medium/hard are already 60-90% along the instant the slot below
+    // them completes, since all three share one anchor goal tracked in
+    // lockstep. Verify the guarantee holds across many generated days, not
+    // just by inspection of the formula.
+    func testDailyChallengeStaggerLandsInTargetBand() {
+        let coordinator = QuestCoordinator()
+        let dogID = ContentRegistry.animalChainID(.dog)
+        for _ in 0..<500 {
+            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
+            let easy   = coordinator.dailyChallenges[0].goal.targetCount
+            let medium = coordinator.dailyChallenges[1].goal.targetCount
+            let hard   = coordinator.dailyChallenges[2].goal.targetCount
+            let easyToMedium = Double(easy) / Double(medium)
+            let mediumToHard = Double(medium) / Double(hard)
+            // A little wider than the [0.6, 0.9] target band to absorb rounding at
+            // the small counts daily challenges actually use, without flaking.
+            XCTAssertTrue((0.55...0.92).contains(easyToMedium),
+                           "medium should be well underway (\(easy)/\(medium)) when easy completes")
+            XCTAssertTrue((0.55...0.92).contains(mediumToHard),
+                           "hard should be well underway (\(medium)/\(hard)) when medium completes")
+        }
     }
 }

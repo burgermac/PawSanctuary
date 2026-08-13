@@ -244,65 +244,87 @@ class QuestCoordinator {
         generateDailyChallenges(unlockedChainIDs: unlockedChainIDs)
     }
 
-    func generateDailyChallenges(unlockedChainIDs: [ChainID]) {
-        dailyChallenges = [
-            makeDailyChallenge(difficulty: .easy,   unlockedChainIDs: unlockedChainIDs),
-            makeDailyChallenge(difficulty: .medium, unlockedChainIDs: unlockedChainIDs),
-            makeDailyChallenge(difficulty: .hard,   unlockedChainIDs: unlockedChainIDs),
-        ]
+    // Merge2_Reference_Blueprint.md §5, Gap_Analysis_Round2.md 3.1: daily
+    // challenges are deliberately calibrated so the next is 60-90% complete
+    // the moment the current one finishes -- the near-miss stagger *is* the
+    // mechanic. All three of a day's challenges share one "anchor" goal shape
+    // (the same counted event, e.g. any merge, or a merge in one chosen
+    // chain), so ordinary play toward the easy one pushes medium and hard in
+    // exact lockstep; only the target count differs, chosen so each ratio
+    // lands in [0.6, 0.9] by construction rather than by hoping unrelated
+    // goal types happen to correlate.
+    private enum DailyChallengeAnchor {
+        case mergeAny
+        case spawnBase
+        case mergeInChain(ChainID)
+        case reachTier(ChainCategory, tier: Int)
+
+        func goal(count: Int) -> QuestGoal {
+            switch self {
+            case .mergeAny:                     return .mergeAny(count: count)
+            case .spawnBase:                    return .spawnBase(count: count)
+            case .mergeInChain(let id):         return .mergeInChain(id, count: count)
+            case .reachTier(let cat, let tier): return .reachTier(cat, tier: tier, count: count)
+            }
+        }
+        /// Easy-slot target -- small enough that "complete" arrives quickly
+        /// on the anchor's typical event rate.
+        var baseEasyCount: Int {
+            switch self {
+            case .mergeAny:  return 3
+            case .spawnBase: return 4
+            default:         return 2
+            }
+        }
     }
 
-    func makeDailyChallenge(difficulty: QuestDifficulty,
-                            unlockedChainIDs: [ChainID]) -> DailyChallenge {
-        let unlockedAnimals = unlockedChainIDs.filter {
-            ContentRegistry.shared.chain($0)?.category == .animal
+    // Same tiers the old per-difficulty pools drew from, flattened into one
+    // pool: a reachTier-anchored day picks one tier for all three challenges
+    // (they differ only by count), so top tiers must stay reachable without
+    // being locked to the hard slot the way they used to be.
+    private static let dailyChallengeReachTierPool: [Int] = [
+        RescueStage.groomed.tierIndex, RescueStage.vaccinated.tierIndex,
+        RescueStage.trained.tierIndex, RescueStage.foster.tierIndex,
+        RescueStage.adopted.tierIndex, RescueStage.bondedPair.tierIndex,
+        9, 10, 11,
+    ]
+
+    private func pickDailyChallengeAnchor(unlockedChainIDs: [ChainID]) -> DailyChallengeAnchor {
+        let mergeable = unlockedChainIDs.filter {
+            let category = ContentRegistry.shared.chain($0)?.category
+            return category == .animal || category == .supply
         }
-        let unlockedSupply = unlockedChainIDs.filter {
+        let hasSupply = unlockedChainIDs.contains {
             ContentRegistry.shared.chain($0)?.category == .supply
         }
-        let animalID  = unlockedAnimals.randomElement() ?? ContentRegistry.animalChainID(.dog)
-        let supplyID  = unlockedSupply.randomElement()
-        let hasSupply = supplyID != nil
-        let goal: QuestGoal
-        switch difficulty {
-        case .easy:
-            var pool: [QuestGoal] = [
-                .mergeAny(count: 3),
-                .spawnBase(count: 4),
-                .mergeInChain(animalID, count: 2),
-                .reachTier(.animal, tier: RescueStage.groomed.tierIndex, count: 2),
-            ]
-            if hasSupply { pool.append(.reachTier(.supply, tier: 1, count: 2)) }
-            goal = pool.randomElement()!
+        var pool: [DailyChallengeAnchor] = [
+            .mergeAny, .spawnBase,
+            .reachTier(.animal, tier: Self.dailyChallengeReachTierPool.randomElement()!),
+        ]
+        if let chainID = mergeable.randomElement() { pool.append(.mergeInChain(chainID)) }
+        if hasSupply { pool.append(.reachTier(.supply, tier: [1, 3].randomElement()!)) }
+        return pool.randomElement()!
+    }
 
-        case .medium:
-            var pool: [QuestGoal] = [
-                .mergeAny(count: 6),
-                .reachTier(.animal, tier: RescueStage.vaccinated.tierIndex, count: 2),
-                .reachTier(.animal, tier: RescueStage.trained.tierIndex, count: 1),
-                .spawnBase(count: 8),
-            ]
-            if let sid = supplyID { pool.append(.mergeInChain(sid, count: 3)) }
-            goal = pool.randomElement()!
+    /// Derives the next slot's target count from the previous one so its
+    /// progress lands at a random ratio in [0.65, 0.85] -- comfortably inside
+    /// the measured 60-90% band with rounding room to spare -- the instant
+    /// the previous slot completes.
+    private func staggeredCount(after previous: Int) -> Int {
+        let ratio = Double.random(in: 0.65...0.85)
+        return max(previous + 1, Int((Double(previous) / ratio).rounded()))
+    }
 
-        case .hard, .legendary:
-            var pool: [QuestGoal] = [
-                .reachTier(.animal, tier: RescueStage.foster.tierIndex, count: 2),
-                .reachTier(.animal, tier: RescueStage.adopted.tierIndex, count: 1),
-                .reachTier(.animal, tier: RescueStage.bondedPair.tierIndex, count: 1),
-                // RescueStage tops out at tierIndex 8; target the top three tiers
-                // (9-11, "Mythic"/"Ancient"/"Primordial") directly, same as the
-                // legendary quest pool in generateQuest, so they stay reachable.
-                .reachTier(.animal, tier: 9, count: 1),
-                .reachTier(.animal, tier: 10, count: 1),
-                .reachTier(.animal, tier: 11, count: 1),
-                .mergeAny(count: 10),
-                .spawnBase(count: 12),
-            ]
-            if supplyID != nil { pool.append(.reachTier(.supply, tier: 3, count: 1)) }
-            goal = pool.randomElement()!
-        }
-        return DailyChallenge(goal: goal, difficulty: difficulty)
+    func generateDailyChallenges(unlockedChainIDs: [ChainID]) {
+        let anchor      = pickDailyChallengeAnchor(unlockedChainIDs: unlockedChainIDs)
+        let easyCount   = anchor.baseEasyCount
+        let mediumCount = staggeredCount(after: easyCount)
+        let hardCount   = staggeredCount(after: mediumCount)
+        dailyChallenges = [
+            DailyChallenge(goal: anchor.goal(count: easyCount),   difficulty: .easy),
+            DailyChallenge(goal: anchor.goal(count: mediumCount), difficulty: .medium),
+            DailyChallenge(goal: anchor.goal(count: hardCount),   difficulty: .hard),
+        ]
     }
 
     func updateDailyChallengesAfterMerge(chainID: ChainID, tier: Int) {
