@@ -370,6 +370,41 @@ final class EconomyTests: XCTestCase {
         XCTAssertEqual(cheap, dogTagStoreBasePrice)
     }
 
+    // MARK: Gap_Analysis_Round2 3.2 — paid store reroll
+
+    /// The whole point of the reroll is that it reads as an impulse, not a
+    /// commitment -- it must always be cheaper than the cheapest thing it could
+    /// win you a shot at.
+    func testRefreshCostIsBelowTheCheapestSlot() {
+        XCTAssertLessThan(dogTagStoreRefreshCost, dogTagStoreBasePrice)
+    }
+
+    func testForceRefreshRebuildsStockAndAdvancesRotationTimestamp() {
+        let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
+        let store = DogTagStore()
+        store.rotateIfNeeded(deepestUnlockedTier: 10, unlockedChainIDs: chains)
+        let firstRotation = store.lastRotation
+        XCTAssertFalse(store.slots.isEmpty)
+
+        store.forceRefresh(deepestUnlockedTier: 10, unlockedChainIDs: chains)
+        XCTAssertFalse(store.slots.isEmpty, "a reroll must still leave the store stocked")
+        XCTAssertNotEqual(store.lastRotation, firstRotation,
+                          "forceRefresh must record a new rotation, not silently no-op")
+    }
+
+    /// Unlike rotateIfNeeded, forceRefresh must rebuild even when the calendar
+    /// day hasn't changed -- that's the entire difference between the free
+    /// daily rotation and the paid reroll.
+    func testForceRefreshIgnoresSameDayCache() {
+        let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
+        let store = DogTagStore()
+        store.slots = []
+        store.lastRotation = Date()   // pretend today's rotation already happened
+        store.forceRefresh(deepestUnlockedTier: 10, unlockedChainIDs: chains)
+        XCTAssertFalse(store.slots.isEmpty,
+                       "forceRefresh must rebuild even when rotateIfNeeded would no-op")
+    }
+
     // MARK: Task 2.3a — orders pay items
 
     func testOrdersCarryBoardItemRewardsAtRoughlyTheStatedRate() {

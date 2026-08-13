@@ -34,6 +34,15 @@ class DogTagStore {
         lastRotation = Date()
     }
 
+    /// Forces a new stock immediately, regardless of when it last rotated —
+    /// the paid reroll (Gap_Analysis_Round2 3.2). Unlike `rotateIfNeeded`,
+    /// always rebuilds; the caller owns charging for it.
+    func forceRefresh(deepestUnlockedTier: Int, unlockedChainIDs: [ChainID]) {
+        slots = Self.makeStock(deepestUnlockedTier: deepestUnlockedTier,
+                               unlockedChainIDs: unlockedChainIDs)
+        lastRotation = Date()
+    }
+
     /// Builds `dogTagStoreSlotCount` offers spanning `deepest − 4` … `deepest − 1`.
     /// Returns an empty list for a player who hasn't merged deep enough for the
     /// range to contain anything worth selling.

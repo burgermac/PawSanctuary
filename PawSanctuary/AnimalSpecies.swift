@@ -1425,6 +1425,12 @@ let dogTagStoreMaxOffset   = 1   // deepest − 1 is the dearest
 let dogTagStoreBasePrice   = 15
 let dogTagStorePriceStep   = 18
 
+/// Paid reroll price (Gap_Analysis_Round2 3.2). Deliberately priced well below
+/// `dogTagStoreBasePrice` — the cheapest slot on offer — so a reroll reads as
+/// an impulse buy, not a commitment: every reroll is a fresh shot at the item
+/// the player actually wants. The cheapest meaningful Dog Tag sink available.
+let dogTagStoreRefreshCost = 5
+
 // ── The coin economy (Phase 2c) ───────────────────────────────
 //
 // Coins gate the Sanctuary Map — 291,900 coins across 61 entries — which is the

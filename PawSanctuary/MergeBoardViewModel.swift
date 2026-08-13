@@ -1453,6 +1453,21 @@ class MergeBoardViewModel {
                                    unlockedChainIDs: progression.unlockedChainIDs)
     }
 
+    /// Paid reroll (Task 3.2): spends `dogTagStoreRefreshCost` to reroll the
+    /// day's stock immediately, bypassing the daily-rotation cache. Returns
+    /// false if the player can't afford it.
+    @discardableResult
+    func paidRefreshDogTagStore() -> Bool {
+        guard kibbleEngine.dogTags >= dogTagStoreRefreshCost else { return false }
+        kibbleEngine.dogTags -= dogTagStoreRefreshCost
+        dogTagStore.forceRefresh(deepestUnlockedTier: deepestUnlockedTier,
+                                 unlockedChainIDs: progression.unlockedChainIDs)
+        SoundManager.shared.playButtonTap()
+        HapticManager.shared.lightTap()
+        persist()
+        return true
+    }
+
     /// Buys one stock-limited board item. Returns false if it's already sold,
     /// unaffordable, or there's nowhere to put it.
     @discardableResult

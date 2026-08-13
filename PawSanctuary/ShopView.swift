@@ -234,7 +234,9 @@ struct DogTagStoreSection: View {
                     .font(.headline)
                     .foregroundColor(Color(red: 0.18, green: 0.36, blue: 0.66))
                 Spacer()
-                Text("Rotates daily").font(.caption).foregroundColor(.secondary)
+                if !viewModel.dogTagStore.slots.isEmpty {
+                    DogTagStoreRefreshButton(viewModel: viewModel)
+                }
             }
 
             if viewModel.dogTagStore.slots.isEmpty {
@@ -244,11 +246,39 @@ struct DogTagStoreSection: View {
                 ForEach(viewModel.dogTagStore.slots) { slot in
                     DogTagStoreRow(slot: slot, viewModel: viewModel)
                 }
-                Text("One of each per day. Sold items return tomorrow.")
+                Text("Rotates daily, one of each. Sold items return tomorrow.")
                     .font(.caption).foregroundColor(.secondary)
             }
         }
         .onAppear { viewModel.refreshDogTagStore() }
+    }
+}
+
+/// Paid reroll (Task 3.2): priced well below the store's cheapest slot so it
+/// reads as an impulse — a fresh shot at the item the player actually wants.
+struct DogTagStoreRefreshButton: View {
+    var viewModel: MergeBoardViewModel
+
+    private var canAfford: Bool { viewModel.dogTags >= dogTagStoreRefreshCost }
+
+    var body: some View {
+        Button {
+            viewModel.paidRefreshDogTagStore()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .bold))
+                Text("\(dogTagStoreRefreshCost)")
+                    .font(.caption.bold())
+            }
+            .foregroundColor(canAfford ? .white : .secondary)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(canAfford
+                      ? Color(red: 0.25, green: 0.50, blue: 0.88)
+                      : Color(red: 0.90, green: 0.90, blue: 0.92)))
+        }
+        .disabled(!canAfford)
     }
 }
 
