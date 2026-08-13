@@ -23,7 +23,7 @@ enum ChainCategory: String, Codable, CaseIterable {
     case animal      // the rescue chains (current gameplay)
     case spawner     // producers (Phase 1 makes them finite/charge-based)
     case supply      // grooming / food / shelter supplies (Phase 2)
-    case tool        // toolbox consumable (Phase 3)
+    case tool        // toolbox chest chain — tap any tier to open, or merge two for a richer one (Gap_Analysis_Round2 3.3)
     case material    // wood / metal / cement building supplies (Phase 3)
     case subObject   // per-family 4-stage merge chain; top tier becomes a power-up consumable
     case powerUp     // power-up consumable item (drag onto spawner to apply)
@@ -297,19 +297,28 @@ struct ContentRegistry {
         })
     }
 
-    /// A single-tier consumable awarded by quests. Double-tapping opens it and
-    /// distributes a random assortment of wood/metal/cement items to material storage.
+    /// Quests award only the base tier. Tapping any tier opens it immediately
+    /// for that tier's random assortment of wood/metal/cement items; merging
+    /// two of the same tier trades the immediate (smaller) payout for a
+    /// richer one at the next tier (Gap_Analysis_Round2 3.3) — the reward
+    /// container is a chain item, so opening now vs. merging for more is a
+    /// real decision, not just a tap target.
     private static func makeToolboxChain() -> MergeChain {
-        let tier = ChainTier(
-            name: "Toolbox", shortLabel: "Toolbox",
-            symbol: "shippingbox.fill",
-            color: Color(red: 0.72, green: 0.50, blue: 0.18),
-            tint:  Color(red: 0.88, green: 0.68, blue: 0.30),
-            badge: nil,
-            scoreValue: 0, xpValue: 0
-        )
+        let tiers: [(name: String, symbol: String, color: Color, tint: Color, badge: String?)] = [
+            ("Toolbox",      "shippingbox.fill", Color(red: 0.72, green: 0.50, blue: 0.18),
+                                                  Color(red: 0.88, green: 0.68, blue: 0.30), nil),
+            ("Supply Crate", "cube.box.fill",     Color(red: 0.62, green: 0.42, blue: 0.14),
+                                                  Color(red: 0.80, green: 0.58, blue: 0.22), nil),
+            ("Cargo Chest",  "archivebox.fill",   Color(red: 0.52, green: 0.34, blue: 0.10),
+                                                  Color(red: 0.95, green: 0.78, blue: 0.20), "sparkles"),
+        ]
         return MergeChain(id: toolboxChainID, category: .tool,
-                          displayName: "Tap to collect!", tiers: [tier])
+                          displayName: "Tap to collect, or merge for more!",
+                          tiers: tiers.map { t in
+            ChainTier(name: t.name, shortLabel: t.name, symbol: t.symbol,
+                      color: t.color, tint: t.tint, badge: t.badge,
+                      scoreValue: 0, xpValue: 0)
+        })
     }
 
     // MARK: Active-superpower piece builder

@@ -2805,10 +2805,18 @@ class MergeBoardViewModel {
         }
     }
 
-    /// Tap a toolbox tile to instantly absorb all materials from its lot into the accumulator.
+    /// Tap a toolbox tile to instantly absorb all materials from its lot into
+    /// the accumulator. The base tier (quest-awarded) draws from the queued
+    /// lot rolled when it was placed; a merged, higher tier (Gap_Analysis_Round2
+    /// 3.3) has no queued lot of its own, so its (richer) contents are rolled
+    /// fresh here instead -- opening it now is the "small payout" side of the
+    /// merge-or-open decision, but even that is bigger than the base tier's.
     func absorbToolbox(at pos: GridPosition) {
-        guard board[pos.row][pos.col].item?.chainID == ContentRegistry.toolboxChainID else { return }
-        let lot = pendingMaterialLots.isEmpty ? [] : pendingMaterialLots.removeFirst()
+        guard let item = board[pos.row][pos.col].item,
+              item.chainID == ContentRegistry.toolboxChainID else { return }
+        let lot = item.tier == 0
+            ? (pendingMaterialLots.isEmpty ? [] : pendingMaterialLots.removeFirst())
+            : buildToolboxLot(chestTier: item.tier)
         inventoryStore.absorbMaterialItems(lot)
         board[pos.row][pos.col].item = nil
         selectedCell = nil
@@ -2820,7 +2828,8 @@ class MergeBoardViewModel {
             if woodCount   > 0 { parts.append("Wood ×\(woodCount)") }
             if metalCount  > 0 { parts.append("Metal ×\(metalCount)") }
             if cementCount > 0 { parts.append("Cement ×\(cementCount)") }
-            enqueueToast(Toast(kind: .info("Toolbox collected! \(parts.joined(separator: ", "))")))
+            let name = item.def?.name ?? "Toolbox"
+            enqueueToast(Toast(kind: .info("\(name) collected! \(parts.joined(separator: ", "))")))
         }
         SoundManager.shared.playButtonTap()
         recalcBoardIsFull()
@@ -2860,14 +2869,18 @@ class MergeBoardViewModel {
         return true
     }
 
-    private func buildToolboxLot() -> [BoardItem] {
+    /// `chestTier` is the toolbox chain tier being opened (0 = base, quest-awarded;
+    /// 1-2 only reachable by merging) -- it richens both how many items land and
+    /// how good a roll they get, so a merged chest is a strictly better payout
+    /// than opening the two base ones it was built from separately (Gap_Analysis_Round2 3.3).
+    private func buildToolboxLot(chestTier: Int = 0) -> [BoardItem] {
         let materialChainIDs = [ContentRegistry.woodChainID,
                                 ContentRegistry.metalChainID,
                                 ContentRegistry.cementChainID]
-        let maxTier = toolboxMaxTier(forPlayerLevel: progression.playerLevel)
+        let maxTier = min(5, toolboxMaxTier(forPlayerLevel: progression.playerLevel) + chestTier)
         var items: [BoardItem] = []
         for chainID in materialChainIDs {
-            let count = Int.random(in: 1...3)
+            let count = Int.random(in: 1...3) + chestTier
             for _ in 0..<count {
                 items.append(BoardItem(chainID: chainID, tier: weightedToolboxTier(max: maxTier)))
             }

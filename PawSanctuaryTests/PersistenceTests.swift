@@ -1220,14 +1220,19 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(reg.tier(ContentRegistry.cementChainID, 5)?.name, "Foundation Kit")
     }
 
-    func testToolboxChainIsRegisteredAndConsumable() {
+    // Gap_Analysis_Round2 3.3: the toolbox chest is now a real chain — tap any
+    // tier to open, or merge two of the same tier for a richer one.
+    func testToolboxChainIsRegisteredAndMergeable() {
         let reg   = ContentRegistry.shared
         let chain = reg.chain(ContentRegistry.toolboxChainID)
         XCTAssertNotNil(chain)
-        XCTAssertEqual(chain?.category, .tool, "Toolbox is a .tool consumable")
-        XCTAssertEqual(chain?.tiers.count, 1,  "Toolbox has a single tier — it opens, not merges")
-        // Confirm it has no next tier (can't be merged up)
-        XCTAssertNil(reg.nextTier(ContentRegistry.toolboxChainID, after: 0))
+        XCTAssertEqual(chain?.category, .tool, "Toolbox is a .tool chest chain")
+        XCTAssertEqual(chain?.tiers.count, 3,
+                       "three tiers: Toolbox, Supply Crate, Cargo Chest")
+        XCTAssertEqual(reg.nextTier(ContentRegistry.toolboxChainID, after: 0), 1)
+        XCTAssertEqual(reg.nextTier(ContentRegistry.toolboxChainID, after: 1), 2)
+        XCTAssertNil(reg.nextTier(ContentRegistry.toolboxChainID, after: 2),
+                     "top tier (Cargo Chest) can't be merged further")
     }
 
     func testWoodItemRoundTrips() throws {
@@ -1255,10 +1260,13 @@ final class PersistenceTests: XCTestCase {
         let decoded = try decoder.decode(BoardItem.self, from: encoder.encode(item))
         XCTAssertEqual(decoded.chainID, ContentRegistry.toolboxChainID)
         XCTAssertEqual(decoded.def?.name, "Toolbox")
-        // A single-tier chain is always at its max — isTopTier is true.
-        // The ambassador guard checks category == .animal, so this never triggers a celebration.
         XCTAssertEqual(decoded.chain?.category, .tool)
-        XCTAssertNil(decoded.chain?.tiers.first?.badge, "Toolbox has no top-tier badge")
+        // Base tier is no longer maxed — it can still be merged into a richer chest.
+        // (The ambassador guard checks category == .animal regardless, so reaching
+        // the real top tier by merging never triggers that celebration either way.)
+        XCTAssertFalse(decoded.isTopTier)
+        XCTAssertNil(decoded.chain?.tiers.first?.badge,
+                     "only the top tier (Cargo Chest) carries a badge")
     }
 
     func testDesignatedProducerStorageRoundTrips() throws {
