@@ -55,7 +55,7 @@ struct CellView: View {
             // ── Content ──────────────────────────────────────────────
             // Locked is checked before item (Task 4.2): a locked row's cache
             // renders as a dimmed preview under a lock badge, never as a fully
-            // interactive tile — checkLevelUnlock only flips isUnlocked, so the
+            // interactive tile — checkTierUnlock only flips isUnlocked, so the
             // same item just becomes normal itemContent the instant it unlocks.
             if !cell.isUnlocked {
                 lockedContent(cachedItem: cell.item)

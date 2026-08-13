@@ -560,8 +560,8 @@ class MergeBoardViewModel {
             return (label, item.chainID)
         }
         if !cell.isUnlocked {
-            let unlockLevel = boardRowUnlockLevels[cell.position.row] ?? 99
-            return ("Locked · Reach level \(unlockLevel) to unlock this row", nil)
+            let unlockTier = boardRowUnlockTiers[cell.position.row] ?? 99
+            return ("Locked · Merge an animal to Level \(unlockTier + 1) to unlock this row", nil)
         }
         return nil
     }
@@ -648,31 +648,31 @@ class MergeBoardViewModel {
     }
 
     var lockedCells: [GridPosition] {
-        boardRowUnlockLevels.keys
+        boardRowUnlockTiers.keys
             .flatMap { row in (0..<cols).map { GridPosition(row: row, col: $0) } }
             .filter { pos in board.indices.contains(pos.row) && !board[pos.row][pos.col].isUnlocked }
     }
-    /// Fraction (0–1) of progress toward unlocking the next locked row by level.
+    /// Fraction (0–1) of progress toward unlocking the next locked row by merge tier.
     var unlockProgress: Double {
-        guard let nextRow = boardRowUnlockLevels.keys.sorted().first(where: { row in
+        guard let nextRow = boardRowUnlockTiers.keys.sorted().first(where: { row in
             board.indices.contains(row) &&
             !(board[row].first?.isUnlocked ?? true)
         }),
-              let targetLevel = boardRowUnlockLevels[nextRow] else { return 1.0 }
-        let prevLevel = targetLevel == 3 ? 1 : 3   // level 1 → level 3, level 3 → level 8
-        let span = Double(targetLevel - prevLevel)
-        let progress = Double(progression.playerLevel - prevLevel)
+              let targetTier = boardRowUnlockTiers[nextRow] else { return 1.0 }
+        let prevTier = boardRowUnlockTiers.values.sorted().last(where: { $0 < targetTier }) ?? 0
+        let span = Double(targetTier - prevTier)
+        let progress = Double(deepestUnlockedTier - prevTier)
         return min(1.0, max(0.0, span > 0 ? progress / span : 1.0))
     }
     var unlockHintText: String {
-        guard let nextRow = boardRowUnlockLevels.keys.sorted().first(where: { row in
+        guard let nextRow = boardRowUnlockTiers.keys.sorted().first(where: { row in
             board.indices.contains(row) &&
             !(board[row].first?.isUnlocked ?? true)
         }),
-              let targetLevel = boardRowUnlockLevels[nextRow] else { return "All rows unlocked!" }
-        if progression.playerLevel >= targetLevel { return "Row ready to unlock!" }
-        let needed = targetLevel - progression.playerLevel
-        return "Reach level \(targetLevel) to unlock the next row (\(needed) level\(needed == 1 ? "" : "s") away)"
+              let targetTier = boardRowUnlockTiers[nextRow] else { return "All rows unlocked!" }
+        if deepestUnlockedTier >= targetTier { return "Row ready to unlock!" }
+        let needed = targetTier - deepestUnlockedTier
+        return "Merge an animal to Level \(targetTier + 1) to unlock the next row (\(needed) level\(needed == 1 ? "" : "s") away)"
     }
 
     var effectiveWeeklyGoldTarget: Int {
@@ -817,7 +817,7 @@ class MergeBoardViewModel {
         if commerce.firstLaunchDate == nil { commerce.firstLaunchDate = Date() }
         buildEmptyBoard()
         spawnAnimal(); spawnAnimal(); spawnAnimal()
-        let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockLevels[$0] == nil }.max() ?? 0
+        let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockTiers[$0] == nil }.max() ?? 0
         board[lastUnlockedRow][0].producer = ProducerTile(level: .familySpawner, species: .dog)
         kibbleEngine.secondsUntilNextKibble = kibbleRegenSecs
         // Give the player a starter toolbox so they can afford their first map area
@@ -833,7 +833,7 @@ class MergeBoardViewModel {
     private func ensureStartingProducer() {
         let hasProducer = flatBoard.contains { $0.producer != nil }
         guard !hasProducer else { return }
-        let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockLevels[$0] == nil }.max() ?? 0
+        let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockTiers[$0] == nil }.max() ?? 0
         if let col = (0..<cols).first(where: { board[lastUnlockedRow][$0].isEmpty }) {
             board[lastUnlockedRow][col].producer = ProducerTile(level: .familySpawner, species: .dog)
         }
@@ -847,11 +847,11 @@ class MergeBoardViewModel {
     }
 
     /// A cell for `row`/`col` respecting the row's lock state. Rows listed in
-    /// `boardRowUnlockLevels` start locked and pre-seeded with a visible Kibble
-    /// cache (Phase 4, Task 4.2) — `checkLevelUnlock` only flips `isUnlocked`
+    /// `boardRowUnlockTiers` start locked and pre-seeded with a visible Kibble
+    /// cache (Phase 4, Task 4.2) — `checkTierUnlock` only flips `isUnlocked`
     /// when the row unlocks, so the cache just becomes interactive in place.
     private func freshBoardCell(row: Int, col: Int) -> BoardCell {
-        guard boardRowUnlockLevels[row] != nil else {
+        guard boardRowUnlockTiers[row] != nil else {
             return BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
         }
         let tier = lockedRowCacheTier[row] ?? 0
@@ -1865,11 +1865,11 @@ class MergeBoardViewModel {
         enqueueToast(Toast(kind: .info("+\(value) Coins")))
     }
 
-    /// Called after every level-up. Unlocks any rows whose required level has been reached.
-    func checkLevelUnlock() {
-        let currentLevel = progression.playerLevel
-        for (row, requiredLevel) in boardRowUnlockLevels {
-            guard currentLevel >= requiredLevel else { continue }
+    /// Called after every merge that deepens `deepestUnlockedTier`. Unlocks any
+    /// rows whose required merge tier has been reached.
+    func checkTierUnlock() {
+        for (row, requiredTier) in boardRowUnlockTiers {
+            guard deepestUnlockedTier >= requiredTier else { continue }
             guard board.indices.contains(row) else { continue }
             let alreadyUnlocked = board[row].allSatisfy { $0.isUnlocked }
             guard !alreadyUnlocked else { continue }
@@ -2046,7 +2046,6 @@ class MergeBoardViewModel {
             // circular dependency — must be kept in sync on every level-up, not just
             // at load time via restore(from:).
             kibbleEngine.playerLevel = progression.playerLevel
-            checkLevelUnlock()
         }
     }
 
@@ -2403,7 +2402,9 @@ class MergeBoardViewModel {
     func updateAllAfterMerge(chainID: ChainID, tier: Int) {
         // Recirculation scales with how deep the player has actually got (Phase 2).
         if ContentRegistry.shared.chain(chainID)?.category == .animal {
+            let wasDeepest = deepestUnlockedTier
             deepestUnlockedTier = max(deepestUnlockedTier, tier)
+            if deepestUnlockedTier > wasDeepest { checkTierUnlock() }
         }
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
         quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)

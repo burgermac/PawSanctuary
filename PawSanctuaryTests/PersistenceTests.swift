@@ -1379,7 +1379,7 @@ final class PersistenceTests: XCTestCase {
         // that predates that design; updated to match. newBoardRow was removed (bug
         // fix, 5 Aug 2026): it only ever appended banner text — no code actually
         // unlocked a row from it, so it falsely claimed a reward that never happened.
-        // Board rows are unlocked purely by player level (boardRowUnlockLevels).
+        // Board rows are unlocked by merge tier reached (boardRowUnlockTiers).
         let reward = AreaReward(newFamilySpawner: .fox,
                                 bonusKibble: 20, bonusDogTags: 5, bonusXP: 60)
         let msg = reward.primaryMessage()

@@ -1170,17 +1170,20 @@ let passDailyKibble        = 20    // kibble granted on each daily pass claim
 let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble rewards
 
 // ── Board dimensions (fixed — never changes at runtime) ──────
-let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 2 rows start locked
-/// Level at which each board row (by index) unlocks. Rows 0–6 start unlocked.
-let boardRowUnlockLevels: [Int: Int] = [7: 3, 8: 8]
+let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 6 rows start locked
+/// `deepestUnlockedTier` (PlayerProgression) required to unlock each board row
+/// (by index). Rows 0–2 start unlocked. Gated on merge tier rather than player
+/// level (Gap_Analysis_Round2 §2, C-1): deeper tiers need more staging space,
+/// so the reward should arrive with the need, not on a schedule decoupled
+/// from it. Open at 3 rows / 21 cells / 33%, full board at tier 10.
+let boardRowUnlockTiers: [Int: Int] = [3: 2, 4: 4, 5: 6, 6: 8, 7: 9, 8: 10]
 
 /// Phase 4, Task 4.2: every cell in a locked row is pre-seeded with a visible
 /// Kibble-chain cache at this tier, released (made interactive) the instant
-/// the row unlocks — `checkLevelUnlock` only flips `isUnlocked`; the cache is
+/// the row unlocks — `checkTierUnlock` only flips `isUnlocked`; the cache is
 /// already sitting there. Authored per row, not derived: deeper unlocks get a
-/// richer cache, and there's no principled formula worth inventing for two
-/// data points.
-let lockedRowCacheTier: [Int: Int] = [7: 2, 8: 3]
+/// richer cache.
+let lockedRowCacheTier: [Int: Int] = [3: 0, 4: 0, 5: 1, 6: 1, 7: 2, 8: 3]
 
 // ── Gameplay scaling helpers (package-internal so tests can reach them) ──────
 

@@ -5,8 +5,8 @@
 //  Players accumulate materials (wood/metal/cement) from Toolboxes and spend
 //  them here to build sanctuary areas. Each area unlocks a new species and
 //  currency bonuses. Areas unlock sequentially — complete each before the next
-//  becomes available. (Board rows are unlocked separately, purely by player
-//  level — see boardRowUnlockLevels in AnimalSpecies.swift — not by areas.)
+//  becomes available. (Board rows are unlocked separately, by merge tier
+//  reached — see boardRowUnlockTiers in AnimalSpecies.swift — not by areas.)
 //
 //  Each area has 4 upgrade tiers. Upgrades cost coins plus higher-tier materials
 //  and grant permanent passive bonuses. The next area unlocks only after the previous
