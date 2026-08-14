@@ -559,8 +559,7 @@ class MergeBoardViewModel {
         guard let pos = selectedCell,
               pos.row < board.count,
               pos.col < (board.first?.count ?? 0) else { return false }
-        let cell = board[pos.row][pos.col]
-        guard cell.producer == nil, let item = cell.item else { return false }
+        guard !boardState.hasProducer(at: pos), let item = boardState.item(at: pos) else { return false }
         return item.chain?.category == .animal
     }
 
