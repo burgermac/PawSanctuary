@@ -1687,7 +1687,7 @@ class MergeBoardViewModel {
     @discardableResult
     func placeOrBankItem(_ item: BoardItem) -> Bool {
         if let target = emptyUnlockedCells.randomElement() {
-            board[target.position.row][target.position.col].item = item
+            boardState.setItem(item, at: target.position)
             recalcBoardIsFull()
             return true
         }
