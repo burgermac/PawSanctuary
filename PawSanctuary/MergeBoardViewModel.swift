@@ -2790,7 +2790,7 @@ class MergeBoardViewModel {
         guard inventoryStore.addItem(target) else {
             enqueueToast(Toast(kind: .info("Inventory is full!"))); return false
         }
-        board[pos.row][pos.col].item = nil
+        boardState.clearItem(at: pos)
         return true
     }
 
