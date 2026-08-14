@@ -65,6 +65,12 @@ class BoardStateManager {
     /// sub-object into a newly-emptied cell.
     func setItem(_ item: BoardItem?, at pos: GridPosition) { board[pos.row][pos.col].item = item }
 
+    /// Sets (or overwrites) the producer at `pos`. Added for
+    /// `applyPowerUpToSpawner` (Phase C, item-placement remainder) — the
+    /// first caller that mutates a producer's fields (via SubObjectSystem)
+    /// and writes the whole struct back, mirroring `setItem`.
+    func setProducer(_ producer: ProducerTile?, at pos: GridPosition) { board[pos.row][pos.col].producer = producer }
+
     /// Sets or clears the bubble timestamp on the item at `pos`. No-op if the
     /// cell is empty — matches the optional-chaining behavior of the direct
     /// `board[...].item?.bubbledAt = ...` writes this replaces. Added for the

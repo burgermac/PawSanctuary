@@ -1721,7 +1721,7 @@ class MergeBoardViewModel {
     func applyPowerUpToSpawner(at pos: GridPosition) {
         guard let slot = selectedPowerUpSlot,
               let powerUpItem = inventoryStore.powerUpInventory[slot],
-              var producer = board[pos.row][pos.col].producer,
+              var producer = boardState.producer(at: pos),
               producer.level == .familySpawner else {
             selectedPowerUpSlot = nil
             return
@@ -1733,7 +1733,7 @@ class MergeBoardViewModel {
 
         let applied = SubObjectSystem.applyPowerUp(effect: effect, to: &producer, viewModel: self,
                                                     powerUpDurationBonus: cachedActiveBonuses.powerUpDurationBonus)
-        board[pos.row][pos.col].producer = producer
+        boardState.setProducer(producer, at: pos)
         selectedPowerUpSlot = nil
 
         guard applied else {
