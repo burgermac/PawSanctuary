@@ -2146,7 +2146,7 @@ class MergeBoardViewModel {
         let empty = emptyUnlockedCells
         guard let target = empty.first else { triggerToast(.boardFull); return }
         guard let item = inventoryStore.consumeSelectedInventoryItem() else { return }
-        board[target.position.row][target.position.col].item = item
+        boardState.setItem(item, at: target.position)
         recalcBoardIsFull()
     }
 
