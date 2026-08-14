@@ -1935,11 +1935,11 @@ class MergeBoardViewModel {
         guard let pos = selectedCell,
               pos.row < board.count,
               pos.col < (board.first?.count ?? 0),
-              board[pos.row][pos.col].producer == nil,
-              let item = board[pos.row][pos.col].item,
+              !boardState.hasProducer(at: pos),
+              let item = boardState.item(at: pos),
               item.chain?.category == .animal else { return }
         let value = sellValue(forTier: item.tier)
-        board[pos.row][pos.col].item = nil
+        boardState.clearItem(at: pos)
         earnCoins(value)
         selectedCell = nil
         recalcBoardIsFull()
