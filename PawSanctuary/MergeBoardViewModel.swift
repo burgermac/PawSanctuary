@@ -2754,17 +2754,17 @@ class MergeBoardViewModel {
     /// the destination for the tile applyLeapPiece armed.
     func handleLeapTap(at pos: GridPosition) {
         guard leapMode, let src = leapSourceCell else { return }
-        guard board[pos.row][pos.col].isEmpty, board[pos.row][pos.col].isUnlocked else {
+        guard boardState.isEmpty(at: pos), boardState.isUnlocked(at: pos) else {
             enqueueToast(Toast(kind: .info("Tap an empty cell for the destination."))); return
         }
         // Re-validate the source wasn't changed by something else while Leap was
         // armed — trust nothing captured back when the piece was first merged.
-        guard let srcItem = board[src.row][src.col].item, srcItem.bubbledAt == nil else {
+        guard let srcItem = boardState.item(at: src), srcItem.bubbledAt == nil else {
             leapMode = false; leapSourceCell = nil
             enqueueToast(Toast(kind: .info("That tile is gone — Leap cancelled."))); return
         }
-        board[pos.row][pos.col].item = srcItem
-        board[src.row][src.col].item = nil
+        boardState.setItem(srcItem, at: pos)
+        boardState.clearItem(at: src)
         leapMode = false; leapSourceCell = nil
         recalcBoardIsFull()
         SoundManager.shared.playMerge()

@@ -52,6 +52,10 @@ class BoardStateManager {
     func item(at pos: GridPosition) -> BoardItem? { board[pos.row][pos.col].item }
     func hasProducer(at pos: GridPosition) -> Bool { board[pos.row][pos.col].producer != nil }
     func clearItem(at pos: GridPosition) { board[pos.row][pos.col].item = nil }
+    /// Added for `handleLeapTap` (Phase C, superpower group) — validating a
+    /// tapped destination cell needs both checks together.
+    func isEmpty(at pos: GridPosition) -> Bool { board[pos.row][pos.col].isEmpty }
+    func isUnlocked(at pos: GridPosition) -> Bool { board[pos.row][pos.col].isUnlocked }
 
     /// Sets (or overwrites) the item at `pos`. Added for the superpower group
     /// (Phase C): `applyAquaticsCurrent` is the first caller, sliding a
