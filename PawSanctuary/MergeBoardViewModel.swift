@@ -2671,7 +2671,7 @@ class MergeBoardViewModel {
             triggerToast(.inventoryFull); return false
         }
         let splitTier = target.tier - 1
-        board[pos.row][pos.col].item = BoardItem(chainID: target.chainID, tier: splitTier)
+        boardState.setItem(BoardItem(chainID: target.chainID, tier: splitTier), at: pos)
         placeOrBankItem(BoardItem(chainID: target.chainID, tier: splitTier))
         return true
     }
