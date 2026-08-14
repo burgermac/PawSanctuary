@@ -1134,6 +1134,44 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.claimedTradeIDs, [tradeID])
     }
 
+    /// `claimedTradeIDs` became `[UUID]` (PERF-05, TODO.md) so the oldest-first
+    /// eviction in `MergeBoardViewModel.claimIncomingTrade` has something to work
+    /// from — order is now semantically meaningful, not just membership, so a
+    /// round trip has to preserve it exactly.
+    func testClaimedTradeIDsPreservesInsertionOrderOnRoundTrip() throws {
+        var state = makeSampleState()
+        let ids = (0..<5).map { _ in UUID() }
+        state.claimedTradeIDs = ids
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertEqual(decoded.claimedTradeIDs, ids)
+    }
+
+    // MARK: appendCapped (PERF-05 eviction)
+
+    func testAppendCappedKeepsEveryEntryUnderTheCap() {
+        let ids = (0..<4).map { _ in UUID() }
+        var result: [UUID] = []
+        for id in ids { result = appendCapped(id, to: result, cap: 10) }
+        XCTAssertEqual(result, ids, "under the cap, nothing should be evicted and order should be preserved")
+    }
+
+    func testAppendCappedEvictsOldestFirstOnceOverTheCap() {
+        let ids = (0..<5).map { _ in UUID() }
+        var result: [UUID] = []
+        for id in ids { result = appendCapped(id, to: result, cap: 3) }
+        XCTAssertEqual(result, Array(ids.suffix(3)),
+                       "only the 3 most recently claimed trade IDs should survive")
+    }
+
+    func testAppendCappedNeverExceedsTheCapEvenStartingOverIt() {
+        // Simulates a save migrated from before the cap existed, already holding
+        // more entries than the new limit allows.
+        let preExisting = (0..<50).map { _ in UUID() }
+        let result = appendCapped(UUID(), to: preExisting, cap: 10)
+        XCTAssertEqual(result.count, 10)
+    }
+
     func testV33toV34MigrationInjectsZeroPiggyBankCoins() throws {
         let data = try JSONEncoder().encode(makeSampleState())
         var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

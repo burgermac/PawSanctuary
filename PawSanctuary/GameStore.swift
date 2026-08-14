@@ -198,7 +198,15 @@ struct GameState: Codable {
     /// Guards against re-granting the same card if `CardTradeBackend.markClaimed`
     /// never confirms on CloudKit — the record stays `pending` and would otherwise
     /// be re-fetched into `pendingIncomingTrades` and claimed a second time.
-    var claimedTradeIDs: Set<UUID> = []
+    ///
+    /// Ordered oldest-first and capped at `maxClaimedTradeIDs` (TODO.md PERF-05,
+    /// found 8 Aug 2026) — insert-only for the life of a save would otherwise grow
+    /// this unbounded for an active trader. It only needs to remember a trade
+    /// until CloudKit confirmation lands, not forever, so evicting the oldest
+    /// entries once the cap is hit is safe. `[UUID]` rather than `Set<UUID>`
+    /// because eviction needs insertion order; encodes to the same JSON array
+    /// shape either way, so no migration was needed for the type change.
+    var claimedTradeIDs: [UUID] = []
 
     /// Piggy bank fill (v34, Gap_Analysis_Round2 3.4). Skimmed from every
     /// `earnCoins` call, capped at `piggyBankCap`, cracked for Dog Tags.

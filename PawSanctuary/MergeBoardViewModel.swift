@@ -101,6 +101,17 @@ struct BoardSnapshot {
     let inventory: [BoardItem?]
 }
 
+/// Appends `id`, then evicts from the front until `ids` is back at `cap` —
+/// keeps `GameState.claimedTradeIDs` from growing unbounded (TODO.md PERF-05)
+/// while still remembering the most recent trades, which is all the dedup
+/// guard in `claimIncomingTrade` actually needs.
+func appendCapped(_ id: UUID, to ids: [UUID], cap: Int) -> [UUID] {
+    var result = ids
+    result.append(id)
+    if result.count > cap { result.removeFirst(result.count - cap) }
+    return result
+}
+
 // ============================================================
 // MARK: - VIEW MODEL
 // ============================================================
@@ -180,7 +191,11 @@ class MergeBoardViewModel {
     var passUnlockedEventIDs: Set<String> = []
 
     /// Trade IDs already granted via `claimIncomingTrade` — see GameState.claimedTradeIDs.
-    var claimedTradeIDs: Set<UUID> = []
+    var claimedTradeIDs: [UUID] = []
+    /// Cap for `claimedTradeIDs` (TODO.md PERF-05). Generous relative to the
+    /// 5/day send throttle (`maxDailyCardSends`) — comfortably covers weeks of
+    /// even heavy receiving, far more than any real CloudKit confirmation delay.
+    private let maxClaimedTradeIDs = 200
 
     var activeEvent: EventDefinition? { EventRegistry.currentEvent }
 
@@ -2401,7 +2416,7 @@ class MergeBoardViewModel {
             return
         }
         pendingIncomingTrades.remove(at: idx)
-        claimedTradeIDs.insert(trade.id)
+        claimedTradeIDs = appendCapped(trade.id, to: claimedTradeIDs, cap: maxClaimedTradeIDs)
         cardInventory[trade.cardID, default: 0] += 1
         checkAlbumCompletions()
         persist()
