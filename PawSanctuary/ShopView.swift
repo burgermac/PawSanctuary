@@ -52,6 +52,11 @@ struct ShopView: View {
 
                         Divider().padding(.horizontal)
 
+                        // ── Piggy bank (Gap_Analysis_Round2 3.4) ──────────
+                        PiggyBankSection(viewModel: viewModel)
+
+                        Divider().padding(.horizontal)
+
                         // ── Dog Tag → Kibble exchange ─────────────────────
                         DogTagKibbleSection(viewModel: viewModel)
 
@@ -327,6 +332,76 @@ struct DogTagStoreRow: View {
                           : Color(red: 0.90, green: 0.90, blue: 0.92)))
             }
             .disabled(!isAvailable)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color.white.opacity(0.75))
+            .shadow(color: .black.opacity(0.05), radius: 4))
+    }
+}
+
+// ============================================================
+// MARK: - PIGGY BANK (Gap_Analysis_Round2 3.4)
+// ============================================================
+
+/// Passive coin accumulator, skimmed from every coin gain on top of the direct
+/// reward (see `MergeBoardViewModel.earnCoins`). Cracked for Dog Tags once full.
+struct PiggyBankSection: View {
+    var viewModel: MergeBoardViewModel
+
+    private var fillFraction: Double {
+        Double(viewModel.piggyBankCoins) / Double(piggyBankCap)
+    }
+    private var canCrack: Bool {
+        viewModel.isPiggyBankFull && viewModel.dogTags >= piggyBankCrackCostDogTags
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "banknote.fill")
+                    .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.65))
+                Text("Piggy Bank")
+                    .font(.headline)
+                    .foregroundColor(Color(red: 0.65, green: 0.25, blue: 0.45))
+                Spacer()
+                (Text(Image(systemName: "dollarsign.circle.fill"))
+                 + Text(" \(viewModel.piggyBankCoins)/\(piggyBankCap)"))
+                    .font(.caption.bold())
+                    .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
+            }
+
+            ProgressView(value: fillFraction)
+                .tint(Color(red: 0.85, green: 0.45, blue: 0.65))
+
+            Text("Fills automatically as you earn coins — this is on top of the coins you're already earning, not instead of them.")
+                .font(.caption).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                SoundManager.shared.playButtonTap()
+                viewModel.crackPiggyBank()
+            } label: {
+                HStack {
+                    Text(viewModel.isPiggyBankFull ? "Crack it open" : "Not full yet")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    if viewModel.isPiggyBankFull {
+                        HStack(spacing: 4) {
+                            Image(systemName: "tag.fill").font(.system(size: 11))
+                            Text("\(piggyBankCrackCostDogTags)")
+                        }
+                        .font(.subheadline.bold())
+                    }
+                }
+                .foregroundColor(canCrack ? .white : .secondary)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(canCrack
+                          ? Color(red: 0.85, green: 0.45, blue: 0.65)
+                          : Color(red: 0.90, green: 0.90, blue: 0.92)))
+            }
+            .disabled(!canCrack)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)

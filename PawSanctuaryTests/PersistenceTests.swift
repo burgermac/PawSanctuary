@@ -1134,6 +1134,26 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.claimedTradeIDs, [tradeID])
     }
 
+    func testV33toV34MigrationInjectsZeroPiggyBankCoins() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "piggyBankCoins")
+        obj["version"] = 33
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v33 save should migrate to v34")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.piggyBankCoins, 0)
+    }
+
+    func testPiggyBankCoinsRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.piggyBankCoins = 340
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertEqual(decoded.piggyBankCoins, 340)
+    }
+
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
     /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
     func testEveryMigratedTierResolvesInTheRegistry() throws {

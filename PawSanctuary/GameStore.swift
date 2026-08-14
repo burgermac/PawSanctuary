@@ -199,6 +199,10 @@ struct GameState: Codable {
     /// never confirms on CloudKit — the record stays `pending` and would otherwise
     /// be re-fetched into `pendingIncomingTrades` and claimed a second time.
     var claimedTradeIDs: Set<UUID> = []
+
+    /// Piggy bank fill (v34, Gap_Analysis_Round2 3.4). Skimmed from every
+    /// `earnCoins` call, capped at `piggyBankCap`, cracked for Dog Tags.
+    var piggyBankCoins: Int = 0
 }
 
 // ============================================================
@@ -285,7 +289,8 @@ enum GameStore {
     ///      record being re-fetched after markClaimed fails to confirm — without
     ///      it the same incoming trade could be claimed, and its card granted,
     ///      more than once. Purely additive.
-    static let currentVersion = 33
+    /// v34: piggyBankCoins added (Gap_Analysis_Round2 3.4). Purely additive.
+    static let currentVersion = 34
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -460,6 +465,7 @@ enum GameStore {
         if version == 30 { return migrateByInjecting(from: 30, defaults: [:], into: data) }   // passUnlockedEventIDs covered by additiveDefaultsSinceV8
         if version == 31 { return migrateByInjecting(from: 31, defaults: [:], into: data) }   // familySpawnerStorage: sweep runs in finishMigration for every sourceVersion < 32
         if version == 32 { return migrateByInjecting(from: 32, defaults: [:], into: data) }   // claimedTradeIDs covered by additiveDefaultsSinceV8
+        if version == 33 { return migrateByInjecting(from: 33, defaults: [:], into: data) }   // piggyBankCoins covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -535,6 +541,8 @@ enum GameStore {
         "familySpawnerStorage": [String: Any](),
         // v33 — claimed-incoming-trade guard (bug fix).
         "claimedTradeIDs": [String](),
+        // v34 — piggy bank (Gap_Analysis_Round2 3.4).
+        "piggyBankCoins": 0,
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

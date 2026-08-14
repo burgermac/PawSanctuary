@@ -221,6 +221,8 @@ class MergeBoardViewModel {
     // Coins & weekly/monthly goal system
     var coins: Int = 0
     var coinsEarnedThisWeek: Int = 0
+    /// Piggy bank fill (Gap_Analysis_Round2 3.4) — see `earnCoins` and `crackPiggyBank`.
+    var piggyBankCoins: Int = 0
     var weeklyGoalBronzeClaimed: Bool = false
     var weeklyGoalSilverClaimed: Bool = false
     var weeklyGoalGoldClaimed: Bool = false
@@ -1050,6 +1052,7 @@ class MergeBoardViewModel {
         s.commerce                  = commerce
         s.passUnlockedEventIDs      = passUnlockedEventIDs
         s.claimedTradeIDs           = claimedTradeIDs
+        s.piggyBankCoins            = piggyBankCoins
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -1121,6 +1124,7 @@ class MergeBoardViewModel {
         commerce                  = s.commerce
         passUnlockedEventIDs      = s.passUnlockedEventIDs
         claimedTradeIDs           = s.claimedTradeIDs
+        piggyBankCoins            = s.piggyBankCoins
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -1211,7 +1215,7 @@ class MergeBoardViewModel {
         inventoryStore.producerStorage = [:]
         inventoryStore.overflowProducerStorage = Array(repeating: nil, count: totalProducerOverflowSlots)
         completedAreaIDs = []; areaUpgradeLevels = [:]
-        coins = 0; coinsEarnedThisWeek = 0
+        coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
@@ -3238,6 +3242,32 @@ class MergeBoardViewModel {
         coins += amount
         coinsEarnedThisWeek += amount
         trackEventCoins(amount)
+        if piggyBankCoins < piggyBankCap {
+            // `.rounded(.up)` so even a 1-coin gain nudges the fill — it should always
+            // read as progressing, never stall on rounding.
+            let skim = Int((Double(amount) * piggyBankSkimRate).rounded(.up))
+            piggyBankCoins = min(piggyBankCap, piggyBankCoins + skim)
+        }
+    }
+
+    // MARK: Piggy bank (Gap_Analysis_Round2 3.4)
+
+    var isPiggyBankFull: Bool { piggyBankCoins >= piggyBankCap }
+
+    /// Cracks the bank once full, paying its fill as coins. Returns false if it
+    /// isn't full yet or the player can't afford the Dog Tag price.
+    @discardableResult
+    func crackPiggyBank() -> Bool {
+        guard isPiggyBankFull, kibbleEngine.dogTags >= piggyBankCrackCostDogTags else { return false }
+        kibbleEngine.dogTags -= piggyBankCrackCostDogTags
+        earnCoins(piggyBankCoins)
+        // Reset after the payout (not before) so the payout itself doesn't get
+        // re-skimmed into a bank that's supposed to start back at zero.
+        piggyBankCoins = 0
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        persist()
+        return true
     }
 
     private func trackEventCoins(_ amount: Int) {

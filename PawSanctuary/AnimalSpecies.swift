@@ -1462,6 +1462,26 @@ let coinsPerKibbleOfSale = 2.75
 /// Small enough that the worst order still beats the best sale by a wide margin.
 let orderCoinSpread = 0.10
 
+// ── Piggy bank (Gap_Analysis_Round2 3.4) ───────────────────────
+//
+// Passive accumulator: a fraction of every coin gain is *also* skimmed in here,
+// on top of the direct reward, so it never competes with the coin economy above —
+// it's a free bonus layer, not a redistribution of it. Paid to crack once full.
+
+/// Fraction of every `earnCoins` amount skimmed into the bank.
+let piggyBankSkimRate = 0.10
+
+/// Fill cap; the bank can only be cracked once full. Anchored against the
+/// ~4,865 coins/day target above — a 10% skim fills this in about a day of
+/// average play, so cracking reads as a once-a-day top-up, not an instant tap.
+let piggyBankCap = 500
+
+/// Dog Tag price to crack a full bank. The coins inside cost the player nothing
+/// to accumulate, so any price is a bargain — kept near `dogTagStoreRefreshCost`
+/// rather than the store's item prices, since this is a sink on the same impulse
+/// tier, not a considered purchase.
+let piggyBankCrackCostDogTags = 20
+
 /// Kibble cost to build one item at `tier`, times `count` — the quantity both
 /// coin channels are denominated in.
 func buildCost(tier: Int, count: Int = 1) -> Int {
