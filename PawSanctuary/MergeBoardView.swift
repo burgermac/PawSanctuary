@@ -423,7 +423,7 @@ struct MergeBoardView: View {
                             .font(.system(size: 11))
                             .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
                         HStack(spacing: 3) {
-                            Image(systemName: "coin.fill")
+                            Image(systemName: "dollarsign.circle.fill")
                                 .font(.system(size: 10))
                                 .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
                             Text("\(viewModel.coins)")
@@ -960,7 +960,7 @@ private struct AmbassadorCollectionQuestCard: View {
                         .font(.system(size: 10)).foregroundColor(.secondary)
                     Spacer()
                     HStack(spacing: 3) {
-                        Image(systemName: "coin.fill").font(.system(size: 9))
+                        Image(systemName: "dollarsign.circle.fill").font(.system(size: 9))
                             .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
                         Text("+\(viewModel.ambassadorQuestCoinReward)")
                             .font(.system(size: 10, weight: .bold))

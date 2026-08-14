@@ -306,7 +306,7 @@ struct UpgradeTierRow: View {
                 HStack(spacing: 6) {
                     // Coin cost
                     HStack(spacing: 3) {
-                        Image(systemName: "coin.fill").font(.system(size: 10))
+                        Image(systemName: "dollarsign.circle.fill").font(.system(size: 10))
                             .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
                         Text("\(upgrade.coinCost)")
                             .font(.system(size: 10, weight: .bold))

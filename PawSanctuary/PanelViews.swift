@@ -341,7 +341,7 @@ struct AdoptionOrderCard: View {
                         (Text(Image(systemName: "tag.fill")) + Text(" +\(order.rewardDogTags)"))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.blue)
-                        (Text(Image(systemName: "coin.fill")) + Text(" +\(order.rewardCoins)"))
+                        (Text(Image(systemName: "dollarsign.circle.fill")) + Text(" +\(order.rewardCoins)"))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(Color(red: 0.45, green: 0.28, blue: 0.02))
                         // Task 5.3 — the hard slot's material reward.
@@ -669,7 +669,7 @@ struct WeeklyGoalPanelView: View {
                     .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
                 Spacer()
                 HStack(spacing: 3) {
-                    Image(systemName: "coin.fill")
+                    Image(systemName: "dollarsign.circle.fill")
                         .font(.system(size: 11))
                         .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
                     Text("\(viewModel.coinsEarnedThisWeek)/\(goldTarget)")
@@ -1493,7 +1493,7 @@ struct WeeklyGoalTaskCard: View {
             }
             Spacer(minLength: 0)
             HStack(spacing: 3) {
-                Image(systemName: "coin.fill").font(.system(size: 9))
+                Image(systemName: "dollarsign.circle.fill").font(.system(size: 9))
                     .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
                 Text("\(viewModel.coinsEarnedThisWeek)/\(goldTarget)")
                     .font(.system(size: 10))
@@ -1742,7 +1742,7 @@ struct AmbassadorTrioTaskCard: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 4) {
-                    Image(systemName: "coin.fill")
+                    Image(systemName: "dollarsign.circle.fill")
                         .font(.system(size: 10))
                         .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
                     Text("+\(coinValue) coins")
