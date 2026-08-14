@@ -2095,10 +2095,11 @@ class MergeBoardViewModel {
         var removed = 0
         outer: for r in 0..<rows {
             for c in 0..<cols {
-                guard let item = board[r][c].item,
+                let pos = GridPosition(row: r, col: c)
+                guard let item = boardState.item(at: pos),
                       item.isTopTier,
                       item.chain?.category == .animal else { continue }
-                board[r][c].item = nil
+                boardState.clearItem(at: pos)
                 removed += 1
                 if removed >= ambassadorQuestGoal { break outer }
             }
