@@ -129,13 +129,21 @@ class MergeBoardViewModel {
     let progression   = PlayerProgression()
     let dogTagStore   = DogTagStore()
     let progressTrack = ProgressTrack()
+    let boardState    = BoardStateManager()
 
     // MARK: Board state
 
     var rows = boardRows   // always 9 — fixed board size
     let cols = 7
-    var board: [[BoardCell]] = [] {
-        didSet {
+    /// Forwards to `boardState` (Phase B, BoardStateManager extraction — see
+    /// specs/BoardStateManager_Extraction_Plan.md). Kept as a computed
+    /// passthrough rather than moving callers, so none of this file's ~40
+    /// direct `board[...]` sites needed to change — same technique already
+    /// used below for `kibble`/`dogTags` forwarding to `kibbleEngine`.
+    var board: [[BoardCell]] {
+        get { boardState.board }
+        set {
+            boardState.board = newValue
             // Nine Lives can only undo if nothing else has touched the board since
             // the merge — any other mutation invalidates the pending snapshot, so a
             // whole-board revert can't be used to keep an intervening action's
@@ -272,11 +280,9 @@ class MergeBoardViewModel {
     var cardsSentToday: Int = 0
     var lastCardSendDate: Date? = nil
 
-    // Cached derived state
-    private(set) var boardIsFull: Bool = false
-    /// Empty, unlocked cells — recomputed once in `recalcBoardIsFull()` instead of
-    /// re-scanning all 63 cells at every call site that needs a spawn/placement target.
-    private(set) var emptyUnlockedCells: [BoardCell] = []
+    // Cached derived state — owned by boardState (BoardStateManager); see `board` above
+    var boardIsFull: Bool { boardState.boardIsFull }
+    var emptyUnlockedCells: [BoardCell] { boardState.emptyUnlockedCells }
     /// Flattened board — still O(n) per access (not cached), but centralises the
     /// `board.flatMap { $0 }` pattern for call sites that need something other than
     /// empty-unlocked cells (see `emptyUnlockedCells` for the hot path).
@@ -1269,10 +1275,7 @@ class MergeBoardViewModel {
     // MARK: Cached state helpers
 
     private func recalcBoardIsFull() {
-        let flat = board.flatMap { $0 }
-        let unlocked = flat.filter { $0.isUnlocked }
-        boardIsFull = unlocked.allSatisfy { !$0.isEmpty }
-        emptyUnlockedCells = unlocked.filter { $0.isEmpty }
+        boardState.recalc()
         recalcExchangeableTrios()
     }
 

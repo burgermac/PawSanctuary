@@ -1,6 +1,6 @@
 # BoardStateManager Extraction — Design Doc
 
-**Status: Phase A (inventory) complete — see Appendix. Phase B (extraction itself) not started.** This supersedes `docs/CODE_HEALTH.md`'s original scope for this item, which has partly gone stale (see §1). Written 13 August 2026 in response to a direct request to do the extraction; scoped down to a design doc after weighing the risk (see §2) — the phased plan in §4 is what a future session should execute, starting with Phase B, using the Appendix's inventory as ground truth.
+**Status: Phase A and Phase B complete (14 Aug 2026).** `BoardStateManager` exists (`PawSanctuary/BoardStateManager.swift`), owns `board`/`boardIsFull`/`emptyUnlockedCells`, and `MergeBoardViewModel` forwards to it via computed passthroughs — see §4 Phase B for the exact shape and the Appendix for what verification covered. Phase C (migrating individual functions) and Phase D (the `attemptMergeOrMove` rewrite) are **not started** — this doc's phased boundaries still apply to those. This originally superseded `docs/CODE_HEALTH.md`'s scope for this item, which had partly gone stale (see §1).
 
 ---
 
@@ -40,38 +40,44 @@ let progressTrack = ProgressTrack()
 
 ## 4. Recommended target shape and phased execution
 
-### Target shape (Phase B scope — see below)
+### Target shape — as actually built (Phase B, 14 Aug 2026)
 
 ```swift
+// PawSanctuary/BoardStateManager.swift
 @Observable
 @MainActor
-final class BoardStateManager {
-    private(set) var board: [[BoardCell]]
-    private(set) var boardIsFull = false
+class BoardStateManager {
+    var board: [[BoardCell]] = []
+    private(set) var boardIsFull: Bool = false
     private(set) var emptyUnlockedCells: [BoardCell] = []
 
     func recalc() {
-        // moved verbatim from MergeBoardViewModel.recalcBoardIsFull(),
+        // moved verbatim from the old MergeBoardViewModel.recalcBoardIsFull(),
         // minus the recalcExchangeableTrios() call, which stays a
         // MergeBoardViewModel concern (it isn't board state).
+        let flat = board.flatMap { $0 }
+        let unlocked = flat.filter { $0.isUnlocked }
+        boardIsFull = unlocked.allSatisfy { !$0.isEmpty }
+        emptyUnlockedCells = unlocked.filter { $0.isEmpty }
     }
-
-    func place(_ item: BoardItem, at pos: GridPosition) { ... }
-    func clear(at pos: GridPosition) { ... }
-    // additional primitives as Phase A's inventory reveals they're needed —
-    // do not guess the full method list before doing that inventory.
-
-    func restore(from s: GameState) { board = s.board }
-    func capture(into s: inout GameState) { s.board = board }
 }
 ```
 
-`attemptMergeOrMove` and every merge side-effect **stay in `MergeBoardViewModel`** for this phase. They call into `boardState.place`/`.clear`/etc. instead of indexing `board[...]` directly, but the XP/quest/wildcard/superpower/bubbling logic doesn't move.
+**Two deliberate deviations from what this doc originally guessed**, both discovered during implementation, not planned in advance:
+
+- **No `place`/`clear` mutation primitives.** `board` is `var` (not `private(set)`), and `MergeBoardViewModel.board` is a computed passthrough with both a getter and setter — Swift's standard "read, mutate the copy, write back" mechanism means all ~42 internal functions keep writing `board[row][col].item = ...` exactly as before, unchanged, with zero call-site edits. Adding `place`/`clear` methods would have meant rewriting 42 call sites to use them for no behavioral gain at this phase — pure churn. That rewrite is exactly what Phase D's `MergeResult`-dispatch redesign is for, not Phase B.
+- **No `restore(from:)`/`capture(into:)`.** `MergeBoardViewModel.captureState()` already builds `GameState(board: board, ...)` and `apply(_:)` already does `board = s.board`, both by referencing the (now computed) `board` property by name. Since that already round-trips correctly through the passthrough, adding separate restore/capture methods on `BoardStateManager` would have been unused dead code — the seven existing sub-coordinators need them because `MergeBoardViewModel` doesn't already reference their state by a matching property name; `board` was already named `board` everywhere, so it didn't need the indirection.
+
+`MergeBoardViewModel.board`'s computed setter also carries over the `didSet` side effect the old stored property had (clearing `preMoveSnapshot` — the Nine Lives undo guard) — that logic moved into the setter body, not into `BoardStateManager`, since it's ViewModel-level state, not board state.
+
+`attemptMergeOrMove` and every merge side-effect **stayed in `MergeBoardViewModel`** for this phase, exactly as planned — they read/write through the `board` passthrough, but the XP/quest/wildcard/superpower/bubbling logic didn't move.
+
+**Verified:** build succeeds, all 223 tests pass, and a live simulator pass confirmed spawning (`activateProducer`), merging (`attemptMergeOrMove` — the single highest-risk function in the inventory), and full persistence round-trip (terminate + relaunch preserved exact board state) all still work correctly.
 
 ### Phases, each independently shippable and live-verified before the next
 
 - **Phase A — exact call-site inventory. Done (13 Aug 2026) — see Appendix.** Produced via a brace-depth-aware scan of every top-level class member (not a regex heuristic — verified against known boundaries like `attemptMergeOrMove`'s exact start/end lines), not the rougher grep this doc's §1 counts came from. **If execution starts more than a few days after 13 Aug 2026, re-run the scan** (script preserved below) rather than trusting the Appendix numbers — the file will have moved on.
-- **Phase B — extract state + cache only**, per the target shape above. `MergeBoardView.swift`'s ~6 external `viewModel.board` reads (confirmed at `MergeBoardView.swift:651,717,1264,1431-1433`) keep working unchanged via a computed passthrough (`var board: [[BoardCell]] { boardState.board }`) — same technique already used for `kibble`. Verify: game builds, all existing tests pass, and a live simulator pass confirms merging, spawning, selling, and storage still work exactly as before. One commit, playable at the end of it, per `CLAUDE.md`'s "keep the game playable at every commit" rule.
+- **Phase B — extract state + cache only. Done (14 Aug 2026).** Per the target shape above. `MergeBoardView.swift`'s ~6 external `viewModel.board` reads (confirmed at `MergeBoardView.swift:651,717,1264,1431-1433`) needed no changes — they compiled and ran unmodified against the new computed passthrough. Verified: build, full test suite (223 tests), and a live simulator pass covering spawning, merging, and a full persistence round-trip (terminate + relaunch). One commit, playable throughout, per `CLAUDE.md`'s "keep the game playable at every commit" rule. Selling and drag-to-storage were attempted live but not confirmed (simulator tap-coordinate misses, not a code issue — see [[ios-simulator-tap-coordinate-scaling]] in memory); both are simple single-purpose functions already classified as low-risk in the Appendix, so this doesn't lower confidence in the phase, just leaves two items unconfirmed by direct observation.
 - **Phase C (future, not this pass) — migrate simple board-mutation functions one at a time.** Candidates that look self-contained enough to move without touching `attemptMergeOrMove`: `sendBoardItemToInventory`, `storeSelectedItemToInventory`, `sellSelectedAnimal`. Each gets its own commit, each live-verified before starting the next. Stop and reassess if any candidate turns out to be more entangled than it looks from the outside — that's a signal to leave it and pick a different one, not to push through.
 - **Phase D (separate sprint, explicitly deferred) — the `attemptMergeOrMove` → `MergeResult` rewrite.** This is the actual high-risk core of `docs/CODE_HEALTH.md`'s original vision. Needs its own planning pass when picked up — not folded into Phase B or C. Two things should exist before attempting it: confidence built from B/C going cleanly, and *some* way to test board logic in isolation. Phase B's extraction is what makes that newly possible — `BoardStateManager`, being dependency-light (no `KibbleEngine`/`QuestCoordinator`/etc. references), is unit-testable in a way the current monolithic ViewModel isn't. Consider writing `BoardStateManagerTests.swift` as part of Phase B itself, even though nothing forces it — it's the first opportunity this codebase has had to test board logic at all.
 
