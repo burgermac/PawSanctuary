@@ -1154,6 +1154,29 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.piggyBankCoins, 340)
     }
 
+    func testV34toV35MigrationInjectsReadyNowFreeChest() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "freeChestReadyAt")
+        obj["version"] = 34
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v34 save should migrate to v35")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertLessThanOrEqual(loaded.freeChestReadyAt, Date(),
+                                 "a migrated save's first free chest should be ready immediately")
+    }
+
+    func testFreeChestReadyAtRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        let readyAt = Date().addingTimeInterval(3600)
+        state.freeChestReadyAt = readyAt
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertEqual(decoded.freeChestReadyAt.timeIntervalSince1970,
+                       readyAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
     /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
     func testEveryMigratedTierResolvesInTheRegistry() throws {

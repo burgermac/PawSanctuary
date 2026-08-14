@@ -1489,6 +1489,21 @@ let piggyBankCap = 500
 /// tier, not a considered purchase.
 let piggyBankCrackCostDogTags = 20
 
+// ── Free chest (Gap_Analysis_Round2 3.6) ───────────────────────
+//
+// "Free with a wait — a soft speed-up sink carrying no purchase pressure."
+// Pairs with 3.3: the reward is a toolbox item, open now for a small payout
+// or merge for a bigger one.
+
+/// Hours between free chests. ~2-3 a day for an active player — often enough
+/// to be worth checking back for, rare enough to stay a bonus, not a loop.
+let freeChestCooldownHours = 4.0
+
+/// Dog Tag price to skip the remaining wait. Kept near `dogTagStoreRefreshCost`
+/// (5) rather than scaled to the wait itself — "soft," an impulse for a player
+/// already in the shop, not a real alternative to waiting.
+let freeChestSkipCostDogTags = 10
+
 /// Kibble cost to build one item at `tier`, times `count` — the quantity both
 /// coin channels are denominated in.
 func buildCost(tier: Int, count: Int = 1) -> Int {

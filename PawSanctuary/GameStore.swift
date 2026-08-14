@@ -203,6 +203,11 @@ struct GameState: Codable {
     /// Piggy bank fill (v34, Gap_Analysis_Round2 3.4). Skimmed from every
     /// `earnCoins` call, capped at `piggyBankCap`, cracked for Dog Tags.
     var piggyBankCoins: Int = 0
+
+    /// Free chest cooldown (v35, Gap_Analysis_Round2 3.6). `.distantPast` means
+    /// ready now — a fresh save gets its first chest immediately. Derived live
+    /// like `ProducerTile.readyAt`, never ticked by hand.
+    var freeChestReadyAt: Date = .distantPast
 }
 
 // ============================================================
@@ -290,7 +295,8 @@ enum GameStore {
     ///      it the same incoming trade could be claimed, and its card granted,
     ///      more than once. Purely additive.
     /// v34: piggyBankCoins added (Gap_Analysis_Round2 3.4). Purely additive.
-    static let currentVersion = 34
+    /// v35: freeChestReadyAt added (Gap_Analysis_Round2 3.6). Purely additive.
+    static let currentVersion = 35
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -466,6 +472,7 @@ enum GameStore {
         if version == 31 { return migrateByInjecting(from: 31, defaults: [:], into: data) }   // familySpawnerStorage: sweep runs in finishMigration for every sourceVersion < 32
         if version == 32 { return migrateByInjecting(from: 32, defaults: [:], into: data) }   // claimedTradeIDs covered by additiveDefaultsSinceV8
         if version == 33 { return migrateByInjecting(from: 33, defaults: [:], into: data) }   // piggyBankCoins covered by additiveDefaultsSinceV8
+        if version == 34 { return migrateByInjecting(from: 34, defaults: [:], into: data) }   // freeChestReadyAt covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -543,6 +550,10 @@ enum GameStore {
         "claimedTradeIDs": [String](),
         // v34 — piggy bank (Gap_Analysis_Round2 3.4).
         "piggyBankCoins": 0,
+        // v35 — free chest (Gap_Analysis_Round2 3.6). 0 = 2001-01-01 in
+        // Codable's default Date encoding (timeIntervalSinceReferenceDate) —
+        // safely in the past, so a migrated save's first chest is ready now.
+        "freeChestReadyAt": 0,
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

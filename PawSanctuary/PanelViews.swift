@@ -1199,6 +1199,72 @@ struct LevelProgressTaskCard: View {
     }
 }
 
+// MARK: Free chest card (Gap_Analysis_Round2 3.6)
+
+/// Free with a wait, or skip early for a small Dog Tag price — see
+/// `MergeBoardViewModel.claimOrSkipFreeChest`. Wrapped in a `TimelineView` so
+/// the countdown updates locally, once a second, without touching the shared
+/// board model — same technique as `ProducerTileContent`'s cooldown ring.
+struct FreeChestTaskCard: View {
+    var viewModel: MergeBoardViewModel
+
+    private var def: ChainTier? { ContentRegistry.shared.tier(ContentRegistry.toolboxChainID, 0) }
+
+    private func countdownText(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded(.up))
+        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let isReady = viewModel.isFreeChestReady
+            Button {
+                viewModel.claimOrSkipFreeChest()
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: def?.symbol ?? "shippingbox.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(def?.tint ?? .brown)
+                        Text("Free Chest")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(red: 0.45, green: 0.30, blue: 0.10))
+                        Spacer()
+                    }
+
+                    Text(isReady ? "Ready to open!" : countdownText(viewModel.freeChestTimeRemaining))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(red: 0.30, green: 0.20, blue: 0.06))
+
+                    Spacer(minLength: 0)
+
+                    if isReady {
+                        HStack(spacing: 4) {
+                            Image(systemName: "gift.fill").font(.system(size: 9))
+                            Text("Open Now").font(.system(size: 9, weight: .semibold))
+                        }
+                        .foregroundColor(Color(red: 0.45, green: 0.30, blue: 0.10))
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "tag.fill").font(.system(size: 9))
+                            Text("Skip — \(freeChestSkipCostDogTags)").font(.system(size: 9, weight: .semibold))
+                        }
+                        .foregroundColor(viewModel.dogTags >= freeChestSkipCostDogTags
+                                          ? Color(red: 0.25, green: 0.50, blue: 0.88) : .secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(width: taskCardWidth, height: taskCardHeight, alignment: .topLeading)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(red: 0.98, green: 0.93, blue: 0.82)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
 // MARK: Spotlight card
 
 struct SpotlightTaskCard: View {
@@ -1581,6 +1647,7 @@ struct TaskStripView: View {
             // entire 63-cell board.
             LazyHStack(spacing: 10) {
                 LevelProgressTaskCard(viewModel: viewModel)
+                FreeChestTaskCard(viewModel: viewModel)
                 SpotlightTaskCard(viewModel: viewModel)
                 if let event = viewModel.activeEvent {
                     EventTaskCard(viewModel: viewModel, event: event)

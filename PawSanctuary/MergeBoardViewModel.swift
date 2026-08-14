@@ -223,6 +223,8 @@ class MergeBoardViewModel {
     var coinsEarnedThisWeek: Int = 0
     /// Piggy bank fill (Gap_Analysis_Round2 3.4) — see `earnCoins` and `crackPiggyBank`.
     var piggyBankCoins: Int = 0
+    /// Free chest cooldown (Gap_Analysis_Round2 3.6) — see `claimOrSkipFreeChest`.
+    var freeChestReadyAt: Date = .distantPast
     var weeklyGoalBronzeClaimed: Bool = false
     var weeklyGoalSilverClaimed: Bool = false
     var weeklyGoalGoldClaimed: Bool = false
@@ -1053,6 +1055,7 @@ class MergeBoardViewModel {
         s.passUnlockedEventIDs      = passUnlockedEventIDs
         s.claimedTradeIDs           = claimedTradeIDs
         s.piggyBankCoins            = piggyBankCoins
+        s.freeChestReadyAt          = freeChestReadyAt
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -1125,6 +1128,7 @@ class MergeBoardViewModel {
         passUnlockedEventIDs      = s.passUnlockedEventIDs
         claimedTradeIDs           = s.claimedTradeIDs
         piggyBankCoins            = s.piggyBankCoins
+        freeChestReadyAt          = s.freeChestReadyAt
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -1215,7 +1219,7 @@ class MergeBoardViewModel {
         inventoryStore.producerStorage = [:]
         inventoryStore.overflowProducerStorage = Array(repeating: nil, count: totalProducerOverflowSlots)
         completedAreaIDs = []; areaUpgradeLevels = [:]
-        coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0
+        coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0; freeChestReadyAt = .distantPast
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
@@ -3293,6 +3297,33 @@ class MergeBoardViewModel {
         // Reset after the payout (not before) so the payout itself doesn't get
         // re-skimmed into a bank that's supposed to start back at zero.
         piggyBankCoins = 0
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        persist()
+        return true
+    }
+
+    // MARK: Free chest (Gap_Analysis_Round2 3.6)
+
+    var isFreeChestReady: Bool { freeChestReadyAt <= Date() }
+    /// Derived live from `freeChestReadyAt`, never ticked by hand — see
+    /// `ProducerTile.readyAt`'s doc comment for why.
+    var freeChestTimeRemaining: Double { max(0, freeChestReadyAt.timeIntervalSinceNow) }
+
+    /// Claims the chest for free if ready, or pays `freeChestSkipCostDogTags`
+    /// to claim it early. Either way, delivers a toolbox item (Gap_Analysis_
+    /// Round2 3.3) and restarts the cooldown. Returns false if not ready and
+    /// unaffordable, or there's nowhere to put the chest.
+    @discardableResult
+    func claimOrSkipFreeChest() -> Bool {
+        let isSkip = !isFreeChestReady
+        if isSkip {
+            guard kibbleEngine.dogTags >= freeChestSkipCostDogTags else { return false }
+        }
+        let item = BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
+        guard placeOrBankItem(item) else { return false }
+        if isSkip { kibbleEngine.dogTags -= freeChestSkipCostDogTags }
+        freeChestReadyAt = Date().addingTimeInterval(freeChestCooldownHours * 3600)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
         persist()
