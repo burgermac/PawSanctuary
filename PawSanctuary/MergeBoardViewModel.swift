@@ -2897,10 +2897,10 @@ class MergeBoardViewModel {
     /// Also `false` for a locked cache (Task 4.2) — visible, but not yet collectible.
     @discardableResult
     func collectCurrencyItem(at pos: GridPosition) -> Bool {
-        guard board[pos.row][pos.col].isUnlocked,
-              let item = board[pos.row][pos.col].item,
+        guard boardState.isUnlocked(at: pos),
+              let item = boardState.item(at: pos),
               ContentRegistry.shared.chain(item.chainID)?.category == .currency else { return false }
-        board[pos.row][pos.col].item = nil
+        boardState.clearItem(at: pos)
         if selectedCell == pos { selectedCell = nil }
         let message: String
         switch item.chainID {
