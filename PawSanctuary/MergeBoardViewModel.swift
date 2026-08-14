@@ -577,14 +577,13 @@ class MergeBoardViewModel {
         guard let pos = selectedCell,
               pos.row < board.count,
               pos.col < (board.first?.count ?? 0) else { return nil }
-        let cell = board[pos.row][pos.col]
-        if let producer = cell.producer {
+        if let producer = boardState.producer(at: pos) {
             if producer.level == .familySpawner, let sp = producer.species {
                 return ("\(sp.spawnerName) · Tap to rescue \(sp.name) · costs \(currentSpawnCost) kibble · 20% sub-object drop chance", nil)
             }
             return ("\(producer.level.displayName) · Tap to spawn · costs \(currentSpawnCost) kibble", nil)
         }
-        if let item = cell.item, let def = item.def, let chain = item.chain {
+        if let item = boardState.item(at: pos), let def = item.def, let chain = item.chain {
             let levelPrefix = chain.category == .animal ? "Level \(item.tier + 1) · " : ""
             let label = levelPrefix + def.name + " " + chain.displayName
             if item.isTopTier {
@@ -596,8 +595,8 @@ class MergeBoardViewModel {
             }
             return (label, item.chainID)
         }
-        if !cell.isUnlocked {
-            let unlockTier = boardRowUnlockTiers[cell.position.row] ?? 99
+        if !boardState.isUnlocked(at: pos) {
+            let unlockTier = boardRowUnlockTiers[pos.row] ?? 99
             return ("Locked · Merge an animal to Level \(unlockTier + 1) to unlock this row", nil)
         }
         return nil

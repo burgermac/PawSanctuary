@@ -51,6 +51,9 @@ class BoardStateManager {
 
     func item(at pos: GridPosition) -> BoardItem? { board[pos.row][pos.col].item }
     func hasProducer(at pos: GridPosition) -> Bool { board[pos.row][pos.col].producer != nil }
+    /// Added for `selectedItemInfo` (Phase C, read-only-query group) — the
+    /// first caller needing the producer's actual value, not just presence.
+    func producer(at pos: GridPosition) -> ProducerTile? { board[pos.row][pos.col].producer }
     func clearItem(at pos: GridPosition) { board[pos.row][pos.col].item = nil }
     /// Added for `handleLeapTap` (Phase C, superpower group) — validating a
     /// tapped destination cell needs both checks together.
