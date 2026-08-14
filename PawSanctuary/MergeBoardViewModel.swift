@@ -3247,7 +3247,7 @@ class MergeBoardViewModel {
             let spawnerTile = ProducerTile(level: .familySpawner, species: species)
             let emptyUnlocked = emptyUnlockedCells
             if let target = emptyUnlocked.randomElement() {
-                board[target.position.row][target.position.col].producer = spawnerTile
+                boardState.setProducer(spawnerTile, at: target.position)
                 recalcBoardIsFull()
                 animatingCell = target.position
                 Task { @MainActor in
