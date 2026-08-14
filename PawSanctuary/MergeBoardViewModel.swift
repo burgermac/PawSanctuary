@@ -612,10 +612,10 @@ class MergeBoardViewModel {
         var result: [RetirableProducer] = []
         for r in 0..<rows {
             for c in 0..<cols {
-                guard let producer = board[r][c].producer else { continue }
+                let pos = GridPosition(row: r, col: c)
+                guard let producer = boardState.producer(at: pos) else { continue }
                 if !producerIsNeeded(producer, by: incompleteGoals) {
-                    result.append(RetirableProducer(position: GridPosition(row: r, col: c),
-                                                    producer: producer))
+                    result.append(RetirableProducer(position: pos, producer: producer))
                 }
             }
         }
