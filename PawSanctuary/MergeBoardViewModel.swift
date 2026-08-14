@@ -551,7 +551,7 @@ class MergeBoardViewModel {
         guard let pos = selectedCell,
               pos.row < board.count,
               pos.col < (board.first?.count ?? 0) else { return false }
-        return board[pos.row][pos.col].producer != nil
+        return boardState.hasProducer(at: pos)
     }
 
     /// True when the selected cell holds a mergeable animal item (not a producer, not a toolbox).
