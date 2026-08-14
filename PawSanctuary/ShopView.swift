@@ -52,6 +52,11 @@ struct ShopView: View {
 
                         Divider().padding(.horizontal)
 
+                        // ── Wildcard (Gap_Analysis_Round2 3.5) ────────────
+                        WildcardSection(viewModel: viewModel)
+
+                        Divider().padding(.horizontal)
+
                         // ── Piggy bank (Gap_Analysis_Round2 3.4) ──────────
                         PiggyBankSection(viewModel: viewModel)
 
@@ -332,6 +337,60 @@ struct DogTagStoreRow: View {
                           : Color(red: 0.90, green: 0.90, blue: 0.92)))
             }
             .disabled(!isAvailable)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color.white.opacity(0.75))
+            .shadow(color: .black.opacity(0.05), radius: 4))
+    }
+}
+
+// ============================================================
+// MARK: - WILDCARD (Gap_Analysis_Round2 3.5)
+// ============================================================
+
+/// Always available, unlike the daily-limited Item Store above — merges with
+/// any single item on the board, becoming a second copy of whatever it's
+/// paired with. See `MergeBoardViewModel.attemptMergeOrMove`.
+struct WildcardSection: View {
+    var viewModel: MergeBoardViewModel
+
+    private var def: ChainTier? { ContentRegistry.shared.tier(ContentRegistry.wildcardChainID, 0) }
+    private var canAfford: Bool { viewModel.dogTags >= wildcardCostDogTags }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: def?.symbol ?? "wand.and.stars")
+                .font(.title2)
+                .foregroundColor(def?.tint ?? .purple)
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill((def?.tint ?? .purple).opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Wildcard").font(.subheadline.bold())
+                Text("Merges with anything on the board")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                SoundManager.shared.playButtonTap()
+                viewModel.purchaseWildcard()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "tag.fill").font(.system(size: 11))
+                    Text("\(wildcardCostDogTags)").font(.subheadline.bold())
+                }
+                .foregroundColor(canAfford ? .white : .secondary)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(canAfford
+                          ? Color(red: 0.62, green: 0.30, blue: 0.78)
+                          : Color(red: 0.90, green: 0.90, blue: 0.92)))
+            }
+            .disabled(!canAfford)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)

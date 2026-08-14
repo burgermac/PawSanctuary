@@ -29,6 +29,7 @@ enum ChainCategory: String, Codable, CaseIterable {
     case powerUp     // power-up consumable item (drag onto spawner to apply)
     case currency    // kibble / coin chains that spawn on the board — Phase 4
     case superpower  // single-use active-superpower piece; drag onto an eligible board item to spend it
+    case wildcard    // single-use board item that merges with anything (Gap_Analysis_Round2 3.5)
 }
 
 // ============================================================
@@ -125,6 +126,7 @@ struct ContentRegistry {
         for species in AnimalSpecies.allCases where species.superpower.isActive {
             register(Self.makeSuperpowerChain(species))
         }
+        register(Self.makeWildcardChain())
     }
 
     private mutating func register(_ chain: MergeChain) {
@@ -176,6 +178,10 @@ struct ContentRegistry {
     /// Stable chain ids for the two currency chains (Phase 4, Task 4.1).
     static let kibbleCurrencyChainID: ChainID = "currency.kibble"
     static let coinCurrencyChainID:   ChainID = "currency.coin"
+
+    /// Single-tier consumable that merges with anything (Gap_Analysis_Round2 3.5).
+    /// Bought with Dog Tags, never earned — see `purchaseWildcard`.
+    static let wildcardChainID: ChainID = "wildcard.wildcard"
 
     /// Convenience: a random chain id from a category, drawn from a candidate list.
     static func randomChainID(in category: ChainCategory, from candidates: [ChainID]) -> ChainID? {
@@ -338,6 +344,23 @@ struct ContentRegistry {
         )
         return MergeChain(id: superpowerChainID(species), category: .superpower,
                           displayName: sp.name, tiers: [tier])
+    }
+
+    // MARK: Wildcard builder (Gap_Analysis_Round2 3.5)
+
+    /// Single-tier, never merges with itself — dragging it onto any other item
+    /// advances that item's own chain by one tier, as if it were a second copy.
+    private static func makeWildcardChain() -> MergeChain {
+        let tier = ChainTier(
+            name: "Wildcard", shortLabel: "Wild",
+            symbol: "wand.and.stars",
+            color: Color(red: 0.62, green: 0.30, blue: 0.78),
+            tint: Color(red: 0.80, green: 0.55, blue: 0.92),
+            badge: "sparkles",
+            scoreValue: 0, xpValue: 0
+        )
+        return MergeChain(id: wildcardChainID, category: .wildcard,
+                          displayName: "Merges with anything", tiers: [tier])
     }
 
     // MARK: Currency chain builders (Phase 4, Task 4.1)

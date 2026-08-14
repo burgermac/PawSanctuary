@@ -1490,6 +1490,24 @@ class MergeBoardViewModel {
         return true
     }
 
+    // MARK: Wildcard (Gap_Analysis_Round2 3.5)
+
+    /// Always available, unlike the daily-limited Item Store — a considered
+    /// purchase the player reaches for whenever they're one item short, not a
+    /// stock-limited offer. Returns false if unaffordable or there's nowhere
+    /// to put it.
+    @discardableResult
+    func purchaseWildcard() -> Bool {
+        guard kibbleEngine.dogTags >= wildcardCostDogTags else { return false }
+        let item = BoardItem(chainID: ContentRegistry.wildcardChainID, tier: 0)
+        guard placeOrBankItem(item) else { return false }
+        kibbleEngine.dogTags -= wildcardCostDogTags
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        persist()
+        return true
+    }
+
     /// Today's rung of the escalating Dog Tag ladder (Task 2.4).
     var currentTagExchange: DogTagKibbleExchange { kibbleEngine.currentTagExchange }
 
@@ -1770,9 +1788,20 @@ class MergeBoardViewModel {
                 }
                 return
             }
+            // Wildcard (Gap_Analysis_Round2 3.5): merges with anything, from either
+            // side of the drag. It adopts the other item's identity rather than
+            // requiring a same-chain-same-tier match — a real second copy of
+            // whatever it's paired with. Two wildcards never match each other.
+            let srcIsWildcard = srcItem.chain?.category == .wildcard
+            let dstIsWildcard = dstItem.chain?.category == .wildcard
+            let isEligiblePair = srcIsWildcard != dstIsWildcard
+                ? true
+                : srcItem.chainID == dstItem.chainID && srcItem.tier == dstItem.tier
+            // Shadowed only within this `if`'s body (Swift `if let` scoping) — the
+            // `else` swap-fallback below still sees the real, un-adopted `srcItem`.
             if dstItem.bubbledAt == nil,
-               srcItem.chainID == dstItem.chainID,
-               srcItem.tier == dstItem.tier,
+               isEligiblePair,
+               let srcItem = Optional(srcIsWildcard ? dstItem : srcItem),
                let next = ContentRegistry.shared.nextTier(srcItem.chainID, after: srcItem.tier) {
                 // Nine Lives snapshot — captured before the board state changes, but
                 // not assigned to preMoveSnapshot until the very end of this merge.

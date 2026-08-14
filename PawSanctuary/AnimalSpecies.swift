@@ -1431,6 +1431,13 @@ let dogTagStorePriceStep   = 18
 /// the player actually wants. The cheapest meaningful Dog Tag sink available.
 let dogTagStoreRefreshCost = 5
 
+/// Wildcard price (Gap_Analysis_Round2 3.5). Deliberately well above
+/// `dogTagStoreBasePrice`/`dogTagStorePriceStep`'s entire range (max 69,
+/// see `DogTagStore.price`) — a wildcard beats any single Item Store slot
+/// outright, since the player picks which item it becomes, so it has to cost
+/// more than the dearest one. A considered purchase, not an impulse.
+let wildcardCostDogTags = 100
+
 // ── The coin economy (Phase 2c) ───────────────────────────────
 //
 // Coins gate the Sanctuary Map — 291,900 coins across 61 entries — which is the
