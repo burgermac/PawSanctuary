@@ -1,6 +1,6 @@
 # BoardStateManager Extraction — Design Doc
 
-**Status: planning only. No extraction has started.** This supersedes `docs/CODE_HEALTH.md`'s original scope for this item, which has partly gone stale (see §1). Written 13 August 2026 in response to a direct request to do the extraction; scoped down to a design doc after weighing the risk (see §2) — the phased plan in §4 is what a future session should execute, starting with Phase A.
+**Status: Phase A (inventory) complete — see Appendix. Phase B (extraction itself) not started.** This supersedes `docs/CODE_HEALTH.md`'s original scope for this item, which has partly gone stale (see §1). Written 13 August 2026 in response to a direct request to do the extraction; scoped down to a design doc after weighing the risk (see §2) — the phased plan in §4 is what a future session should execute, starting with Phase B, using the Appendix's inventory as ground truth.
 
 ---
 
@@ -70,7 +70,7 @@ final class BoardStateManager {
 
 ### Phases, each independently shippable and live-verified before the next
 
-- **Phase A — exact call-site inventory.** Rerun the grep audit this doc's §1 numbers came from, at execution time, against whatever the file looks like then (it will have changed). Produce the real, current list of every function touching `board[...]`, `boardIsFull`, `emptyUnlockedCells`, and `recalcBoardIsFull()`. Do not reuse this doc's counts as ground truth — they're a snapshot from 13 August 2026.
+- **Phase A — exact call-site inventory. Done (13 Aug 2026) — see Appendix.** Produced via a brace-depth-aware scan of every top-level class member (not a regex heuristic — verified against known boundaries like `attemptMergeOrMove`'s exact start/end lines), not the rougher grep this doc's §1 counts came from. **If execution starts more than a few days after 13 Aug 2026, re-run the scan** (script preserved below) rather than trusting the Appendix numbers — the file will have moved on.
 - **Phase B — extract state + cache only**, per the target shape above. `MergeBoardView.swift`'s ~6 external `viewModel.board` reads (confirmed at `MergeBoardView.swift:651,717,1264,1431-1433`) keep working unchanged via a computed passthrough (`var board: [[BoardCell]] { boardState.board }`) — same technique already used for `kibble`. Verify: game builds, all existing tests pass, and a live simulator pass confirms merging, spawning, selling, and storage still work exactly as before. One commit, playable at the end of it, per `CLAUDE.md`'s "keep the game playable at every commit" rule.
 - **Phase C (future, not this pass) — migrate simple board-mutation functions one at a time.** Candidates that look self-contained enough to move without touching `attemptMergeOrMove`: `sendBoardItemToInventory`, `storeSelectedItemToInventory`, `sellSelectedAnimal`. Each gets its own commit, each live-verified before starting the next. Stop and reassess if any candidate turns out to be more entangled than it looks from the outside — that's a signal to leave it and pick a different one, not to push through.
 - **Phase D (separate sprint, explicitly deferred) — the `attemptMergeOrMove` → `MergeResult` rewrite.** This is the actual high-risk core of `docs/CODE_HEALTH.md`'s original vision. Needs its own planning pass when picked up — not folded into Phase B or C. Two things should exist before attempting it: confidence built from B/C going cleanly, and *some* way to test board logic in isolation. Phase B's extraction is what makes that newly possible — `BoardStateManager`, being dependency-light (no `KibbleEngine`/`QuestCoordinator`/etc. references), is unit-testable in a way the current monolithic ViewModel isn't. Consider writing `BoardStateManagerTests.swift` as part of Phase B itself, even though nothing forces it — it's the first opportunity this codebase has had to test board logic at all.
@@ -78,6 +78,89 @@ final class BoardStateManager {
 ## 5. Non-goals for this doc
 
 This is a plan for Phase A/B. It does not attempt Phase C or D, and does not touch `attemptMergeOrMove`, `board[...]` call sites, or any other source file. No code changes accompany this document.
+
+---
+
+## Appendix — Phase A inventory (13 August 2026)
+
+Scanned every top-level member of `MergeBoardViewModel` (370 total: funcs, stored properties, computed properties) via a brace-depth walk, not a line-regex heuristic — spot-verified against known boundaries (`attemptMergeOrMove` correctly resolved to exactly lines 1759–1902). Superset of what a mechanical grep would find, because it correctly handles multi-line signatures and nested closures instead of matching "next declaration line."
+
+**Board state itself:** `board` (declared line 137, with a `didSet` that invalidates `preMoveSnapshot`), `boardIsFull` (line 276), `emptyUnlockedCells` (line 279, `private(set)`).
+
+**49 members read or write it — 42 funcs + 7 computed vars.** Grouped by what they do, not file order, since that's the more useful shape for deciding Phase C migration order:
+
+| Group | Members | Notes for Phase C ordering |
+|---|---|---|
+| **Merge core** | `attemptMergeOrMove` (1759–1902, 144 lines) | The one function Phase D exists for. By far the largest concentration of non-board logic (XP, quests, superpowers, wildcards, sub-objects, power-ups, spotlight, bubbling, tier unlocks) mixed with board writes. Touches `board[]`, `boardIsFull`, `emptyUnlockedCells`, and calls `recalcBoardIsFull()` — all four, the only function that does. |
+| **Lifecycle / setup** | `freshStart`, `ensureStartingProducer`, `apply`, `recalcBoardIsFull` | `recalcBoardIsFull` itself (1271–1277) is the cache-recompute function Phase B moves as `BoardStateManager.recalc()`, verbatim. `apply` is the `GameState` → ViewModel restore path — needs care since it also restores six other sub-coordinators in the same function. |
+| **Spawning / producers** | `finishSpawn`, `maybeGrantBonusSpawn`, `activateProducer` (1334–1457, 124 lines — second largest), `buyProducer`, `placeProducerReward`, `spawnAnimal`, `retireProducer`, `placeFamilySpawnerOnBoard`, `placeDesignatedProducerOnBoard`, `placeOverflowProducerOnBoard` | 10 functions, the largest group. Mostly "find an empty cell, place a producer tile" shape — plausible Phase C candidates once `place`/`clear` primitives exist, but `activateProducer`'s size means it likely needs splitting before it's a clean one-function move. |
+| **Board interaction (tap/select)** | `boardCellTapped`, `maybeShowSellVsOrderNudge`, `findMergeableHintPair`, `exchangeAmbassadorTrio` | UI-adjacent; `boardCellTapped` is the main tap-routing function and probably shouldn't move at all — it dispatches to most of the other groups here. |
+| **Item placement / removal** | `placeOrBankItem`, `applyPowerUpToSpawner`, `sendBoardItemToInventory`, `storeSelectedItemToInventory`, `sellSelectedAnimal`, `placeSelectedInventoryItemOnBoard`, `placeFreeTile`, `placeToolbox`, `absorbToolbox` | 9 functions. `sendBoardItemToInventory`, `storeSelectedItemToInventory`, and `sellSelectedAnimal` are the three named as Phase C candidates in §4 — confirmed here as genuinely self-contained (each touches `board[]` + `recalcBoardIsFull()` only, nothing else in this table's other groups). |
+| **Tier / progression** | `checkTierUnlock`, `claimAmbassadorQuest` | |
+| **Bubbles** | `maybeBubbleMergedItem`, `isActiveBubble`, `collectDecayedBubbleIfAny`, `popBubbleWithDogTags`, `popBubbleWithAd` | Self-contained subsystem (Gap_Analysis_Round2 C-4) — a plausible second Phase C batch after the item-placement group. |
+| **Superpowers** | `applyAquaticsCurrent`, `applySplitterPiece`, `runStampede`, `handleLeapTap`, `applyPouchPiece` | Each is one species' active-ability effect. Independent of each other but each also independently entangled with merge/spawn state — treat as individually-sized Phase C candidates, not a batch. |
+| **Currency** | `collectCurrencyItem` | |
+| **Meta / map** | `buildArea` | Only reaches into board state for `areaEventCoins` bonus item placement — smaller board footprint than its line count suggests. |
+| **Read-only queries (computed vars)** | `selectedCellHasProducer`, `selectedCellHasAnimalItem`, `selectedItemInfo`, `retirableProducers`, `lockedCells`, `unlockProgress`, `unlockHintText` | All read `board[]`, none write it. Once `BoardStateManager` exists these become one-line passthroughs (`boardState.board[...]`) — no logic changes needed, lowest-risk items in the whole inventory. |
+
+**External touch points — exactly 6, all read-only, all in `MergeBoardView.swift`:** lines 651, 717, 1264, 1431, 1432, 1433. All either index `viewModel.board[row][col]` or read `viewModel.board.count`. None write. This confirms §4 Phase B's passthrough plan needs to cover exactly one property (`board`, as `[[BoardCell]]`) for the view layer to keep compiling unchanged — `boardIsFull` and `emptyUnlockedCells` have **no external readers at all**, only internal ones, so their passthroughs (if kept as passthroughs rather than fully hidden inside `BoardStateManager`) exist purely for `MergeBoardViewModel`'s own remaining 49-minus-whatever-moved internal call sites.
+
+### Reproducing this scan
+
+```python
+import re
+
+path = "PawSanctuary/MergeBoardViewModel.swift"  # run from the repo root
+with open(path) as f:
+    lines = f.readlines()
+
+class_start = next(i for i, l in enumerate(lines) if re.match(r'^class MergeBoardViewModel\b', l))
+
+def brace_delta(line):
+    d, in_str, i, n = 0, False, 0, len(line)
+    while i < n:
+        c = line[i]
+        if in_str:
+            if c == '\\': i += 2; continue
+            if c == '"': in_str = False
+        else:
+            if c == '"': in_str = True
+            elif c == '/' and i + 1 < n and line[i + 1] == '/': break
+            elif c == '{': d += 1
+            elif c == '}': d -= 1
+        i += 1
+    return d
+
+decl_re = re.compile(r'^\s*(private\(set\)\s+|private\s+|@discardableResult\s*)*(func|var|let)\s+([A-Za-z0-9_`]+)')
+members, current, depth = [], None, 0
+i = class_start
+while i < len(lines):
+    line = lines[i]
+    if depth == 1 and current is None:
+        m = decl_re.match(line)
+        if m: current = {'start': i, 'kind': m.group(2), 'name': m.group(3)}
+    d = brace_delta(line)
+    new_depth = depth + d
+    if current is not None:
+        if depth == 1 and new_depth == 1 and d == 0:
+            current['end'] = i; members.append(current); current = None
+        elif new_depth == 1 and depth >= 2:
+            current['end'] = i; members.append(current); current = None
+    depth = new_depth
+    i += 1
+    if depth == 0: break
+
+for m in members:
+    if m['kind'] not in ('func', 'var'): continue
+    start, end = m['start'], m['end']
+    if m['kind'] == 'var' and end == start: continue  # simple stored property
+    body = ''.join(lines[start:end + 1])
+    touches = [t for t, pat in [('board[]', r'\bboard\['), ('boardIsFull', r'\bboardIsFull\b'),
+                                 ('emptyUnlockedCells', r'\bemptyUnlockedCells\b'),
+                                 ('recalcBoardIsFull()', r'\brecalcBoardIsFull\(')]
+               if re.search(pat, body)]
+    if touches: print(f"L{start+1}-{end+1}  {m['name']}  {', '.join(touches)}")
+```
 
 ---
 
