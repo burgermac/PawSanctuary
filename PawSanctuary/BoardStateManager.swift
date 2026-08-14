@@ -38,4 +38,18 @@ class BoardStateManager {
         boardIsFull = unlocked.allSatisfy { !$0.isEmpty }
         emptyUnlockedCells = unlocked.filter { $0.isEmpty }
     }
+
+    // MARK: Read/write primitives (Phase C)
+    //
+    // Added on demand as real call sites migrate — not a guessed-up-front API.
+    // First three callers: MergeBoardViewModel.sendBoardItemToInventory,
+    // .storeSelectedItemToInventory, .sellSelectedAnimal (see the extraction
+    // plan's Phase C). Callers remain responsible for their own bounds checks
+    // and for calling `recalc()`/`MergeBoardViewModel.recalcBoardIsFull()`
+    // afterward — these primitives don't do either, matching what the direct
+    // `board[...]` access they replace did.
+
+    func item(at pos: GridPosition) -> BoardItem? { board[pos.row][pos.col].item }
+    func hasProducer(at pos: GridPosition) -> Bool { board[pos.row][pos.col].producer != nil }
+    func clearItem(at pos: GridPosition) { board[pos.row][pos.col].item = nil }
 }

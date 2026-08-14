@@ -1905,13 +1905,13 @@ class MergeBoardViewModel {
     }
 
     func sendBoardItemToInventory(from pos: GridPosition) {
-        guard board[pos.row][pos.col].producer == nil else { return }
-        guard let item = board[pos.row][pos.col].item else { return }
+        guard !boardState.hasProducer(at: pos) else { return }
+        guard let item = boardState.item(at: pos) else { return }
         // A currency item dragged to storage collects instead of vanishing
         // into a category that never actually holds one (Phase 4, Task 4.1).
         if collectCurrencyItem(at: pos) { return }
         if inventoryStore.addItem(item) {
-            board[pos.row][pos.col].item = nil
+            boardState.clearItem(at: pos)
             recalcBoardIsFull()
         } else {
             triggerToast(.inventoryFull)
