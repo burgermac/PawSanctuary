@@ -71,6 +71,13 @@ class BoardStateManager {
     /// and writes the whole struct back, mirroring `setItem`.
     func setProducer(_ producer: ProducerTile?, at pos: GridPosition) { board[pos.row][pos.col].producer = producer }
 
+    /// Sets the unlocked flag at `pos`. Added for `checkTierUnlock` (Phase C,
+    /// remaining small groups) — unlocking a row writes this per cell in a
+    /// loop. The row-level bulk read (`board[row].allSatisfy`) and bounds
+    /// check that gate the loop stay as direct `board` access, same as
+    /// `flatBoard` elsewhere — they aren't single-cell dereferences.
+    func setUnlocked(_ unlocked: Bool, at pos: GridPosition) { board[pos.row][pos.col].isUnlocked = unlocked }
+
     /// Sets or clears the bubble timestamp on the item at `pos`. No-op if the
     /// cell is empty — matches the optional-chaining behavior of the direct
     /// `board[...].item?.bubbledAt = ...` writes this replaces. Added for the

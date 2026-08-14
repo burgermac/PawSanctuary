@@ -1955,7 +1955,7 @@ class MergeBoardViewModel {
             let alreadyUnlocked = board[row].allSatisfy { $0.isUnlocked }
             guard !alreadyUnlocked else { continue }
             for col in 0..<cols {
-                board[row][col].isUnlocked = true
+                boardState.setUnlocked(true, at: GridPosition(row: row, col: col))
             }
             newlyUnlockedCell = GridPosition(row: row, col: 0)
             recalcBoardIsFull()
