@@ -2610,10 +2610,10 @@ class MergeBoardViewModel {
         for neighbor in neighbors {
             guard neighbor.row >= 0, neighbor.row < rows,
                   neighbor.col >= 0, neighbor.col < cols else { continue }
-            guard let item = board[neighbor.row][neighbor.col].item else { continue }
+            guard let item = boardState.item(at: neighbor) else { continue }
             guard ContentRegistry.shared.chain(item.chainID)?.category == .subObject else { continue }
-            board[emptyPos.row][emptyPos.col].item = item
-            board[neighbor.row][neighbor.col].item = nil
+            boardState.setItem(item, at: emptyPos)
+            boardState.clearItem(at: neighbor)
             return
         }
     }

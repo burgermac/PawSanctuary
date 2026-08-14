@@ -53,6 +53,11 @@ class BoardStateManager {
     func hasProducer(at pos: GridPosition) -> Bool { board[pos.row][pos.col].producer != nil }
     func clearItem(at pos: GridPosition) { board[pos.row][pos.col].item = nil }
 
+    /// Sets (or overwrites) the item at `pos`. Added for the superpower group
+    /// (Phase C): `applyAquaticsCurrent` is the first caller, sliding a
+    /// sub-object into a newly-emptied cell.
+    func setItem(_ item: BoardItem?, at pos: GridPosition) { board[pos.row][pos.col].item = item }
+
     /// Sets or clears the bubble timestamp on the item at `pos`. No-op if the
     /// cell is empty — matches the optional-chaining behavior of the direct
     /// `board[...].item?.bubbledAt = ...` writes this replaces. Added for the
