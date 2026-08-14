@@ -687,13 +687,13 @@ class MergeBoardViewModel {
     var lockedCells: [GridPosition] {
         boardRowUnlockTiers.keys
             .flatMap { row in (0..<cols).map { GridPosition(row: row, col: $0) } }
-            .filter { pos in board.indices.contains(pos.row) && !board[pos.row][pos.col].isUnlocked }
+            .filter { pos in board.indices.contains(pos.row) && !boardState.isUnlocked(at: pos) }
     }
     /// Fraction (0–1) of progress toward unlocking the next locked row by merge tier.
     var unlockProgress: Double {
         guard let nextRow = boardRowUnlockTiers.keys.sorted().first(where: { row in
             board.indices.contains(row) &&
-            !(board[row].first?.isUnlocked ?? true)
+            !boardState.isUnlocked(at: GridPosition(row: row, col: 0))
         }),
               let targetTier = boardRowUnlockTiers[nextRow] else { return 1.0 }
         let prevTier = boardRowUnlockTiers.values.sorted().last(where: { $0 < targetTier }) ?? 0
@@ -704,7 +704,7 @@ class MergeBoardViewModel {
     var unlockHintText: String {
         guard let nextRow = boardRowUnlockTiers.keys.sorted().first(where: { row in
             board.indices.contains(row) &&
-            !(board[row].first?.isUnlocked ?? true)
+            !boardState.isUnlocked(at: GridPosition(row: row, col: 0))
         }),
               let targetTier = boardRowUnlockTiers[nextRow] else { return "All rows unlocked!" }
         if deepestUnlockedTier >= targetTier { return "Row ready to unlock!" }
