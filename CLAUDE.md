@@ -14,6 +14,7 @@ The game is functionally near-complete but was built ad hoc from informal observ
 | `specs/Spec_Phase1_Foundations.md` | Current phase, task-by-task implementation spec |
 | `specs/Merge2_Reference_Blueprint.md` | What good looks like — theme-neutral architecture + the psychology behind it |
 | `specs/PawSanctuary_Gap_Analysis.md` | Why each change is being made |
+| `specs/Feature_Parity_Audit.md` | Feature-by-feature coverage vs. the three reference titles (complements the psychology-focused Gap Analysis docs) |
 | `PawSanctuary_GDD.md` | Game design doc v3.0. Section 5 (Sub-Object Spawning & Power-Ups) was rewritten from source on 27 July 2026 — it had described a rarity-weighted power-up table the code never implemented. That section is now accurate; the rest of the document was written from source but has drifted before, so verify before relying on any specific claim. |
 | `TODO.md` | Launch blockers and code-health debt |
 | `docs/CODE_HEALTH.md` | Known structural debt |
