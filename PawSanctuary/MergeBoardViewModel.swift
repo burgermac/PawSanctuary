@@ -2848,8 +2848,7 @@ class MergeBoardViewModel {
         let empty = emptyUnlockedCells
         if let target = empty.randomElement() {
             pendingMaterialLots.append(lot)
-            board[target.position.row][target.position.col].item =
-                BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
+            boardState.setItem(BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0), at: target.position)
             recalcBoardIsFull()
         } else {
             // Board full — absorb materials immediately; no tile placed.
@@ -2865,13 +2864,13 @@ class MergeBoardViewModel {
     /// fresh here instead -- opening it now is the "small payout" side of the
     /// merge-or-open decision, but even that is bigger than the base tier's.
     func absorbToolbox(at pos: GridPosition) {
-        guard let item = board[pos.row][pos.col].item,
+        guard let item = boardState.item(at: pos),
               item.chainID == ContentRegistry.toolboxChainID else { return }
         let lot = item.tier == 0
             ? (pendingMaterialLots.isEmpty ? [] : pendingMaterialLots.removeFirst())
             : buildToolboxLot(chestTier: item.tier)
         inventoryStore.absorbMaterialItems(lot)
-        board[pos.row][pos.col].item = nil
+        boardState.clearItem(at: pos)
         selectedCell = nil
         if !lot.isEmpty {
             let woodCount   = lot.filter { $0.chainID == ContentRegistry.woodChainID }.count
