@@ -2704,15 +2704,15 @@ class MergeBoardViewModel {
                 .map(\.position)
             var groups: [Int: [GridPosition]] = [:]
             for p in positions {
-                guard let tier = board[p.row][p.col].item?.tier else { continue }
+                guard let tier = boardState.item(at: p)?.tier else { continue }
                 groups[tier, default: []].append(p)
             }
             for (_, tierPositions) in groups where tierPositions.count >= 2 {
                 let a = tierPositions[0]; let b = tierPositions[1]
-                guard let itemA = board[a.row][a.col].item else { continue }
+                guard let itemA = boardState.item(at: a) else { continue }
                 guard let next = ContentRegistry.shared.nextTier(chainID, after: itemA.tier) else { continue }
-                board[b.row][b.col].item = BoardItem(chainID: chainID, tier: next)
-                board[a.row][a.col].item = nil
+                boardState.setItem(BoardItem(chainID: chainID, tier: next), at: b)
+                boardState.clearItem(at: a)
                 mergeCount += 1
                 lastMergeTimestamp = Date().timeIntervalSince1970
                 updateAllAfterMerge(chainID: chainID, tier: next)
