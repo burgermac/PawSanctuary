@@ -1919,10 +1919,10 @@ class MergeBoardViewModel {
     }
 
     func storeSelectedItemToInventory() {
-        guard let pos = selectedCell, let item = board[pos.row][pos.col].item else { return }
+        guard let pos = selectedCell, let item = boardState.item(at: pos) else { return }
         if collectCurrencyItem(at: pos) { return }
         if inventoryStore.addItem(item) {
-            board[pos.row][pos.col].item = nil
+            boardState.clearItem(at: pos)
             selectedCell = nil
             recalcBoardIsFull()
         } else {
