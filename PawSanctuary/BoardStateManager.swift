@@ -52,4 +52,13 @@ class BoardStateManager {
     func item(at pos: GridPosition) -> BoardItem? { board[pos.row][pos.col].item }
     func hasProducer(at pos: GridPosition) -> Bool { board[pos.row][pos.col].producer != nil }
     func clearItem(at pos: GridPosition) { board[pos.row][pos.col].item = nil }
+
+    /// Sets or clears the bubble timestamp on the item at `pos`. No-op if the
+    /// cell is empty — matches the optional-chaining behavior of the direct
+    /// `board[...].item?.bubbledAt = ...` writes this replaces. Added for the
+    /// bubble-mechanic group (Phase C, round 2): `maybeBubbleMergedItem` sets
+    /// it, `popBubbleWithDogTags`/`popBubbleWithAd` clear it.
+    func setBubbledAt(_ timestamp: Double?, at pos: GridPosition) {
+        board[pos.row][pos.col].item?.bubbledAt = timestamp
+    }
 }
