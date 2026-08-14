@@ -977,6 +977,49 @@ struct PlayerCommerceState: Codable, Equatable {
 }
 
 // ============================================================
+// MARK: - VIP LADDER (Gap_Analysis_Round2 3.7)
+// ============================================================
+//
+// Purchase-progress promotion: lifetime real-money spend climbs a permanent,
+// never-expiring ladder — a standard VIP-club convention, chosen deliberately
+// over a time-limited grand-prize event (the more aggressive option the
+// source doc also offered). Every level stacks the same +1 kibble/regen
+// perk used by the Sanctuary Map's own upgrades (`UpgradeBonus.merging`), so
+// VIP status and map progression compound through one shared system rather
+// than two. One-time rewards scale linearly with level — generous, but never
+// close to refunding what was actually spent.
+
+struct VIPTier: Identifiable {
+    var id: Int { level }
+    let level: Int
+    /// Cumulative lifetime spend required, in micros (USD × 1,000,000) — same
+    /// unit as `PlayerCommerceState.totalSpendMicros`.
+    let thresholdMicros: Int
+    let bonus: UpgradeBonus
+    let kibbleReward: Int
+    let dogTagReward: Int
+    let coinReward: Int
+}
+
+let vipTiers: [VIPTier] = [
+    VIPTier(level: 1,  thresholdMicros: 5_000_000,     bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 50,   dogTagReward: 5,   coinReward: 100),
+    VIPTier(level: 2,  thresholdMicros: 15_000_000,    bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 100,  dogTagReward: 10,  coinReward: 200),
+    VIPTier(level: 3,  thresholdMicros: 35_000_000,    bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 150,  dogTagReward: 15,  coinReward: 300),
+    VIPTier(level: 4,  thresholdMicros: 75_000_000,    bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 200,  dogTagReward: 20,  coinReward: 400),
+    VIPTier(level: 5,  thresholdMicros: 150_000_000,   bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 300,  dogTagReward: 30,  coinReward: 600),
+    VIPTier(level: 6,  thresholdMicros: 300_000_000,   bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 400,  dogTagReward: 40,  coinReward: 800),
+    VIPTier(level: 7,  thresholdMicros: 500_000_000,   bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 500,  dogTagReward: 50,  coinReward: 1000),
+    VIPTier(level: 8,  thresholdMicros: 800_000_000,   bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 600,  dogTagReward: 60,  coinReward: 1200),
+    VIPTier(level: 9,  thresholdMicros: 1_200_000_000, bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 800,  dogTagReward: 80,  coinReward: 1500),
+    VIPTier(level: 10, thresholdMicros: 2_000_000_000, bonus: UpgradeBonus(kibblePerRegen: 1), kibbleReward: 1000, dogTagReward: 100, coinReward: 2000),
+]
+
+extension PlayerCommerceState {
+    /// The highest tier whose threshold lifetime spend has met. 0 = no tier reached.
+    var vipLevel: Int { vipTiers.last(where: { totalSpendMicros >= $0.thresholdMicros })?.level ?? 0 }
+}
+
+// ============================================================
 // MARK: - CONSTANTS
 // ============================================================
 

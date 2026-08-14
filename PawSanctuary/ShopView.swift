@@ -67,6 +67,11 @@ struct ShopView: View {
 
                         Divider().padding(.horizontal)
 
+                        // ── VIP ladder (Gap_Analysis_Round2 3.7) ──────────
+                        VIPSection(viewModel: viewModel)
+
+                        Divider().padding(.horizontal)
+
                         // ── Energy Packs (IAP bundles) ───────────────────
                         EnergyPackShopSection(storeManager: storeManager)
 
@@ -461,6 +466,55 @@ struct PiggyBankSection: View {
                           : Color(red: 0.90, green: 0.90, blue: 0.92)))
             }
             .disabled(!canCrack)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color.white.opacity(0.75))
+            .shadow(color: .black.opacity(0.05), radius: 4))
+    }
+}
+
+// ============================================================
+// MARK: - VIP LADDER (Gap_Analysis_Round2 3.7)
+// ============================================================
+
+/// Status display, not a purchase button — VIP level moves only as a side
+/// effect of buying something elsewhere in the shop (`MergeBoardViewModel.
+/// applyPurchase`). Placed just above the Energy Packs so the next tier's
+/// reward is the last thing seen before a purchase button.
+struct VIPSection: View {
+    var viewModel: MergeBoardViewModel
+
+    private func dollarString(_ micros: Int) -> String {
+        let dollars = Double(micros) / 1_000_000
+        return dollars == dollars.rounded()
+            ? String(format: "$%.0f", dollars)
+            : String(format: "$%.2f", dollars)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "crown.fill")
+                    .foregroundColor(Color(red: 0.80, green: 0.62, blue: 0.10))
+                Text(viewModel.vipLevel > 0 ? "VIP \(viewModel.vipLevel)" : "VIP Club")
+                    .font(.headline)
+                    .foregroundColor(Color(red: 0.55, green: 0.42, blue: 0.05))
+                Spacer()
+            }
+
+            if let next = viewModel.nextVIPTier {
+                ProgressView(value: viewModel.vipProgressFraction)
+                    .tint(Color(red: 0.80, green: 0.62, blue: 0.10))
+
+                Text("VIP \(next.level) at \(dollarString(next.thresholdMicros)) lifetime — \(next.bonus.primaryDescription), +\(next.kibbleReward) kibble, +\(next.dogTagReward) tags, +\(next.coinReward) coins")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Top VIP tier reached — every permanent bonus below is active.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)

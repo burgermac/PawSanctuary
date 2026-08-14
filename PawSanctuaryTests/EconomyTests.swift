@@ -507,4 +507,54 @@ final class EconomyTests: XCTestCase {
     func testPrintEconomyReport() {
         print(EconomySimulation.report())
     }
+
+    // MARK: Gap_Analysis_Round2 3.7 — the VIP ladder
+
+    func testVIPTiersAreSequentialStartingAt1() {
+        XCTAssertEqual(vipTiers.map(\.level), Array(1...vipTiers.count))
+    }
+
+    func testVIPTierThresholdsStrictlyIncrease() {
+        for (a, b) in zip(vipTiers, vipTiers.dropFirst()) {
+            XCTAssertLessThan(a.thresholdMicros, b.thresholdMicros,
+                              "VIP \(b.level) must cost more lifetime spend than VIP \(a.level)")
+        }
+    }
+
+    /// Every level is a straight upgrade over the last — a VIP ladder that dipped
+    /// anywhere would read as a broken deal, not a design choice.
+    func testVIPTierRewardsNeverDecrease() {
+        for (a, b) in zip(vipTiers, vipTiers.dropFirst()) {
+            XCTAssertLessThanOrEqual(a.kibbleReward, b.kibbleReward)
+            XCTAssertLessThanOrEqual(a.dogTagReward, b.dogTagReward)
+            XCTAssertLessThanOrEqual(a.coinReward, b.coinReward)
+        }
+    }
+
+    func testVIPLevelIsZeroBelowTheFirstThreshold() {
+        var state = PlayerCommerceState()
+        state.totalSpendMicros = vipTiers[0].thresholdMicros - 1
+        XCTAssertEqual(state.vipLevel, 0)
+    }
+
+    func testVIPLevelReachesExactlyAtItsThreshold() {
+        var state = PlayerCommerceState()
+        state.totalSpendMicros = vipTiers[2].thresholdMicros
+        XCTAssertEqual(state.vipLevel, vipTiers[2].level)
+    }
+
+    /// Spend can jump straight past several thresholds in one purchase (a
+    /// single large IAP from a fresh account) — the derived level must land on
+    /// the highest one met, not the next one in sequence.
+    func testVIPLevelSkipsAheadWithALargePurchase() {
+        var state = PlayerCommerceState()
+        state.totalSpendMicros = vipTiers[5].thresholdMicros + 1
+        XCTAssertEqual(state.vipLevel, vipTiers[5].level)
+    }
+
+    func testVIPLevelReachesTheTopTier() {
+        var state = PlayerCommerceState()
+        state.totalSpendMicros = vipTiers.last!.thresholdMicros
+        XCTAssertEqual(state.vipLevel, vipTiers.count)
+    }
 }

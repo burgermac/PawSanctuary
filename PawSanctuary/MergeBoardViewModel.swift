@@ -3465,6 +3465,11 @@ class MergeBoardViewModel {
                 result = result.merging(upgrade.bonus)
             }
         }
+        // VIP ladder (Gap_Analysis_Round2 3.7): every tier at or below the
+        // current level stays active, same accumulation as the map upgrades above.
+        for tier in vipTiers where tier.level <= commerce.vipLevel {
+            result = result.merging(tier.bonus)
+        }
         cachedActiveBonuses = result
     }
 
@@ -3540,14 +3545,50 @@ class MergeBoardViewModel {
         // renewals should count toward it (vs. only toward hasEverPurchased /
         // totalSpendMicros) is an open targeting decision for that phase — not
         // changing the recording behaviour here.
+        let oldVIPLevel = commerce.vipLevel
         commerce.purchaseCount += 1
         commerce.totalSpendMicros += Int(truncating: NSDecimalNumber(decimal: priceUSD * 1_000_000))
         commerce.lastPurchaseDate = Date()
+        grantVIPTiersIfNewlyReached(since: oldVIPLevel)
         // BUG-02-class fix: every grant above (kibble, dog tags, Sanctuary Pass,
         // Event Pass unlock) was only ever applied in memory. Consumable IAPs in
         // particular have no recovery path once StoreManager.purchase() finishes
         // the transaction — a crash before some unrelated action happens to
         // persist() would silently and permanently lose a paid purchase.
         persist()
+    }
+
+    // MARK: VIP ladder (Gap_Analysis_Round2 3.7)
+
+    var vipLevel: Int { commerce.vipLevel }
+    /// The next tier to reach, or `nil` if already at the top.
+    var nextVIPTier: VIPTier? { vipTiers.first { $0.level > vipLevel } }
+    /// Progress toward `nextVIPTier`, for a progress bar — `1.0` at max level.
+    var vipProgressFraction: Double {
+        guard let next = nextVIPTier else { return 1.0 }
+        let floor = vipTiers.first { $0.level == vipLevel }?.thresholdMicros ?? 0
+        let span = Double(next.thresholdMicros - floor)
+        guard span > 0 else { return 0 }
+        return min(1, max(0, Double(commerce.totalSpendMicros - floor) / span))
+    }
+
+    /// Grants every tier's one-time reward between `oldLevel` (exclusive) and
+    /// the new `commerce.vipLevel` (inclusive) — a single purchase can cross
+    /// more than one threshold at once, so this never skips one silently.
+    /// Permanent bonuses apply automatically via `recalcActiveBonuses`, which
+    /// re-sums every tier at or below the current level every time it runs.
+    private func grantVIPTiersIfNewlyReached(since oldLevel: Int) {
+        let newLevel = commerce.vipLevel
+        guard newLevel > oldLevel else { return }
+        let crossed = vipTiers.filter { $0.level > oldLevel && $0.level <= newLevel }
+        for tier in crossed {
+            kibbleEngine.kibble  += tier.kibbleReward
+            kibbleEngine.dogTags += tier.dogTagReward
+            earnCoins(tier.coinReward)
+        }
+        recalcActiveBonuses()
+        if let top = crossed.last {
+            presentAreaBuiltBanner(title: "VIP \(top.level)!", detail: top.bonus.primaryDescription)
+        }
     }
 }
