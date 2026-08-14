@@ -2552,7 +2552,7 @@ class MergeBoardViewModel {
     private func placeFreeTile(chainID: ChainID, tier: Int) -> Bool {
         let empty = emptyUnlockedCells
         guard let target = empty.randomElement() else { return false }
-        board[target.position.row][target.position.col].item = BoardItem(chainID: chainID, tier: tier)
+        boardState.setItem(BoardItem(chainID: chainID, tier: tier), at: target.position)
         recalcBoardIsFull()
         animatingCell = target.position
         Task { @MainActor in
