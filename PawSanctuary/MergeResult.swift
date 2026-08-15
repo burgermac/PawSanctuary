@@ -9,9 +9,11 @@
 //  at a time, by that branch's first real caller — the same discipline
 //  BoardStateManager's read/write primitives used (see that file's own doc
 //  comment) — rather than declaring the full shape up front and leaving
-//  most of it unused. Producer and eligible-merge cases exist so far; the
-//  superpower-piece-spent/ineligible-swap/empty-move cases arrive with
-//  their own D2 steps.
+//  most of it unused. All five of attemptMergeOrMove's outcomes now have
+//  cases here (producer upgrade/swap/move/blocked, merge, superpower-piece-
+//  spent, item swap, item move) — attemptMergeOrMove itself is now pure
+//  dispatch: guards, then one `apply(...)` call per branch, no inline
+//  `board[...]` writes left in it.
 //
 //  `MergeBoardViewModel.apply(_ result: MergeResult)` is the other half —
 //  it lives in MergeBoardViewModel.swift itself, next to attemptMergeOrMove,
@@ -49,6 +51,16 @@ enum MergeResult {
     /// compute/apply boundary, same shape as the others, not because there
     /// was a deterministic outcome worth extracting.
     case superpowerPieceSpent(from: GridPosition, to: GridPosition, pieceChainID: ChainID, target: BoardItem)
+    /// `srcItem`/`dstItem` swap cells — `computeMergeOutcome` returned `nil`
+    /// (ineligible pair, a bubbled destination, or `dstItem` already at its
+    /// chain's top tier; see MergeOutcome.swift). No side effects: occupancy
+    /// didn't change, so unlike `.itemMove` there's no `recalcBoardIsFull()`.
+    case itemSwap(from: GridPosition, to: GridPosition, srcItem: BoardItem, dstItem: BoardItem)
+    /// `item` moves from `from` to an empty `to`. The last of the five
+    /// attemptMergeOrMove outcomes to get a `MergeResult` case — with this
+    /// one in place, every board-mutating branch dispatches through
+    /// `apply(_:)` rather than writing `board[...]` inline.
+    case itemMove(from: GridPosition, to: GridPosition, item: BoardItem)
 }
 
 /// Computes what dragging the producer at `from` onto `to` should do —

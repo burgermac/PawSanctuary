@@ -1796,13 +1796,10 @@ class MergeBoardViewModel {
                 // already at its chain's top tier — computeMergeOutcome
                 // returns nil for all three (MergeOutcome.swift), matching
                 // this swap fallback exactly.
-                board[to.row][to.col].item    = srcItem
-                board[from.row][from.col].item = dstItem
+                apply(.itemSwap(from: from, to: to, srcItem: srcItem, dstItem: dstItem))
             }
         } else {
-            board[to.row][to.col].item    = srcItem
-            board[from.row][from.col].item = nil
-            recalcBoardIsFull()
+            apply(.itemMove(from: from, to: to, item: srcItem))
         }
     }
 
@@ -1847,6 +1844,13 @@ class MergeBoardViewModel {
                 SoundManager.shared.playQuestClaim()
                 HapticManager.shared.successPattern()
             }
+        case .itemSwap(let from, let to, let srcItem, let dstItem):
+            board[to.row][to.col].item   = srcItem
+            board[from.row][from.col].item = dstItem
+        case .itemMove(let from, let to, let item):
+            board[to.row][to.col].item   = item
+            board[from.row][from.col].item = nil
+            recalcBoardIsFull()
         }
     }
 
