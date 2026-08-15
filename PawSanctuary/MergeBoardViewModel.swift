@@ -858,7 +858,7 @@ class MergeBoardViewModel {
         boardState.recalc()
         spawnAnimal(); spawnAnimal(); spawnAnimal()
         let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockTiers[$0] == nil }.max() ?? 0
-        board[lastUnlockedRow][0].producer = ProducerTile(level: .familySpawner, species: .dog)
+        boardState.setProducer(ProducerTile(level: .familySpawner, species: .dog), at: GridPosition(row: lastUnlockedRow, col: 0))
         kibbleEngine.secondsUntilNextKibble = kibbleRegenSecs
         // Give the player a starter toolbox so they can afford their first map area
         // from day one without waiting on quests.
@@ -1762,21 +1762,21 @@ class MergeBoardViewModel {
     func attemptMergeOrMove(from: GridPosition, to: GridPosition) {
         guard from != to,
               to.row >= 0, to.row < rows, to.col >= 0, to.col < cols,
-              board[from.row][from.col].isUnlocked,
-              board[to.row][to.col].isUnlocked else { return }
+              boardState.isUnlocked(at: from),
+              boardState.isUnlocked(at: to) else { return }
 
-        if let srcProducer = board[from.row][from.col].producer {
-            let dstProducer = board[to.row][to.col].producer
-            let dstItem     = board[to.row][to.col].item
+        if let srcProducer = boardState.producer(at: from) {
+            let dstProducer = boardState.producer(at: to)
+            let dstItem     = boardState.item(at: to)
             apply(computeProducerOutcome(from: from, to: to, srcProducer: srcProducer,
                                           dstProducer: dstProducer, dstItem: dstItem))
             return
         }
 
-        guard let srcItem = board[from.row][from.col].item, srcItem.bubbledAt == nil else { return }
-        guard board[to.row][to.col].producer == nil else { return }
+        guard let srcItem = boardState.item(at: from), srcItem.bubbledAt == nil else { return }
+        guard !boardState.hasProducer(at: to) else { return }
 
-        if let dstItem = board[to.row][to.col].item {
+        if let dstItem = boardState.item(at: to) {
             if srcItem.chain?.category == .superpower {
                 // Active-superpower piece spent on a target — a distinct merge outcome,
                 // not an animal-family upgrade, so it skips the score/XP/bubble/
@@ -1817,8 +1817,8 @@ class MergeBoardViewModel {
     func apply(_ result: MergeResult) {
         switch result {
         case .producerUpgrade(let from, let to, let newLevel):
-            board[to.row][to.col].producer   = ProducerTile(level: newLevel)
-            board[from.row][from.col].producer = nil
+            boardState.setProducer(ProducerTile(level: newLevel), at: to)
+            boardState.setProducer(nil, at: from)
             animatingCell = to
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(600))
@@ -1826,12 +1826,12 @@ class MergeBoardViewModel {
             }
             finishProducerAction()
         case .producerSwap(let from, let to, let srcProducer, let dstProducer):
-            board[to.row][to.col].producer   = srcProducer
-            board[from.row][from.col].producer = dstProducer
+            boardState.setProducer(srcProducer, at: to)
+            boardState.setProducer(dstProducer, at: from)
             finishProducerAction()
         case .producerMove(let from, let to, let producer):
-            board[to.row][to.col].producer   = producer
-            board[from.row][from.col].producer = nil
+            boardState.setProducer(producer, at: to)
+            boardState.setProducer(nil, at: from)
             finishProducerAction()
         case .producerBlocked:
             finishProducerAction()
@@ -1839,17 +1839,17 @@ class MergeBoardViewModel {
             applyMergeOutcome(outcome)
         case .superpowerPieceSpent(let from, let to, let pieceChainID, let target):
             if applySuperpowerMerge(pieceChainID: pieceChainID, at: to, target: target) {
-                board[from.row][from.col].item = nil
+                boardState.clearItem(at: from)
                 recalcBoardIsFull()
                 SoundManager.shared.playQuestClaim()
                 HapticManager.shared.successPattern()
             }
         case .itemSwap(let from, let to, let srcItem, let dstItem):
-            board[to.row][to.col].item   = srcItem
-            board[from.row][from.col].item = dstItem
+            boardState.setItem(srcItem, at: to)
+            boardState.setItem(dstItem, at: from)
         case .itemMove(let from, let to, let item):
-            board[to.row][to.col].item   = item
-            board[from.row][from.col].item = nil
+            boardState.setItem(item, at: to)
+            boardState.clearItem(at: from)
             recalcBoardIsFull()
         }
     }
@@ -1885,8 +1885,8 @@ class MergeBoardViewModel {
         let preMergeBoard     = board
         let preMergeInventory = inventoryStore.inventory
 
-        board[outcome.to.row][outcome.to.col].item     = BoardItem(chainID: outcome.resultChainID, tier: outcome.resultTier)
-        board[outcome.from.row][outcome.from.col].item = nil
+        boardState.setItem(BoardItem(chainID: outcome.resultChainID, tier: outcome.resultTier), at: outcome.to)
+        boardState.clearItem(at: outcome.from)
         SoundManager.shared.playMerge()
         HapticManager.shared.mediumImpact()
 
@@ -1918,21 +1918,21 @@ class MergeBoardViewModel {
         let isCompletedSubObject = mergedChain?.category == .subObject
             && outcome.resultTier == mergedChain?.maxTier
         if isCompletedSubObject, let sp = maybeGrantSuperpowerPiece(fromCompletedSubObject: outcome.resultChainID) {
-            board[outcome.to.row][outcome.to.col].item = nil
+            boardState.clearItem(at: outcome.to)
             inventoryStore.addItem(BoardItem(chainID: ContentRegistry.superpowerChainID(sp), tier: 0))
             recalcBoardIsFull()
             SoundManager.shared.playQuestClaim()
             HapticManager.shared.successPattern()
             enqueueToast(Toast(kind: .info("\(sp.superpower.name) found! Check your Supplies.")))
         } else if mergedChain?.category == .powerUp || isCompletedSubObject {
-            if var powerUpItem = board[outcome.to.row][outcome.to.col].item {
+            if var powerUpItem = boardState.item(at: outcome.to) {
                 // Task 2.2: the effect is rolled here, once, consuming the
                 // family's accumulated pity — not chosen by the player
                 // stopping at a particular tier.
                 if isCompletedSubObject {
                     powerUpItem.rarity = rollRarityForCompletedSubObject(chainID: outcome.resultChainID)
                 }
-                board[outcome.to.row][outcome.to.col].item = nil
+                boardState.clearItem(at: outcome.to)
                 inventoryStore.addItem(powerUpItem)
                 recalcBoardIsFull()
                 SoundManager.shared.playQuestClaim()
