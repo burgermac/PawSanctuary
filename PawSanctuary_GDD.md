@@ -407,8 +407,8 @@ Three reliability bugs fixed 5 Aug 2026, all edge cases around CloudKit call fai
 ### Rewarded Ads
 See Section 9.9 — reward logic done, ad SDK integration is a stub.
 
-### Monetization Principles (unchanged from earlier drafts, still true in code)
-No paywalled story content, no hard energy walls, Dog Tags/Coins never buy board advantages, transparent pricing.
+### Monetization Principles (corrected 15 Aug 2026 — two of these had gone stale against adopted decisions)
+No paywalled story content, generous supply with designed depletion rather than no hard energy walls (D1 — the wall is real by design, see the wall curve above), Dog Tags may buy board items with stock limits (D3 — Coins never do), transparent pricing.
 
 ---
 
