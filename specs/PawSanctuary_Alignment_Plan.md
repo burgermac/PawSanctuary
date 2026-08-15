@@ -205,7 +205,7 @@ Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite g
 - [x] **3.1** Rebuild `KibbleRefillSheet` as the designed moment: rewarded ad first (free, capped), then the escalating kibble ladder, then the bundle. Landed `ea92de8`.
 - [x] **3.2** Move the ad out of any menu surface. It lives **in this dialog only**. Deleted the dead `WatchAdStripView` — it was already the only live ad surface.
 - [x] **3.3** Surface the nearest incomplete order or event timer on the sheet — the player must leave seeing what's unfinished. (Event timer will extend naturally once Phase 6 ships real events; only orders exist to surface today.)
-- [x] **3.4** First-purchase offer + `hasEverPurchased` gating; suppress all monetization surfaces in session one per D7. `isMonetizationUnlocked = commerce.hasReachedFirstWall && playerLevel >= monetizationUnlockLevel(5)` — read D7's "whichever is later" as requiring both, not either.
+- [x] **3.4** First-purchase offer + `hasEverPurchased` gating; suppress all monetization surfaces in session one per D7. `isMonetizationUnlocked = commerce.hasReachedFirstWall && playerLevel >= monetizationUnlockLevel` (the latter a plain `let monetizationUnlockLevel = 5` constant, not a function — corrected 15 Aug 2026) — read D7's "whichever is later" as requiring both, not either.
 - [ ] **3.5** Enable Push Notifications capability (already-written scheduling logic is what converts the wall into a return visit). **Blocked on you** — Xcode Signing & Capabilities, not code (see TODO.md).
 - [ ] **3.6** Real ad SDK. Now load-bearing rather than optional. **Blocked on an SDK/account decision** (AdMob, AppLovin, etc.) — flag when ready to proceed.
 
