@@ -38,6 +38,17 @@ enum MergeResult {
     /// once it exists, rather than this one being stretched to cover it.
     case producerBlocked
     case merge(MergeOutcome)
+    /// A superpower piece (e.g. `superpower.cat`, the Splitter) dragged onto
+    /// `target` at `to`. Unlike `.merge`, there's no companion `computeX`
+    /// free function — the "decision" here is a one-line category check
+    /// already at attemptMergeOrMove's call site, and `applySuperpowerMerge`
+    /// (the actual dispatcher to Splitter/Stampede/Sprint/Leap/Mimic) is
+    /// itself procedural, not something a pure step could decide in advance
+    /// — each handler "owns whatever mutation the target cell needs," per
+    /// its own doc comment. This case exists to carry data across the
+    /// compute/apply boundary, same shape as the others, not because there
+    /// was a deterministic outcome worth extracting.
+    case superpowerPieceSpent(from: GridPosition, to: GridPosition, pieceChainID: ChainID, target: BoardItem)
 }
 
 /// Computes what dragging the producer at `from` onto `to` should do —

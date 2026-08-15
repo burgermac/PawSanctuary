@@ -1781,12 +1781,7 @@ class MergeBoardViewModel {
                 // Active-superpower piece spent on a target — a distinct merge outcome,
                 // not an animal-family upgrade, so it skips the score/XP/bubble/
                 // checkSuperpowerUnlock pipeline below entirely.
-                if applySuperpowerMerge(pieceChainID: srcItem.chainID, at: to, target: dstItem) {
-                    board[from.row][from.col].item = nil
-                    recalcBoardIsFull()
-                    SoundManager.shared.playQuestClaim()
-                    HapticManager.shared.successPattern()
-                }
+                apply(.superpowerPieceSpent(from: from, to: to, pieceChainID: srcItem.chainID, target: dstItem))
                 return
             }
             if let outcome = computeMergeOutcome(
@@ -1845,6 +1840,13 @@ class MergeBoardViewModel {
             finishProducerAction()
         case .merge(let outcome):
             applyMergeOutcome(outcome)
+        case .superpowerPieceSpent(let from, let to, let pieceChainID, let target):
+            if applySuperpowerMerge(pieceChainID: pieceChainID, at: to, target: target) {
+                board[from.row][from.col].item = nil
+                recalcBoardIsFull()
+                SoundManager.shared.playQuestClaim()
+                HapticManager.shared.successPattern()
+            }
         }
     }
 
