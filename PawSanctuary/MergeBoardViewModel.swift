@@ -2194,7 +2194,7 @@ class MergeBoardViewModel {
         let empty = emptyUnlockedCells
         guard let target = empty.first else { triggerToast(.boardFull); return }
         guard let producer = inventoryStore.consumeSelectedFamilySpawner() else { return }
-        board[target.position.row][target.position.col].producer = producer
+        boardState.setProducer(producer, at: target.position)
         recalcBoardIsFull()
     }
 
@@ -2203,7 +2203,7 @@ class MergeBoardViewModel {
         let empty = emptyUnlockedCells
         guard let target = empty.first else { triggerToast(.boardFull); return }
         guard let producer = inventoryStore.consumeSelectedDesignatedProducer() else { return }
-        board[target.position.row][target.position.col].producer = producer
+        boardState.setProducer(producer, at: target.position)
         recalcBoardIsFull()
     }
 
@@ -2224,7 +2224,7 @@ class MergeBoardViewModel {
             if let s = slot { inventoryStore.overflowProducerStorage[s] = producer }
             triggerToast(.boardFull); return
         }
-        board[target.position.row][target.position.col].producer = producer
+        boardState.setProducer(producer, at: target.position)
         recalcBoardIsFull()
     }
 
