@@ -26,7 +26,7 @@ Doing this properly is a **faucet change, not just a refactor**: instead of "cou
 ## 1. Decisions this depends on
 
 - **D5 (cadence):** one 3–4 day event per week. The only `EventDefinition` on record (`rescue_rush_jun2026`) ran 14 days — outside that window. Not this task's job to fix content authoring (that's §6/6c), but the test event added in §5 should run 3–4 days to match D5, not copy the old 14-day span.
-- **D8 (chain offer):** does not block this task — it only gates the *Pass* event type, a separate 6b task.
+- **D8 (chain offer):** does not block this task — it's scoped to the *Pass* event type instead, a separate 6b task. Not a blocking dependency in either direction as this doc originally implied: the Alignment Plan's D8 entry recommends building it "as a variant of the Pass primitive," meaning D8 depends on Pass existing, not the reverse — Pass's own spec (§1) confirms this explicitly ("a follow-on to this task, not a prerequisite"). Corrected here (15 Aug 2026) after the original "it only gates the Pass event type" phrasing was found to assert the dependency backwards.
 
 ---
 
