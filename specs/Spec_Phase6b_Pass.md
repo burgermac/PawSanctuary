@@ -41,7 +41,7 @@ The rider layer already doesn't have this problem — `OrderRewardRegistry.provi
 
 - **D5 (cadence):** this task exists because of D5's second clause — the continuous 30-day track. Test event runs 30 days (§5), not 3–4.
 - **D8 (chain offer):** does not block this task. D8's variant is described in the Alignment Plan as *"a variant of the Pass primitive"* — i.e., it's a follow-on to this task, not a prerequisite. Still unresolved (Alignment Plan §3, D8) and still a separate task.
-- **D3 (Dog Tags buy board items) / D6 (spend-quota dailies):** not directly load-bearing here, but D6's reasoning is the reason to be deliberate about paid-lane reward *contents* — see §4.
+- **D3 (Dog Tags buy board items) / D6 (spend-quota dailies):** not directly load-bearing here. D6's Warmth-pillar reasoning is still worth weighing against paid-lane reward *contents* before treating them as final — corrected 15 Aug 2026: this line previously claimed §4 already did that weighing and pointed there, but §4 is a placeholder reward table with no discussion of D6, Warmth, or restraint in it. That weighing hasn't happened yet; it's real remaining work for the design authority, not something already reflected in this spec.
 
 ---
 
