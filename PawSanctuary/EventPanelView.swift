@@ -261,7 +261,7 @@ private struct MilestoneRowView: View {
 
                 // Free-lane reward description
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(milestone.threshold) coins")
+                    Text("\(milestone.threshold) tokens")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     HStack(spacing: 8) {

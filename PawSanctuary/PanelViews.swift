@@ -1336,7 +1336,7 @@ struct EventTaskCard: View {
                 .lineLimit(2)
             TaskProgressBar(fraction: fraction,
                             color: Color(red: 0.85, green: 0.52, blue: 0.10).opacity(0.8))
-            Text("\(earned)/\(maxTokens) coins")
+            Text("\(earned)/\(maxTokens) tokens")
                 .font(.system(size: 9)).foregroundColor(.secondary)
         }
         .padding(10)
