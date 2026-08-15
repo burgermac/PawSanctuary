@@ -4,7 +4,7 @@
 
 > **Not atomic, and larger than its two predecessors.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists. Read §0 before starting: two of this task's four "found while reading the code" items are real architectural decisions, not implementation details, and one of them (§0.2) needs a go/no-go before any of §3 is worth starting.
 
-**DRAFT — written cold by Claude Code at the user's request, not yet reviewed by the design authority.** Per the Alignment Plan's working method (§2), specs are supposed to originate in the design conversation. No such spec existed for this task, matching the precedent set for Pass. **No technical-accuracy pass has been done yet** — unlike Milestone track and Pass, this spec was not re-checked line-by-line against source after drafting, because (unlike them) most of what it describes doesn't exist yet to check against. Existing-file references (marked as such throughout) were verified; everything else is new-code proposal, not yet buildable-as-written the way the other two specs' drafts were confirmed to be.
+**DRAFT — written cold by Claude Code at the user's request, not yet reviewed by the design authority.** Per the Alignment Plan's working method (§2), specs are supposed to originate in the design conversation. No such spec existed for this task, matching the precedent set for Pass. **A technical-accuracy pass has now been done** (15 Aug 2026, mirroring Pass's own `b9c8a5b`) — every existing-file citation checked against current source (all accurate as written), and three real internal problems found and fixed: §5's original test-event dates collided with the event they were meant to avoid colliding with (Adoption Drive and Founders' Circle leave no open window between them at all — corrected to after Founders' Circle ends); §3.3's generator mechanic never specified how the generator cell would actually be distinguished from a normal one (fixed with an explicit `generatorPosition`); and §2's target-shape table overstated "Progress / reward" as a full drop-in reuse, contradicting §3.5's own correct finding that only the storage half reuses cleanly (table split accordingly). This pass verifies the plan is internally consistent and its existing-code claims are accurate — it is not the design-authority review the working method calls for, and most of what this doc proposes is still new code with no implementation to check it against yet.
 
 ---
 
@@ -48,6 +48,8 @@ func computeMergeOutcome(
 
 (`MergeOutcome.swift`.) This function is already pure and already content-agnostic — it doesn't hardcode anything about the *main* board specifically, only about the general shape of a merge (same-chain-same-tier or wildcard-adopts, is the destination already bubbled, is it already top tier). It takes the main board's spotlight/order/quest state as **explicit parameters**, not by reaching into `self` — which was Phase D §3.6's own resolution, made for testability, and turns out to double as exactly what a second caller needs. The parallel board can call this same function with neutral inputs (`spotlightChainID` set to a value that never matches its own chain IDs, `spotlightMultiplierBonus: 0`, empty `orders`/`urgentOrder`/`activeQuests` so `isBubbleEligible` always reads `false`) and get the identical, already-tested eligibility/tier-advance decision the main board uses. What differs is what happens with the `MergeOutcome` once computed — the parallel board needs its own, much smaller `apply` step (§3.4), not `applyMergeOutcome`'s full cascade.
 
+**Load-bearing precondition this reuse depends on, worth stating explicitly rather than leaving implicit:** `computeMergeOutcome` resolves identity and tier-advancement via `ContentRegistry.shared` (`srcItem.chain`, `ContentRegistry.shared.nextTier(...)`, `ContentRegistry.shared.tier(...)`). If the parallel board's chain (§4) is never actually added to `ContentRegistry.shared.chains`, none of that fails loudly — `chain` resolves to `nil`, `nextTier` returns `nil`, `computeMergeOutcome` returns `nil` for every pair, and `attemptMerge` (§3.4) silently falls to its swap branch forever. A board that never merges, with no error and no obvious reason why. Registering the chain isn't optional groundwork before this reuse works — it's the thing that makes it work at all.
+
 #### 4. `ProducerTile`/`ProducerLevel` are main-board-specific and a poor fit for the parallel board's generator
 
 `ProducerLevel` (`AnimalSpecies.swift:287-416`) is a single global enum carrying `dogTagCost`, `storageUnlockLevel`, per-species `familySpawner` logic, shop-tier gating — all main-economy concerns that don't apply to a 3–4 day side event. Adding parallel-board-specific cases would either pollute that enum with fields that must be neutralized for every existing case, or force the parallel board's generator through a shop/storage/species model it doesn't need. **Decision: the parallel board's generator is not a `ProducerTile` at all** — see §2/§3.3 for what it is instead.
@@ -57,7 +59,7 @@ func computeMergeOutcome(
 ## 1. Decisions this depends on
 
 - **D5 (cadence):** the reference observation is 3–4 days generally, 36h specifically for parallel board (`Feature_Parity_Audit.md:60`). This task's test event (§5) runs 3 days, inside that window and short enough to not collide with §0's single-active-event constraint (`specs/Spec_Phase6b_Pass.md §0`, still unresolved — see below) for longer than necessary.
-- **The single-active-event gap, flagged twice already (Milestone track §7, Pass §0), is flagged a third time here and now genuinely can't be deferred past this task without cost.** `EventRegistry.currentEvent` picks one event; Founders' Circle (the Pass test event) runs 2026-08-05 → 2026-09-04, a 30-day window that swallows any 3-day test slot placed inside it. This task's test event **must** be scheduled entirely *before* Founders' Circle starts or *after* it ends to avoid the same silent-invisibility failure mode Pass's own test event was carefully scheduled around. §5 picks before. This is the third time this exact gap has shaped a task's scheduling rather than being fixed — Pass's own §0 said "raise before 6c." **6c is next. Raise it now, not after a fourth event has to route around it too.**
+- **The single-active-event gap, flagged twice already (Milestone track §7, Pass §0), is flagged a third time here and now genuinely can't be deferred past this task without cost.** `EventRegistry.currentEvent` picks one event, and the two existing test events leave **no open window between them at all**: Adoption Drive runs 2026-08-01 → 2026-08-05, Founders' Circle runs 2026-08-05 → 2026-09-04 — together a single unbroken 2026-08-01–09-04 span with zero gap, since Adoption Drive's exclusive `endDate` is exactly Founders' Circle's `startDate`. This task's test event **must** be scheduled entirely *after* Founders' Circle ends — there is no "before" left to pick; both existing slots are taken. §5 schedules it starting the instant Founders' Circle closes, same zero-gap pattern. This is the third time this exact gap has shaped a task's scheduling rather than being fixed — Pass's own §0 said "raise before 6c." **6c is next. Raise it now, not after a fourth event has to route around it too.**
 - **D8 (chain offer):** not load-bearing here — D8's variant builds on the Pass primitive, not this one.
 
 ---
@@ -71,7 +73,8 @@ func computeMergeOutcome(
 | Merge application | **New** | A small `apply`-equivalent: write the board, advance the event's `ProgressTrack`, no XP/score/quest/superpower cascade |
 | Generation mechanic | **New** | Not a `ProducerTile` — see §3.3 |
 | Own currency | **New** — `ParallelBoardEnergy` | A lightweight regen pool, deliberately smaller than `KibbleEngine` (§3.2) |
-| Progress / reward | `ProgressTrack`/`TokenWallet`/`EventTokenRiderProvider` (existing, reused as-is) | None — this is genuinely a drop-in reuse, no changes needed |
+| Progress storage/claim | `ProgressTrack` (existing, reused as-is) | None — genuinely a drop-in reuse |
+| Token-earning trigger | **Not** `EventTokenRiderProvider` — see §3.5 | New: merge-completion-triggered, not order-fulfillment-triggered (§3.5 corrects an earlier draft of this table, which listed the rider provider here too) |
 | `ParallelBoardHosting` | **Redesigned** | Real credit/debit/regen surface, or retired in favor of a concrete owner type (§3.1) |
 | UI | **New** — a dedicated full-screen board view | Cannot reuse `EventSheetView` (a milestone-lane sheet, not a board renderer) |
 
@@ -86,6 +89,7 @@ final class ParallelBoardCoordinator {
     let eventID: String
     let boardState = BoardStateManager()
     var energy = ParallelBoardEnergy()          // §3.2
+    let generatorPosition = GridPosition(row: 0, col: 0)   // §3.3
 
     init(eventID: String, chainID: ChainID) {
         self.eventID = eventID
@@ -146,7 +150,13 @@ Ticked from the same foreground timer loop `MergeBoardViewModel` already runs fo
 
 ### 3.3 — Generation mechanic (not a `ProducerTile`)
 
-Per §0.4, no new `ProducerLevel` case. Simplest mechanic that still reads as "a generator": one fixed cell on the parallel board, rendered distinctly (not a normal `BoardCell`), that the player taps to spend `parallelBoardGeneratorCost` energy and place a fresh base-tier item of the event's chain on a random empty cell — mirrors `placeFreeTile`'s existing "find an empty cell, place an item" shape (`MergeBoardViewModel.swift`, already `BoardStateManager`-primitive-backed) without needing a producer struct, a cooldown, or a species field none of which apply here.
+Per §0.4, no new `ProducerLevel` case. Simplest mechanic that still reads as "a generator": the board's own grid only holds `BoardCell`s (there's no other type it could hold), so the generator isn't a distinct cell *type* — it's an **ordinary cell at a fixed, known position**, tracked by the coordinator, not by anything in the cell's own data:
+
+```swift
+let generatorPosition = GridPosition(row: 0, col: 0)   // fixed for the event's lifetime
+```
+
+The UI queries `coordinator.generatorPosition` to render that one cell with generator chrome (an icon/border, not a normal empty-or-occupied cell) instead of inferring specialness from the cell's own contents. `collectFromGenerator()` always targets this fixed position: spend `parallelBoardGeneratorCost` energy, place a fresh base-tier item of the event's chain on a random *other* empty cell (never onto `generatorPosition` itself, which must stay clear for the next generation) — mirrors `placeFreeTile`'s existing "find an empty cell, place an item" shape (`MergeBoardViewModel.swift`, already `BoardStateManager`-primitive-backed) without needing a producer struct, a cooldown, or a species field none of which apply here.
 
 ### 3.4 — Merge resolution: reuse the decision, write a small new application step
 
@@ -185,11 +195,11 @@ No producer branch (nothing on this board is a producer, per §3.3), no superpow
 
 ### 3.5 — Progress / reward hookup
 
-Genuinely a drop-in reuse, no new code beyond a `ProgressTrackRegistry.tracks` entry (§5) and reusing `EventTokenRiderProvider` a third time — except the rider can't be order-fulfillment-based here, since the parallel board isn't where orders happen. Simplest first cut: award event tokens directly from `attemptMerge`'s `isTopTierCompletion` branch above (a fixed amount per completed item, no rider/random-chance layer needed since the parallel board's own merges are already the throttle) rather than reusing the rider-on-orders mechanism verbatim. Reconsider if this reads as too fast/slow in play — same "retune the anchor, not the thresholds" guidance Milestone/Pass's own §4 gave.
+The *storage* half is a genuine drop-in reuse: a `ProgressTrackRegistry.tracks` entry (§5) is the only new data `ProgressTrack` needs. The *earning* half isn't — `EventTokenRiderProvider` can't be reused a third time here, since its whole mechanism is "attach a bonus to a fraction of newly-generated orders," and the parallel board isn't where orders happen. Simplest first cut: award event tokens directly from `attemptMerge`'s `isTopTierCompletion` branch above (a fixed amount per completed item, no rider/random-chance layer needed since the parallel board's own merges are already the throttle) — a new, small trigger, not a reuse of the order-rider pattern. Reconsider if this reads as too fast/slow in play — same "retune the anchor, not the thresholds" guidance Milestone/Pass's own §4 gave.
 
 ### 3.6 — UI: a dedicated full-screen board view
 
-`EventSheetView` (`EventPanelView.swift`) is a milestone-lane sheet — rows, progress bars, claim buttons. It cannot render a board; nothing about it was built to. This needs new SwiftUI, structurally similar to `MergeBoardView`'s own board-rendering code (`CellView.swift` renders one `BoardCell`; worth checking during implementation whether that view is already decoupled enough from `MergeBoardViewModel` specifically to reuse directly against a `ParallelBoardCoordinator`'s `boardState`, or whether it needs a protocol/generic seam first — not resolved here, a real implementation question for whoever picks this task up). Presented full-screen (not a sheet, matching the reference's "complete second mini-game" framing), entered from a new `EventTaskCard`-style entry point (`PanelViews.swift:1309`, `TaskStripView`) when `viewModel.activeParallelBoardEvent` (or equivalent) is non-nil.
+`EventSheetView` (`EventPanelView.swift`) is a milestone-lane sheet — rows, progress bars, claim buttons. It cannot render a board; nothing about it was built to. This needs new SwiftUI, structurally similar to `MergeBoardView`'s own board-rendering code (`CellView.swift` renders one `BoardCell`; worth checking during implementation whether that view is already decoupled enough from `MergeBoardViewModel` specifically to reuse directly against a `ParallelBoardCoordinator`'s `boardState`, or whether it needs a protocol/generic seam first — not resolved here, a real implementation question for whoever picks this task up). Presented full-screen (not a sheet, matching the reference's "complete second mini-game" framing), entered from a new `EventTaskCard`-style entry point (`PanelViews.swift:1309`) added to `TaskStripView` (`PanelViews.swift:1635`) when `viewModel.activeParallelBoardEvent` (or equivalent) is non-nil.
 
 ### 3.7 — Event lifecycle: creation and teardown
 
@@ -213,7 +223,7 @@ Same posture as Milestone track's and Pass's own §4: **no economy model was run
 
 ## 5. Task — one screen-verifiable test event
 
-Add a fresh `EventDefinition` to `EventRegistry.allEvents`, scheduled **before** Founders' Circle to respect §1's scheduling constraint — e.g. **2026-08-02 to 2026-08-05** (3 days, ending exactly when Adoption Drive's own window closes, avoiding a three-way collision). `ProgressTrackRegistry.tracks[thisEvent.id]` gets the free-lane-only 8-milestone table from §4.
+Add a fresh `EventDefinition` to `EventRegistry.allEvents`, scheduled **after** Founders' Circle ends to respect §1's scheduling constraint (there is no open slot before it — see §1) — **2026-09-04 to 2026-09-07** (3 days, starting the instant Founders' Circle's window closes, zero gap and zero overlap with either existing event). `ProgressTrackRegistry.tracks[thisEvent.id]` gets the free-lane-only 8-milestone table from §4.
 
 This is test-only content to prove the second-board flow end to end — not 6c's real rolling calendar, matching the identical framing Milestone track's and Pass's own §5 used.
 
