@@ -1859,4 +1859,36 @@ final class PersistenceTests: XCTestCase {
         let cannotMerge = Toast(kind: .inventoryFull(canMerge: false))
         XCTAssertTrue(cannotMerge.message.contains("sell"), "should point at selling when no pair exists")
     }
+
+    // MARK: Fresh install
+
+    /// Regression coverage for a bug where `freshStart()`'s starter-content
+    /// calls (`spawnAnimal` x3, `placeToolbox`) silently no-op'd because
+    /// `buildEmptyBoard()` writes `board` through the passthrough setter,
+    /// which never recomputes `BoardStateManager.emptyUnlockedCells` — every
+    /// placement call then saw a stale (pre-reset) cache and found no target.
+    /// A truly fresh install (no save on disk) landed with only the
+    /// map-granted family spawner and nothing else.
+    @MainActor
+    func testFreshInstallBoardHasStarterContent() {
+        let vm = MergeBoardViewModel()
+        vm.loadGame()
+
+        let cells = vm.board.flatMap { $0 }
+        let starterAnimals = cells.filter { cell in
+            guard let item = cell.item else { return false }
+            return item.chainID != ContentRegistry.toolboxChainID
+                && item.chainID != ContentRegistry.kibbleCurrencyChainID
+        }
+        XCTAssertEqual(starterAnimals.count, 3,
+                       "a fresh install should place 3 starter animals on the board")
+
+        let toolboxes = cells.filter { $0.item?.chainID == ContentRegistry.toolboxChainID }
+        XCTAssertEqual(toolboxes.count, 1,
+                       "a fresh install should place a starter toolbox on the board")
+
+        let familySpawners = cells.compactMap(\.producer).filter { $0.level == .familySpawner }
+        XCTAssertEqual(familySpawners.count, 1,
+                       "a fresh install should place a starter family-spawner producer")
+    }
 }

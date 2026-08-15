@@ -852,6 +852,10 @@ class MergeBoardViewModel {
         // be backfilled, so it's recorded unconditionally on every fresh install.
         if commerce.firstLaunchDate == nil { commerce.firstLaunchDate = Date() }
         buildEmptyBoard()
+        // buildEmptyBoard() sets `board` via the passthrough setter, which does
+        // NOT recompute `emptyUnlockedCells` — without this, the spawnAnimal()/
+        // placeToolbox() calls below read a stale cache and silently no-op.
+        boardState.recalc()
         spawnAnimal(); spawnAnimal(); spawnAnimal()
         let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockTiers[$0] == nil }.max() ?? 0
         board[lastUnlockedRow][0].producer = ProducerTile(level: .familySpawner, species: .dog)
@@ -1333,7 +1337,7 @@ class MergeBoardViewModel {
     }
 
     func activateProducer(at pos: GridPosition) {
-        guard var producer = board[pos.row][pos.col].producer else { return }
+        guard var producer = boardState.producer(at: pos) else { return }
 
         if producer.level == .familySpawner, let species = producer.species {
             // Family spawner — kibble-based, unlimited, species-specific animal chain
@@ -1359,7 +1363,7 @@ class MergeBoardViewModel {
             if producer.nextDropGuaranteedHighTier {
                 spawnTier = min(2, maxTier)
                 producer.nextDropGuaranteedHighTier = false
-                board[pos.row][pos.col].producer = producer
+                boardState.setProducer(producer, at: pos)
             }
             // Hibernate Bonus (Ursids .owl): after 5 idle minutes, force Stage 3 (tier 2).
             let hibernateActive = unlockedSuperpowerSpecies.contains(AnimalSpecies.owl.rawValue)
@@ -1398,10 +1402,10 @@ class MergeBoardViewModel {
                     spawnTier: spawnTier,
                     dropRateBonus: cachedActiveBonuses.subObjectDropRateBonus
                 )
-                if var p = board[pos.row][pos.col].producer {
+                if var p = boardState.producer(at: pos) {
                     if case .subObject = preview { p.scoutPreviewIsSubObject = true }
                     else { p.scoutPreviewIsSubObject = false }
-                    board[pos.row][pos.col].producer = p
+                    boardState.setProducer(p, at: pos)
                 }
             }
             finishSpawn(item: spawnedItem, at: target, cost: cost)
@@ -1432,17 +1436,16 @@ class MergeBoardViewModel {
             finishSpawn(item: BoardItem(chainID: chainID, tier: spawnTier), at: target, cost: cost)
             producer.startCooldown()
             producer.chargesRemaining -= 1
-            board[pos.row][pos.col].producer = producer.chargesRemaining > 0 ? producer : nil
+            boardState.setProducer(producer.chargesRemaining > 0 ? producer : nil, at: pos)
         } else {
             if producer.isReady {
                 let empty = emptyUnlockedCells.filter { $0.position != pos }
                 if let target = empty.randomElement() {
                     let chainID = producer.level.targetChainID ?? ContentRegistry.animalChainID(.dog)
-                    board[target.position.row][target.position.col].item =
-                        BoardItem(chainID: chainID, tier: producer.level.startTier)
+                    boardState.setItem(BoardItem(chainID: chainID, tier: producer.level.startTier), at: target.position)
                     producer.startCooldown()
                     producer.chargesRemaining -= 1
-                    board[pos.row][pos.col].producer = producer.chargesRemaining > 0 ? producer : nil
+                    boardState.setProducer(producer.chargesRemaining > 0 ? producer : nil, at: pos)
                     recalcBoardIsFull()
                     animatingCell = target.position
                     Task { @MainActor in
