@@ -1768,29 +1768,8 @@ class MergeBoardViewModel {
         if let srcProducer = board[from.row][from.col].producer {
             let dstProducer = board[to.row][to.col].producer
             let dstItem     = board[to.row][to.col].item
-            if let dst = dstProducer {
-                if srcProducer.level == dst.level, let nextLevel = srcProducer.level.next {
-                    board[to.row][to.col].producer   = ProducerTile(level: nextLevel)
-                    board[from.row][from.col].producer = nil
-                    animatingCell = to
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(600))
-                        self.animatingCell = nil
-                    }
-                } else {
-                    board[to.row][to.col].producer   = srcProducer
-                    board[from.row][from.col].producer = dst
-                }
-            } else if dstItem == nil {
-                board[to.row][to.col].producer   = srcProducer
-                board[from.row][from.col].producer = nil
-            }
-            // Every other occupancy-changing board write in this file recalculates
-            // the cached emptyUnlockedCells/boardIsFull afterward — this branch was
-            // the one exception, letting a later spawn overwrite the producer the
-            // player just placed.
-            recalcBoardIsFull()
-            selectedCell = nil
+            apply(computeProducerOutcome(from: from, to: to, srcProducer: srcProducer,
+                                          dstProducer: dstProducer, dstItem: dstItem))
             return
         }
 
@@ -1902,6 +1881,40 @@ class MergeBoardViewModel {
             board[from.row][from.col].item = nil
             recalcBoardIsFull()
         }
+    }
+
+    /// Applies a `MergeResult` (Phase D, D2 — see
+    /// specs/BoardStateManager_Phase_D_Plan.md) to the board and the rest of
+    /// the ViewModel's state. Grown one case at a time alongside `MergeResult`
+    /// itself — see that enum's own doc comment in MergeResult.swift.
+    func apply(_ result: MergeResult) {
+        switch result {
+        case .producerUpgrade(let from, let to, let newLevel):
+            board[to.row][to.col].producer   = ProducerTile(level: newLevel)
+            board[from.row][from.col].producer = nil
+            animatingCell = to
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(600))
+                self.animatingCell = nil
+            }
+        case .producerSwap(let from, let to, let srcProducer, let dstProducer):
+            board[to.row][to.col].producer   = srcProducer
+            board[from.row][from.col].producer = dstProducer
+        case .producerMove(let from, let to, let producer):
+            board[to.row][to.col].producer   = producer
+            board[from.row][from.col].producer = nil
+        case .noOp:
+            break
+        }
+        // Every other occupancy-changing board write in this file recalculates
+        // the cached emptyUnlockedCells/boardIsFull afterward — the producer
+        // branch was the one exception, letting a later spawn overwrite the
+        // producer the player just placed. Ported verbatim from
+        // attemptMergeOrMove's old inline producer branch, including running
+        // unconditionally even for `.noOp` — that's an existing quirk, not
+        // something this refactor introduced or is fixing.
+        recalcBoardIsFull()
+        selectedCell = nil
     }
 
     func sendBoardItemToInventory(from pos: GridPosition) {
