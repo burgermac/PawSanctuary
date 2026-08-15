@@ -115,7 +115,7 @@ A lattice you can't feed is worse than a smaller one you can. This number determ
 
 Reference games include "Spend 50 Gems" as a daily-challenge task. It converts the retention system into a monetization one at zero UI cost.
 
-**Recommendation: out, at least at launch.** It's the most aggressive single mechanic found in the three games and it sits badly against your "Warmth" design pillar. It's also trivially addable later once you have conversion data. Nothing downstream depends on it.
+**Recommendation: out, at least at launch.** It's the most aggressive single mechanic found in the three games and it sits badly against your "Warmth" design pillar. It's also trivially addable later once you have conversion data. Nothing downstream is *blocked* on this decision — no task waits for D6 to resolve before it can build. Corrected 15 Aug 2026: this line originally read "nothing downstream depends on it" without qualification, which reads as contradicting D8's entry (added after this one), where "**Depends on:** D6's reasoning — decide the two together" is explicit. Both are true under the distinction above — D8 isn't gated waiting on D6, but D8's own recommendation is meant to track D6's for Warmth-pillar consistency, not sequencing.
 
 ### D7 — Session-one monetization silence?
 
