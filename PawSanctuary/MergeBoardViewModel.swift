@@ -1789,90 +1789,18 @@ class MergeBoardViewModel {
                 }
                 return
             }
-            // Wildcard (Gap_Analysis_Round2 3.5): merges with anything, from either
-            // side of the drag. It adopts the other item's identity rather than
-            // requiring a same-chain-same-tier match — a real second copy of
-            // whatever it's paired with. Two wildcards never match each other.
-            let srcIsWildcard = srcItem.chain?.category == .wildcard
-            let dstIsWildcard = dstItem.chain?.category == .wildcard
-            let isEligiblePair = srcIsWildcard != dstIsWildcard
-                ? true
-                : srcItem.chainID == dstItem.chainID && srcItem.tier == dstItem.tier
-            // Shadowed only within this `if`'s body (Swift `if let` scoping) — the
-            // `else` swap-fallback below still sees the real, un-adopted `srcItem`.
-            if dstItem.bubbledAt == nil,
-               isEligiblePair,
-               let srcItem = Optional(srcIsWildcard ? dstItem : srcItem),
-               let next = ContentRegistry.shared.nextTier(srcItem.chainID, after: srcItem.tier) {
-                // Nine Lives snapshot — captured before the board state changes, but
-                // not assigned to preMoveSnapshot until the very end of this merge.
-                // Assigning it now would immediately self-invalidate via board's
-                // didSet, since this merge performs several more board mutations below.
-                let preMergeBoard     = board
-                let preMergeInventory = inventoryStore.inventory
-                board[to.row][to.col].item   = BoardItem(chainID: srcItem.chainID, tier: next)
-                board[from.row][from.col].item = nil
-                SoundManager.shared.playMerge()
-                HapticManager.shared.mediumImpact()
-                let srcDef = ContentRegistry.shared.tier(srcItem.chainID, srcItem.tier)
-                let multiplier = srcItem.chainID == quests.spotlightChainID
-                    ? (2 + cachedActiveBonuses.spotlightMultiplierBonus) : 1
-                score += (srcDef?.scoreValue ?? 0) * multiplier
-                grantXP(srcDef?.xpValue ?? 0)
-                if next == (srcItem.chain?.maxTier ?? Int.max) {
-                    triggerTopTierCelebration(chainID: srcItem.chainID)
-                } else if srcItem.chain?.category == .animal {
-                    maybeBubbleMergedItem(at: to)
-                }
-                mergeCount += 1
-                lastMergeTimestamp = Date().timeIntervalSince1970
-                let mergedSpecies = AnimalSpecies(rawValue: srcItem.chainID.replacingOccurrences(of: "animal.", with: ""))
-                if let sp = mergedSpecies { lastMergedSpeciesRaw = sp.rawValue }
-                recalcBoardIsFull()
-                updateAllAfterMerge(chainID: srcItem.chainID, tier: next)
-                if let sp = mergedSpecies { checkSuperpowerUnlock(species: sp, tier: next) }
-                applyPassivePowers(mergedSpecies: mergedSpecies, mergePos: to, emptyPos: from)
-                // Power-up routing: power-up chain items and completed sub-objects (tier 3)
-                // are auto-moved to power-up inventory rather than left on the board.
-                let mergedChain = ContentRegistry.shared.chain(srcItem.chainID)
-                let isCompletedSubObject = mergedChain?.category == .subObject
-                    && next == mergedChain?.maxTier
-                if isCompletedSubObject, let sp = maybeGrantSuperpowerPiece(fromCompletedSubObject: srcItem.chainID) {
-                    board[to.row][to.col].item = nil
-                    inventoryStore.addItem(BoardItem(chainID: ContentRegistry.superpowerChainID(sp), tier: 0))
-                    recalcBoardIsFull()
-                    SoundManager.shared.playQuestClaim()
-                    HapticManager.shared.successPattern()
-                    enqueueToast(Toast(kind: .info("\(sp.superpower.name) found! Check your Supplies.")))
-                } else if mergedChain?.category == .powerUp || isCompletedSubObject {
-                    if var powerUpItem = board[to.row][to.col].item {
-                        // Task 2.2: the effect is rolled here, once, consuming the
-                        // family's accumulated pity — not chosen by the player
-                        // stopping at a particular tier.
-                        if isCompletedSubObject {
-                            powerUpItem.rarity = rollRarityForCompletedSubObject(chainID: srcItem.chainID)
-                        }
-                        board[to.row][to.col].item = nil
-                        inventoryStore.addItem(powerUpItem)
-                        recalcBoardIsFull()
-                        SoundManager.shared.playQuestClaim()
-                        HapticManager.shared.successPattern()
-                        let msg: String
-                        if let rolled = powerUpItem.rarity {
-                            msg = "\(rolled.displayName) ready! Check your Supplies."
-                        } else {
-                            msg = "Power-up earned! Check your Supplies."
-                        }
-                        enqueueToast(Toast(kind: .info(msg)))
-                    }
-                }
-                animatingCell = to
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(600))
-                    self.animatingCell = nil
-                }
-                preMoveSnapshot = BoardSnapshot(board: preMergeBoard, inventory: preMergeInventory)
+            if let outcome = computeMergeOutcome(
+                from: from, to: to, srcItem: srcItem, dstItem: dstItem,
+                spotlightChainID: quests.spotlightChainID,
+                spotlightMultiplierBonus: cachedActiveBonuses.spotlightMultiplierBonus,
+                orders: adoptionOrders, urgentOrder: urgentOrder, activeQuests: quests.activeQuests
+            ) {
+                apply(.merge(outcome))
             } else {
+                // Ineligible pair, a bubbled destination, or the destination
+                // already at its chain's top tier — computeMergeOutcome
+                // returns nil for all three (MergeOutcome.swift), matching
+                // this swap fallback exactly.
                 board[to.row][to.col].item    = srcItem
                 board[from.row][from.col].item = dstItem
             }
@@ -1887,6 +1815,13 @@ class MergeBoardViewModel {
     /// specs/BoardStateManager_Phase_D_Plan.md) to the board and the rest of
     /// the ViewModel's state. Grown one case at a time alongside `MergeResult`
     /// itself — see that enum's own doc comment in MergeResult.swift.
+    ///
+    /// Deliberately not one shared tail after a single `switch`: the producer
+    /// cases and `.merge` have different tail behavior (see `finishProducerAction()`
+    /// and the `.merge` case below), and forcing them through the same
+    /// post-switch code was exactly the kind of subtle behavior change this
+    /// extraction is trying to avoid — caught while adding `.merge` here,
+    /// before it shipped.
     func apply(_ result: MergeResult) {
         switch result {
         case .producerUpgrade(let from, let to, let newLevel):
@@ -1897,24 +1832,121 @@ class MergeBoardViewModel {
                 try? await Task.sleep(for: .milliseconds(600))
                 self.animatingCell = nil
             }
+            finishProducerAction()
         case .producerSwap(let from, let to, let srcProducer, let dstProducer):
             board[to.row][to.col].producer   = srcProducer
             board[from.row][from.col].producer = dstProducer
+            finishProducerAction()
         case .producerMove(let from, let to, let producer):
             board[to.row][to.col].producer   = producer
             board[from.row][from.col].producer = nil
-        case .noOp:
-            break
+            finishProducerAction()
+        case .producerBlocked:
+            finishProducerAction()
+        case .merge(let outcome):
+            applyMergeOutcome(outcome)
         }
-        // Every other occupancy-changing board write in this file recalculates
-        // the cached emptyUnlockedCells/boardIsFull afterward — the producer
-        // branch was the one exception, letting a later spawn overwrite the
-        // producer the player just placed. Ported verbatim from
-        // attemptMergeOrMove's old inline producer branch, including running
-        // unconditionally even for `.noOp` — that's an existing quirk, not
-        // something this refactor introduced or is fixing.
+    }
+
+    /// Shared tail for every producer-branch `MergeResult` case, including
+    /// `.producerBlocked`. Every other occupancy-changing board write in this
+    /// file recalculates the cached emptyUnlockedCells/boardIsFull afterward
+    /// — the producer branch was the one exception, letting a later spawn
+    /// overwrite the producer the player just placed. Ported verbatim from
+    /// attemptMergeOrMove's old inline producer branch, including running
+    /// unconditionally even for `.producerBlocked` — that's an existing
+    /// quirk, not something this refactor introduced or is fixing.
+    private func finishProducerAction() {
         recalcBoardIsFull()
         selectedCell = nil
+    }
+
+    /// The `.merge` case's full effect cascade — ported verbatim from
+    /// attemptMergeOrMove's old inline eligible-merge branch, substituting
+    /// `outcome`'s precomputed facts (MergeOutcome.swift's `computeMergeOutcome`)
+    /// for what used to be local variables computed inline. Everything below
+    /// the initial board write is exactly the procedural tail
+    /// specs/BoardStateManager_Phase_D_Plan.md §3 calls for: `computeMergeOutcome`
+    /// only decided the deterministic facts (score/XP, tier, bubble
+    /// *eligibility*), not the passive-power cascade or the actual bubble
+    /// roll, both of which stay here, unchanged, reading post-mutation state
+    /// and rolling their own randomness exactly as before.
+    private func applyMergeOutcome(_ outcome: MergeOutcome) {
+        // Nine Lives snapshot — captured before the board state changes, but
+        // not assigned to preMoveSnapshot until the very end of this merge.
+        // Assigning it now would immediately self-invalidate via board's
+        // didSet, since this merge performs several more board mutations below.
+        let preMergeBoard     = board
+        let preMergeInventory = inventoryStore.inventory
+
+        board[outcome.to.row][outcome.to.col].item     = BoardItem(chainID: outcome.resultChainID, tier: outcome.resultTier)
+        board[outcome.from.row][outcome.from.col].item = nil
+        SoundManager.shared.playMerge()
+        HapticManager.shared.mediumImpact()
+
+        score += outcome.scoreDelta
+        grantXP(outcome.xpDelta)
+
+        if outcome.isTopTierCompletion {
+            triggerTopTierCelebration(chainID: outcome.resultChainID)
+        } else if outcome.mergedSpecies != nil {
+            // maybeBubbleMergedItem re-derives eligibility itself (and rolls
+            // bubbleChance on top of it) — computeMergeOutcome's isBubbleEligible
+            // is informational/testable, not consumed here. See the Phase D
+            // doc §3's "second instance" note on why that gate can't move into
+            // the pure step.
+            maybeBubbleMergedItem(at: outcome.to)
+        }
+
+        mergeCount += 1
+        lastMergeTimestamp = Date().timeIntervalSince1970
+        if let sp = outcome.mergedSpecies { lastMergedSpeciesRaw = sp.rawValue }
+        recalcBoardIsFull()
+        updateAllAfterMerge(chainID: outcome.resultChainID, tier: outcome.resultTier)
+        if let sp = outcome.mergedSpecies { checkSuperpowerUnlock(species: sp, tier: outcome.resultTier) }
+        applyPassivePowers(mergedSpecies: outcome.mergedSpecies, mergePos: outcome.to, emptyPos: outcome.from)
+
+        // Power-up routing: power-up chain items and completed sub-objects (tier 3)
+        // are auto-moved to power-up inventory rather than left on the board.
+        let mergedChain = ContentRegistry.shared.chain(outcome.resultChainID)
+        let isCompletedSubObject = mergedChain?.category == .subObject
+            && outcome.resultTier == mergedChain?.maxTier
+        if isCompletedSubObject, let sp = maybeGrantSuperpowerPiece(fromCompletedSubObject: outcome.resultChainID) {
+            board[outcome.to.row][outcome.to.col].item = nil
+            inventoryStore.addItem(BoardItem(chainID: ContentRegistry.superpowerChainID(sp), tier: 0))
+            recalcBoardIsFull()
+            SoundManager.shared.playQuestClaim()
+            HapticManager.shared.successPattern()
+            enqueueToast(Toast(kind: .info("\(sp.superpower.name) found! Check your Supplies.")))
+        } else if mergedChain?.category == .powerUp || isCompletedSubObject {
+            if var powerUpItem = board[outcome.to.row][outcome.to.col].item {
+                // Task 2.2: the effect is rolled here, once, consuming the
+                // family's accumulated pity — not chosen by the player
+                // stopping at a particular tier.
+                if isCompletedSubObject {
+                    powerUpItem.rarity = rollRarityForCompletedSubObject(chainID: outcome.resultChainID)
+                }
+                board[outcome.to.row][outcome.to.col].item = nil
+                inventoryStore.addItem(powerUpItem)
+                recalcBoardIsFull()
+                SoundManager.shared.playQuestClaim()
+                HapticManager.shared.successPattern()
+                let msg: String
+                if let rolled = powerUpItem.rarity {
+                    msg = "\(rolled.displayName) ready! Check your Supplies."
+                } else {
+                    msg = "Power-up earned! Check your Supplies."
+                }
+                enqueueToast(Toast(kind: .info(msg)))
+            }
+        }
+
+        animatingCell = outcome.to
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            self.animatingCell = nil
+        }
+        preMoveSnapshot = BoardSnapshot(board: preMergeBoard, inventory: preMergeInventory)
     }
 
     func sendBoardItemToInventory(from pos: GridPosition) {

@@ -9,8 +9,9 @@
 //  at a time, by that branch's first real caller — the same discipline
 //  BoardStateManager's read/write primitives used (see that file's own doc
 //  comment) — rather than declaring the full shape up front and leaving
-//  most of it unused. Only the producer-branch cases exist so far; the
-//  merge/superpower/swap/move cases arrive with their own D2 steps.
+//  most of it unused. Producer and eligible-merge cases exist so far; the
+//  superpower-piece-spent/ineligible-swap/empty-move cases arrive with
+//  their own D2 steps.
 //
 //  `MergeBoardViewModel.apply(_ result: MergeResult)` is the other half —
 //  it lives in MergeBoardViewModel.swift itself, next to attemptMergeOrMove,
@@ -25,11 +26,18 @@ enum MergeResult {
     case producerUpgrade(from: GridPosition, to: GridPosition, newLevel: ProducerLevel)
     case producerSwap(from: GridPosition, to: GridPosition, srcProducer: ProducerTile, dstProducer: ProducerTile)
     case producerMove(from: GridPosition, to: GridPosition, producer: ProducerTile)
-    /// Nothing on the board changes. Used today for a producer dragged onto
-    /// an item-occupied cell (attemptMergeOrMove's producer branch has no
-    /// `else` for that combination) — reused as-is by later branches' own
-    /// no-op cases rather than growing a new case per branch.
-    case noOp
+    /// Nothing on the board changes — a producer dragged onto an
+    /// item-occupied cell (attemptMergeOrMove's producer branch has no
+    /// `else` for that combination). Named for the producer branch
+    /// specifically, not a generic "no-op" — `apply(_:)` still runs the
+    /// producer branch's recalc+deselect tail for this case (matching the
+    /// original inline code exactly), which is *not* the right tail for
+    /// every branch's idea of "nothing happened" (the top-level from==to/
+    /// out-of-bounds/locked guards, for instance, do nothing at all — no
+    /// recalc, no deselect). A future branch's own no-op gets its own case
+    /// once it exists, rather than this one being stretched to cover it.
+    case producerBlocked
+    case merge(MergeOutcome)
 }
 
 /// Computes what dragging the producer at `from` onto `to` should do —
@@ -53,6 +61,6 @@ func computeProducerOutcome(
     } else if dstItem == nil {
         return .producerMove(from: from, to: to, producer: srcProducer)
     } else {
-        return .noOp
+        return .producerBlocked
     }
 }

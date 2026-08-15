@@ -68,8 +68,8 @@ final class MergeResultTests: XCTestCase {
                                              srcProducer: producer(.rescueCrate),
                                              dstProducer: nil,
                                              dstItem: BoardItem(chainID: ContentRegistry.animalChainID(.cat), tier: 0))
-        guard case .noOp = result else {
-            return XCTFail("expected .noOp, got \(result)")
+        guard case .producerBlocked = result else {
+            return XCTFail("expected .producerBlocked, got \(result)")
         }
     }
 
@@ -119,5 +119,43 @@ final class MergeResultTests: XCTestCase {
         vm.attemptMergeOrMove(from: a, to: b)
         XCTAssertNil(vm.board[a.row][a.col].producer)
         XCTAssertEqual(vm.board[b.row][b.col].producer?.level, .familySpawner)
+    }
+
+    // MARK: applyMergeOutcome's sub-object-completion routing (not covered by
+    // AttemptMergeOrMoveCharacterizationTests' D0 pass — that suite deliberately
+    // skipped this cascade as too complex for a first characterization pass).
+    // This is the trickiest part of the merge-branch port: everything past the
+    // primary board write in applyMergeOutcome reads *post-mutation* board state
+    // (`board[outcome.to...].item`) rather than data already in `outcome`, so a
+    // transcription slip here wouldn't show up as a compile error.
+
+    private func place(_ vm: MergeBoardViewModel, chainID: ChainID, tier: Int, at pos: GridPosition) {
+        var board = vm.board
+        board[pos.row][pos.col].item = BoardItem(chainID: chainID, tier: tier)
+        vm.board = board
+    }
+
+    func testCompletingASubObjectChainRoutesToPowerUpInventoryNotTheBoard() {
+        let vm = makeViewModel()
+        let subObjectChain = "subobject.\(AnimalSpecies.hamster.rawValue)"
+        // maybeGrantSuperpowerPiece requires unlockedSuperpowerSpecies to
+        // already contain the species (false by default) before it even
+        // rolls its own 15% chance — so this deterministically falls through
+        // to the power-up-inventory branch, not the superpower-piece grant.
+        XCTAssertFalse(vm.unlockedSuperpowerSpecies.contains(AnimalSpecies.hamster.rawValue))
+        place(vm, chainID: subObjectChain, tier: 2, at: a)
+        place(vm, chainID: subObjectChain, tier: 2, at: b) // tier 2 -> 3 = this chain's max
+
+        vm.attemptMergeOrMove(from: a, to: b)
+
+        XCTAssertNil(vm.board[b.row][b.col].item, "completed sub-object is routed to inventory, not left on the board")
+        // A rolled rarity routes to the 6-slot powerUpInventory, not the main
+        // animal inventory (InventoryStore.addItem's .subObject case) — this
+        // is what caught this test's own first draft checking the wrong array.
+        let addedPowerUps = vm.inventoryStore.powerUpInventory.compactMap { $0 }
+        XCTAssertEqual(addedPowerUps.count, 1)
+        XCTAssertEqual(addedPowerUps.first?.chainID, subObjectChain)
+        XCTAssertEqual(addedPowerUps.first?.tier, 3)
+        XCTAssertNotNil(addedPowerUps.first?.rarity, "the completion roll should have set a rarity")
     }
 }
