@@ -655,7 +655,7 @@ class MergeBoardViewModel {
     func exchangeAmbassadorTrio(_ trio: ExchangeableTrio) {
         let value = ambassadorTrioValue(trio)
         for pos in trio.positions {
-            board[pos.row][pos.col].item = nil
+            boardState.clearItem(at: pos)
         }
         earnCoins(value)
         recalcBoardIsFull()
@@ -1007,12 +1007,12 @@ class MergeBoardViewModel {
         var firstSeen: [String: GridPosition] = [:]
         for r in 0..<rows {
             for c in 0..<cols {
-                guard board[r][c].isUnlocked,
-                      let item = board[r][c].item,
+                let pos = GridPosition(row: r, col: c)
+                guard boardState.isUnlocked(at: pos),
+                      let item = boardState.item(at: pos),
                       item.bubbledAt == nil,
                       ContentRegistry.shared.nextTier(item.chainID, after: item.tier) != nil else { continue }
                 let key = "\(item.chainID)|\(item.tier)"
-                let pos = GridPosition(row: r, col: c)
                 if let firstPos = firstSeen[key] { return (firstPos, pos) }
                 firstSeen[key] = pos
             }
@@ -1573,7 +1573,7 @@ class MergeBoardViewModel {
 
         // Power-up apply: if a power-up is selected, try to apply it to a family spawner.
         if selectedPowerUpSlot != nil {
-            if board[pos.row][pos.col].producer?.level == .familySpawner {
+            if boardState.producer(at: pos)?.level == .familySpawner {
                 applyPowerUpToSpawner(at: pos)
                 return
             } else {
@@ -1582,7 +1582,7 @@ class MergeBoardViewModel {
             }
         }
 
-        if board[pos.row][pos.col].item?.chainID == ContentRegistry.toolboxChainID {
+        if boardState.item(at: pos)?.chainID == ContentRegistry.toolboxChainID {
             absorbToolbox(at: pos)
             return
         }
@@ -1592,7 +1592,7 @@ class MergeBoardViewModel {
         if collectDecayedBubbleIfAny(at: pos) {
             return
         }
-        if board[pos.row][pos.col].producer != nil {
+        if boardState.hasProducer(at: pos) {
             activateProducer(at: pos)
             return
         }
@@ -1601,7 +1601,7 @@ class MergeBoardViewModel {
         // DragGesture in MergeBoardView, which calls attemptMergeOrMove directly).
         if let sel = selectedCell, sel == pos {
             selectedCell = nil
-        } else if board[pos.row][pos.col].item != nil, board[pos.row][pos.col].isUnlocked {
+        } else if boardState.item(at: pos) != nil, boardState.isUnlocked(at: pos) {
             inventoryStore.selectedInventorySlot = nil
             selectedCell = pos
             maybeShowSellVsOrderNudge(at: pos)
@@ -1618,7 +1618,7 @@ class MergeBoardViewModel {
     /// who never opens the info panel could otherwise miss the choice entirely.
     private func maybeShowSellVsOrderNudge(at pos: GridPosition) {
         guard !UserDefaults.standard.bool(forKey: Self.sellVsOrderNudgeShownKey) else { return }
-        guard let item = board[pos.row][pos.col].item,
+        guard let item = boardState.item(at: pos),
               item.chain?.category == .animal,
               sellVsOrderNudgeTierRange.contains(item.tier) else { return }
         let hasMatchingOrder = adoptionOrders.contains {
