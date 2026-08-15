@@ -325,13 +325,13 @@ Unlocks at player level 20. A 7-day reward cycle (separate from the daily login 
 3 active at all times, replaced immediately on claim. Difficulty roll: 45% Easy / 30% Medium / 20% Hard / 5% Legendary, capped by player level so early players never see unreachable goals. Goal types: merge any N, merge N of a specific chain, reach a specific tier N times, rescue N animals — the same four `QuestGoal` cases cover both animal and supply-chain progress.
 
 ### 9.4 Adoption Orders (formerly "Timed Rescue Requests")
-Requests come from a fixed roster of 12 named adopting families/individuals (e.g. "The Chen Family", "Dr. Sarah Park"), not anonymous rescue slots. At least 2 orders active at all times (extendable via area upgrades). Each order wants a specific chain + tier (tier-weighted by player level), 15-minute countdown, auto-replaces on expiry or claim. Rewards: Dog Tags + Coins, and sometimes a card pack (guaranteed above certain Dog Tag thresholds). Skippable for 2 Kibble.
+Requests come from a fixed roster of 12 named adopting families/individuals (e.g. "The Chen Family", "Dr. Sarah Park"), not anonymous rescue slots. **Corrected 15 Aug 2026 (Phase 5.2 split the roles):** 4-5 persistent slots (extendable via area upgrades) carry no timer and sit until fulfilled, no expiry, no auto-replace; a separate single `urgentOrder` slot carries the 15-minute countdown and forfeits its reward if missed, respawning after a 30-minute cooldown. Each order wants a specific chain + tier (tier-weighted by player level). Rewards: Dog Tags + Coins, and sometimes a card pack (guaranteed above certain Dog Tag thresholds); the urgent slot's rewards are scaled ×1.5. Persistent orders skippable for 2 Kibble.
 
 ### 9.5 Weekly Family Spotlight
 Rotates by calendar week across unlocked families. 2× score on the spotlighted family's merges; hitting 10 spotlight merges in the week grants +5 Dog Tags.
 
 ### 9.6 Seasonal Events
-Infrastructure (`EventSystem.swift`, `EventRegistry`) is complete: time-boxed events with coin milestones and a themed UI. **Only one event is defined** (`rescue_rush_jun2026`, June 1–15 2026) and it has already expired — there is currently no active event. New `EventDefinition` entries need to be authored before this system does anything visible to players.
+Infrastructure (`EventSystem.swift`, `EventRegistry`) is complete: time-boxed events with token-based progress tracks (`ProgressTrack`, `.eventToken` — the old coin-milestone `EventMilestone` struct is left inert, not what drives events post-6b) and a themed UI. **Corrected 15 Aug 2026:** three events are defined — `rescue_rush_jun2026` (expired), `adoption_drive_aug2026` (Milestone track, expired), and `founders_circle_aug2026` (Pass, 2026-08-05–09-04) — the last of which is **active right now**. Phase 6b shipped Milestone track and Pass; Parallel board is still spec-only.
 
 ### 9.7 Onboarding
 A functional, skippable 3-step tutorial (rescue → merge → claim a quest reward) with a pulsing highlight ring and speech-bubble callouts. Shown once, tracked via UserDefaults.
@@ -516,7 +516,7 @@ This replaces the old "Missing Features" list and "Feature Status Tracker" — b
 5. **Privacy policy / terms of service URLs**, **AI disclosure**, **age rating** — App Store Connect / legal, not code
 
 ### 🟠 Content gaps
-6. **Seasonal events registry has one expired event** — infrastructure works, nothing is currently active; needs new `EventDefinition` entries
+6. **Corrected 15 Aug 2026 — no longer accurate.** Three events are defined (§9.6); Founders' Circle is active now. Remaining content gap is narrower: Parallel board (Phase 6b's third event type) is spec-only, not implemented, and the real 90-day rolling calendar (Phase 6c) hasn't been authored.
 7. **Placeholder App Store URL** in the invite system (`id0000000000`)
 8. **All 54 cards use SF Symbols, not illustrated art** — a content/asset-production task
 
