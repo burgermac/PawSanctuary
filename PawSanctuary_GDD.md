@@ -51,11 +51,11 @@ Players run an animal sanctuary: rescue animals across 15 families, merge them t
 
 ## 2. Core Loop
 
-### Session Loop (5–15 minutes)
+### Session Loop (2–4 minutes)
 ```
 Open app
   → Claim daily login reward (if first open today)
-  → Check adoption orders from named families (timed, 15 min each)
+  → Check adoption orders from named families (4-5 persistent, no timer; one urgent slot, 15 min)
   → Rescue animals (spend Kibble at family spawners)
   → Merge matching animals → advance through the 15-stage chain
   → Merge sub-objects → earn power-ups (Speed Burst, Map Supplies, Spawner Refill, High-Tier Drop)
