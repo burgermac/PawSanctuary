@@ -245,7 +245,7 @@ Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite g
 *Largest body of work. Build the engine fully; ship a small catalogue.*
 
 **6a — Primitives (implement the Phase 1 stubs)** — spec `specs/Spec_Phase6a_Primitives.md`, written cold by Claude Code from this section + the existing `LiveOpsPrimitives.swift` stubs. Implemented across 6 commits (`7580cf9`…`dbce315`), 166/166 tests green, zero UI call sites — nothing wires these into `MergeBoardViewModel` or the on-screen event card yet, per the spec's scope cut.
-- [x] Scheduler with overlap and priority resolution (`EventScheduler.contestedSlotWinner`) — tested against synthetic multi-event overlap; only one real event exists today so the four-plus-concurrent case is unexercised in practice
+- [x] Scheduler with overlap and priority resolution (`EventScheduler.contestedSlotWinner`) — tested against synthetic multi-event overlap; three real events exist now (corrected 15 Aug 2026 — was "only one"), but all three are sequenced back-to-back with zero gap, never concurrently, so the four-plus-concurrent case is still unexercised in practice
 - [x] Token wallet · progress track (parallel free/paid lanes) · reward table · timer service · offer hook — real implementations (`TokenWallet`, `ProgressTrack`, `RewardTableRegistry`, `EventTimer`, `OfferHookRegistry`)
 - [x] Parallel board instance — **stub only** (`ParallelBoardStub`): UUID bookkeeping, no board grid, no chains, no energy. The real thing is 6b's "Parallel board" item below, unchanged.
 
