@@ -2166,9 +2166,9 @@ class MergeBoardViewModel {
     }
 
     func retireProducer(at pos: GridPosition) {
-        guard let producer = board[pos.row][pos.col].producer else { return }
+        guard let producer = boardState.producer(at: pos) else { return }
         if inventoryStore.retireProducer(producer, playerLevel: progression.playerLevel) {
-            board[pos.row][pos.col].producer = nil
+            boardState.setProducer(nil, at: pos)
             selectedCell = nil
             recalcBoardIsFull()
             persist()
