@@ -1552,8 +1552,7 @@ class MergeBoardViewModel {
         guard let target = empty.randomElement() else { return false }
         let chainID = progression.unlockedAnimalChainIDs.randomElement()
                       ?? ContentRegistry.animalChainID(.dog)
-        board[target.position.row][target.position.col].item =
-            BoardItem(chainID: chainID, tier: 0)
+        boardState.setItem(BoardItem(chainID: chainID, tier: 0), at: target.position)
         rescueCount += 1
         recalcBoardIsFull()
         updateAllAfterRescue()
