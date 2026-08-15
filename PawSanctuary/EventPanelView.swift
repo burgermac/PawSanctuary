@@ -165,7 +165,12 @@ struct EventSheetView: View {
             }
             Spacer()
             if let product = eventPassProduct {
-                Button(action: { Task { await storeManager.purchase(product) } }) {
+                Button(action: {
+                    // Captured now, before the async purchase — see
+                    // MergeBoardViewModel.pendingEventPassEventID's doc comment.
+                    viewModel.pendingEventPassEventID = event.id
+                    Task { await storeManager.purchase(product) }
+                }) {
                     Text(product.displayPrice)
                         .font(.subheadline.bold())
                         .foregroundColor(.white)

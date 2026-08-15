@@ -198,6 +198,21 @@ class MergeBoardViewModel {
     /// Pass). Per-event, not global. See specs/Spec_Phase6b_Pass.md §3.2.
     var passUnlockedEventIDs: Set<String> = []
 
+    /// The event an Event Pass purchase was started for, captured at the
+    /// moment the buy button was tapped — not persisted, lives only for the
+    /// duration of one purchase flow. `applyPurchase` used to read
+    /// `activeEvent?.id` only after the async StoreKit purchase resolved,
+    /// which can be arbitrarily later (the purchase-sheet confirmation is a
+    /// real, unbounded wait): if the active event's window closed in that
+    /// gap, the transaction still finalized (`StoreManager.grantIfNew` calls
+    /// `tx.finish()` unconditionally) but the unlock was silently dropped —
+    /// charged, nothing granted. `applyPurchase` now prefers this captured
+    /// value and falls back to `activeEvent?.id` only for a grant that
+    /// arrives with no matching button tap in this session (e.g. a
+    /// transaction StoreKit redelivers via `listenForTransactions()` after a
+    /// relaunch) — there's no better answer available in that case either.
+    var pendingEventPassEventID: String?
+
     /// Trade IDs already granted via `claimIncomingTrade` — see GameState.claimedTradeIDs.
     var claimedTradeIDs: [UUID] = []
     /// Cap for `claimedTradeIDs` (TODO.md PERF-05). Generous relative to the
@@ -3595,12 +3610,18 @@ class MergeBoardViewModel {
             isPassActive = true
             claimPassDaily()
         }
-        if product == .eventPass, let eventID = activeEvent?.id {
-            // Unlocks whichever event is live at purchase time — correct under
-            // the current single-active-event model (specs/Spec_Phase6b_Pass.md
-            // §0). No active event -> activeEvent is nil -> safe no-op; the
-            // storefront must never offer this purchase out of context (§3.3).
-            passUnlockedEventIDs.insert(eventID)
+        if product == .eventPass {
+            // Prefer the event captured when the purchase was *started*, not
+            // whichever event happens to be active now that it's resolved —
+            // see pendingEventPassEventID's doc comment for why that gap is
+            // real. Falls back to activeEvent?.id for a grant with no
+            // matching button tap this session. No active event either way
+            // -> safe no-op; the storefront must never offer this purchase
+            // out of context (§3.3).
+            if let eventID = pendingEventPassEventID ?? activeEvent?.id {
+                passUnlockedEventIDs.insert(eventID)
+            }
+            pendingEventPassEventID = nil
         }
         // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
         //
