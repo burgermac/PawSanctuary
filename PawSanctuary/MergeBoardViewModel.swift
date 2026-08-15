@@ -1464,7 +1464,7 @@ class MergeBoardViewModel {
         let empty = emptyUnlockedCells
         guard let target = empty.randomElement() else { triggerToast(.boardFull); return }
         kibbleEngine.dogTags -= level.dogTagCost
-        board[target.position.row][target.position.col].producer = ProducerTile(level: level)
+        boardState.setProducer(ProducerTile(level: level), at: target.position)
         recalcBoardIsFull()
         persist()
     }
