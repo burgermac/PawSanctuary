@@ -15,7 +15,8 @@ The game is functionally near-complete but was built ad hoc from informal observ
 | `specs/Merge2_Reference_Blueprint.md` | What good looks like — theme-neutral architecture + the psychology behind it |
 | `specs/PawSanctuary_Gap_Analysis.md` | Why each change is being made |
 | `specs/Feature_Parity_Audit.md` | Feature-by-feature coverage vs. the three reference titles (complements the psychology-focused Gap Analysis docs) |
-| `specs/BoardStateManager_Extraction_Plan.md` | Phased plan for the `BoardStateManager` extraction — planning only, not started. Read before attempting it. |
+| `specs/BoardStateManager_Extraction_Plan.md` | Phased plan for the `BoardStateManager` extraction — Phases A–C done, Phase D deferred. Read before attempting it. |
+| `specs/BoardStateManager_Phase_D_Plan.md` | Planning doc for Phase D (`attemptMergeOrMove` → `MergeResult`) — draft, open design questions unresolved, no code written yet. |
 | `PawSanctuary_GDD.md` | Game design doc v3.0. Section 5 (Sub-Object Spawning & Power-Ups) was rewritten from source on 27 July 2026 — it had described a rarity-weighted power-up table the code never implemented. That section is now accurate; the rest of the document was written from source but has drifted before, so verify before relying on any specific claim. |
 | `TODO.md` | Launch blockers and code-health debt |
 | `docs/CODE_HEALTH.md` | Known structural debt |
