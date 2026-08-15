@@ -870,8 +870,8 @@ class MergeBoardViewModel {
         let hasProducer = flatBoard.contains { $0.producer != nil }
         guard !hasProducer else { return }
         let lastUnlockedRow = (0..<boardRows).filter { boardRowUnlockTiers[$0] == nil }.max() ?? 0
-        if let col = (0..<cols).first(where: { board[lastUnlockedRow][$0].isEmpty }) {
-            board[lastUnlockedRow][col].producer = ProducerTile(level: .familySpawner, species: .dog)
+        if let col = (0..<cols).first(where: { boardState.isEmpty(at: GridPosition(row: lastUnlockedRow, col: $0)) }) {
+            boardState.setProducer(ProducerTile(level: .familySpawner, species: .dog), at: GridPosition(row: lastUnlockedRow, col: col))
         }
     }
 
