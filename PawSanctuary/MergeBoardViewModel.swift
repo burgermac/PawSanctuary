@@ -1539,7 +1539,7 @@ class MergeBoardViewModel {
     private func placeProducerReward(_ level: ProducerLevel) {
         let empty = emptyUnlockedCells
         if let target = empty.randomElement() {
-            board[target.position.row][target.position.col].producer = ProducerTile(level: level)
+            boardState.setProducer(ProducerTile(level: level), at: target.position)
             recalcBoardIsFull()
         } else {
             kibbleEngine.kibble += 10
