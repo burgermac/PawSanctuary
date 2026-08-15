@@ -1286,7 +1286,7 @@ class MergeBoardViewModel {
     /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
     /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
     private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int) {
-        board[target.position.row][target.position.col].item = item
+        boardState.setItem(item, at: target.position)
         kibbleEngine.kibble -= cost
         if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
             NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
