@@ -83,13 +83,15 @@ Currently ×8 costs 8 kibble and yields a tier-7 item worth 128 kibble — a 16�
 
 **Blocks:** Phase 2.
 
-### D3 — Do Dog Tags/Coins buy board items?
+### D3 — Do Dog Tags buy board items?
 
 Your principle says never.
 
 **Recommendation: allow it, with stock limits.** Two reasons, and the second matters more than the first. It's the highest-converting purchase path in the reference games because it fires at the moment of highest intent — a player blocked on one specific item. But it's also a **recirculation channel**, and you need those (§Phase 2). If you keep the prohibition, recirculation has to come entirely from order rewards and chests, which is achievable but narrower.
 
 This is a values call and I'd defend either answer. Just don't decide it by default.
+
+Corrected 15 Aug 2026: this line originally posed the question for "Dog Tags/Coins" jointly. What actually got built (`Spec_Phase2_Economy.md` §3c, then Pass's spec, then the Alignment Plan's own Phase 2 checklist below) is Dog-Tags-only — the shipped store is named and priced around Dog Tags exclusively (`DogTagStore`, `dogTagStoreBasePrice`, etc.), with no Coins purchase path anywhere. Narrowed here to match; only Phase 1's decision-summary table still carries the old two-currency phrasing.
 
 **Blocks:** Phase 2 (recirculation sizing), Phase 4.
 
