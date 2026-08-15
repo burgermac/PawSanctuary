@@ -170,17 +170,19 @@ The economics are the interesting part. Measured at Tasty Travels:
 
 *The only phase that cannot be split. Specced from `Phase2_Economy_Model.xlsx`.*
 
-- [ ] **2.1** Neutral multiplier: decouple `spawnTier` from `spawnMultiplier - 1`; price at `2^tierIndex`.
-- [ ] **2.2** Recirculation — minimum viable set, sized so the demand/supply ratio lands near 1.0 at mid-game:
+- [x] **2.1** Neutral multiplier: decouple `spawnTier` from `spawnMultiplier - 1`; price at `2^tierIndex`.
+- [x] **2.2** Recirculation — minimum viable set, sized so the demand/supply ratio lands near 1.0 at mid-game:
   - Orders occasionally pay **board items**, not only currency
   - Chests contain board items
   - A sub-object power-up effect that spawns a tier-N item
   - *(If D3 = allow)* board items purchasable with Dog Tags, stock-limited
-- [ ] **2.3** Generator-tier progression: new families spawn at higher base tiers as the map unlocks, so the target-tier-minus-base-tier gap stays roughly constant while chains deepen.
-- [ ] **2.4** Retune the 15-tier chain against the neutral economy using the model's wall-curve targets: below 0.70 through L30, drifting to 0.95 by L40, crossing 1.00 at L41–50, holding 1.05–1.25 thereafter.
-- [ ] **2.5** Reverse `DogTagKibbleExchange` from a volume discount to a daily-escalating ladder with reset. Target shape: ~320 discounted units/day, then flat.
+- [x] **2.3** Generator-tier progression: new families spawn at higher base tiers as the map unlocks, so the target-tier-minus-base-tier gap stays roughly constant while chains deepen.
+- [x] **2.4** Retune the 15-tier chain against the neutral economy using the model's wall-curve targets: below 0.70 through L30, drifting to 0.95 by L40, crossing 1.00 at L41–50, holding 1.05–1.25 thereafter.
+- [x] **2.5** Reverse `DogTagKibbleExchange` from a volume discount to a daily-escalating ladder with reset. Target shape: ~320 discounted units/day, then flat.
 
-**Definition of done:** a simulated player at L10/L30/L50 hits the ratio targets; no tier is reachable at a discount to its merge cost.
+**Definition of done:** a simulated player at L10/L30/L50 hits the ratio targets; no tier is reachable at a discount to its merge cost. **Met** — corrected 15 Aug 2026: this checklist had sat unchecked despite being fully shipped, contradicted by §5b/§5c below, both of which already describe Phase 2's tuning in the past tense. Confirmed via `GameStore`'s `v27` migration ("economy correction (Phase 2)"), `DogTagStore.swift`, and per-task comments throughout the codebase.
+
+**Note — task numbering mismatch, not corrected here:** the codebase's own `// Task 2.x` comments don't match this checklist's numbers. Code tags recirculation work as **Task 2.3** (`AnimalSpecies.swift:1412`, plus `2.3a`/`2.3b`/`2.3c` for orders/chests/the Dog Tag store) and the Dog Tag ladder reversal as **Task 2.4** (`KibbleEngine.swift:28`, `MergeBoardViewModel.swift:1549`) — one lower each than this doc's 2.2 and 2.5 for the same work. This doc's numbering is kept as the source of record; flagged for awareness rather than renumbered, since renumbering would touch cross-references elsewhere (e.g. the D3 sub-bullet under 2.2 above).
 
 ---
 
