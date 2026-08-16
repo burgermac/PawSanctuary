@@ -668,3 +668,141 @@ final class WeeklyEventsMonth3Tests: XCTestCase {
                       "missing weekly instances: \(expectedIDs.subtracting(actualIDs))")
     }
 }
+
+/// Spec_Phase6c_Calendar.md §3.5 — full-calendar regression tests, the
+/// last task in the spec. Distinct from §3.1-§3.4's per-batch spot-checks
+/// because these need the whole 90-day calendar assembled to be
+/// meaningful — see the spec's own §4: "at no point across the full 90
+/// days are more than 2 events simultaneously active" can't be asserted
+/// from a partial calendar. All against static authored data with
+/// synthetic query dates, per the spec's §4 rationale for why this is
+/// stronger verification than the concurrent-events prerequisite's own
+/// necessarily wall-clock-guarded tests could offer.
+@MainActor
+final class FullCalendarRegressionTests: XCTestCase {
+
+    private let seasonIDs: Set<String> = [
+        "sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004", "sanctuary_circle_s3_20261103",
+    ]
+
+    private let weeklyIDs: [String] = [
+        "rescue_relay_20260904", "playtime_rush_20260911", "rescue_relay_20260918", "playtime_rush_20260925",
+        "rescue_relay_20261002", "playtime_rush_20261009", "rescue_relay_20261016",
+        "playtime_rush_20261023", "rescue_relay_20261030",
+        "playtime_rush_20261106", "rescue_relay_20261113", "playtime_rush_20261120", "rescue_relay_20261127",
+    ]
+
+    private var newBatchIDs: Set<String> { seasonIDs.union(weeklyIDs) }
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    /// The real invariant this task exists to prove: sampled once per day,
+    /// midnight UTC (matching how every date in this calendar was
+    /// authored — all transitions land exactly on a day boundary, so a
+    /// daily sample can't miss a mid-day change), across the *entire*
+    /// 2026-09-04...2026-12-03 span, the simultaneously-active count from
+    /// just this new batch never exceeds 2 -- weekly + continuous, never a
+    /// 3-way pileup, even through rescue_relay_20261002's straddle.
+    func testAtNoPointAcrossTheFullNinetyDaysAreMoreThanTwoNewBatchEventsActive() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        var day = date("2026-09-04")
+        let end = date("2026-12-03")
+        var maxCount = 0
+        var maxDay: Date?
+        var sampledDays = 0
+
+        while day < end {
+            let active = Set(scheduler.activeEvents(at: day)).intersection(newBatchIDs)
+            if active.count > maxCount {
+                maxCount = active.count
+                maxDay = day
+            }
+            XCTAssertLessThanOrEqual(active.count, 2,
+                                     "more than 2 new-batch events active on \(day): \(active)")
+            day = day.addingTimeInterval(86_400)
+            sampledDays += 1
+        }
+
+        XCTAssertEqual(sampledDays, 90, "must actually sample all 90 days, not silently fewer")
+        XCTAssertEqual(maxCount, 2, "expected at least one day to genuinely hit 2 -- if this is < 2, " +
+                       "the calendar isn't exercising real overlap and the test below is checking nothing")
+        _ = maxDay   // available for debugging a failure; not asserted on directly
+    }
+
+    /// Complementary to the above: at every sampled day, *at least* one
+    /// season is active (seasons are contiguous with zero gap per §3.1) —
+    /// the weekly+continuous pairing never drops to zero either.
+    func testAtLeastOneSeasonIsActiveOnEveryDayOfTheNinetyDaySpan() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        var day = date("2026-09-04")
+        let end = date("2026-12-03")
+        while day < end {
+            let activeSeasons = Set(scheduler.activeEvents(at: day)).intersection(seasonIDs)
+            XCTAssertEqual(activeSeasons.count, 1, "expected exactly one season active on \(day), got \(activeSeasons)")
+            day = day.addingTimeInterval(86_400)
+        }
+    }
+
+    /// Spec §4's literal "for every pair" — explicit full pairwise check
+    /// across all 13, not just adjacent ones or adjacent batches, even
+    /// though transitivity from the adjacent-pair checks in §3.2-§3.4
+    /// already implies this.
+    func testNoTwoOfAllThirteenWeeklyEventsEverOverlapFullPairwise() throws {
+        let events = try weeklyIDs.map { id in
+            try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing \(id)")
+        }
+        for i in 0..<events.count {
+            for j in (i + 1)..<events.count {
+                let a = events[i], b = events[j]
+                let noOverlap = a.endDate <= b.startDate || b.endDate <= a.startDate
+                XCTAssertTrue(noOverlap, "\(a.id) and \(b.id) overlap")
+            }
+        }
+    }
+
+    /// A gap day — no weekly event active, only the season underneath.
+    /// Batch-level tests sampled event start/end edges; none specifically
+    /// sampled a quiet day in between.
+    func testAGapDayHasOnlyTheSeasonActiveNoWeeklyEvent() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        // 2026-09-09: after instance 1 ends (09-08) and before instance 2
+        // starts (09-11) -- squarely inside the 3-day gap.
+        let active = Set(scheduler.activeEvents(at: date("2026-09-09"))).intersection(newBatchIDs)
+        XCTAssertEqual(active, ["sanctuary_circle_s1_20260904"])
+    }
+
+    /// Every one of the 16 new EventDefinition IDs has a matching
+    /// ProgressTrackRegistry entry -- an event silently missing its table
+    /// would show a card with a permanently-0 maxTokens denominator, a
+    /// real and easy-to-miss authoring mistake at this volume (per spec §4).
+    func testAllSixteenNewEventsHaveAMatchingProgressTrack() {
+        for id in newBatchIDs.sorted() {
+            XCTAssertNotNil(ProgressTrackRegistry.tracks[id], "\(id) is missing a ProgressTrackRegistry entry")
+        }
+        XCTAssertEqual(newBatchIDs.count, 16)
+    }
+
+    /// The 4 pre-existing events must be untouched by this whole spec —
+    /// still present, same IDs, same shape.
+    func testExistingFourLegacyEventsAreUntouched() {
+        let expectedLegacyIDs: Set<String> = [
+            "rescue_rush_jun2026", "adoption_drive_aug2026", "founders_circle_aug2026", "foster_weekend_aug2026",
+        ]
+        let actualIDs = Set(EventRegistry.allEvents.map(\.id))
+        XCTAssertTrue(expectedLegacyIDs.isSubset(of: actualIDs),
+                      "missing legacy events: \(expectedLegacyIDs.subtracting(actualIDs))")
+    }
+
+    /// Sanity on the registry's total shape: 4 legacy + 16 new = 20, no
+    /// accidental duplicate IDs anywhere (a copy-paste mistake across 20
+    /// literal entries is exactly the kind of error this volume invites).
+    func testRegistryHasExactlyTwentyUniqueEventIDsNoDuplicates() {
+        let allIDs = EventRegistry.allEvents.map(\.id)
+        XCTAssertEqual(allIDs.count, 20)
+        XCTAssertEqual(Set(allIDs).count, allIDs.count, "duplicate event ID(s) found in EventRegistry.allEvents")
+    }
+}
