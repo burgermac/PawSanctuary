@@ -2,7 +2,7 @@
 
 **Self-contained brief.** Assumes no prior conversation. Follows Phase 6b (Milestone track, Pass shipped; Parallel board spec-only).
 
-**DRAFT — written cold by Claude Code at the user's request, not yet reviewed by the design authority.** Same exception as Pass's and Parallel board's own drafts (no prior design-authority spec existed for this task).
+**Written cold by Claude Code at the user's request; design-authority review complete (16 Aug 2026).** Same exception as Pass's and Parallel board's own drafts (no prior design-authority spec existed for this task).
 
 > **Not atomic.** Suggested landing order in §3 below — land as separate commits, verify each, stop if one resists.
 
