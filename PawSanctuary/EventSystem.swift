@@ -161,6 +161,29 @@ enum EventRegistry {
     static var currentEvent: EventDefinition? {
         allEvents.first { $0.isActive }
     }
+
+    /// Every currently-active event — Phase 6c prerequisite, see
+    /// specs/Spec_Phase6c_ConcurrentEvents.md §3.1. Routes through
+    /// `EventScheduler` (Phase 6a) rather than duplicating its `isActive`
+    /// filter inline; this is that scheduler's first real caller. Sorted by
+    /// `priority` desc, then `startDate` asc, for stable display order once
+    /// a caller renders more than one at a time (§3.4, not yet wired — every
+    /// consumer today still reads `currentEvent` above; migrating them off
+    /// it is §3.2/§3.3, separate tasks). No behavior change to `currentEvent`
+    /// itself: today's three events never overlap, so `activeEvents.first`
+    /// and `currentEvent` always agree — verified in
+    /// `EventSystemTests.testActiveEventsAgreesWithCurrentEventWhileNoneOverlap`.
+    @MainActor
+    static var activeEvents: [EventDefinition] {
+        let scheduler = EventScheduler()
+        let activeIDs = Set(scheduler.activeEvents(at: Date()))
+        return allEvents
+            .filter { activeIDs.contains($0.id) }
+            .sorted {
+                if $0.priority != $1.priority { return $0.priority > $1.priority }
+                return $0.startDate < $1.startDate
+            }
+    }
 }
 
 // ============================================================

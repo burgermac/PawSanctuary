@@ -98,3 +98,51 @@ final class EventPassPurchaseTests: XCTestCase {
                        "an unrelated purchase completing mid-flight must not clear or consume it")
     }
 }
+
+/// Phase 6c prerequisite (specs/Spec_Phase6c_ConcurrentEvents.md §3.1) —
+/// EventRegistry.activeEvents isn't injectable either, same constraint noted
+/// above for currentEvent: real wall clock, hardcoded event list. These
+/// assert invariants that hold regardless of today's date, rather than which
+/// specific event is active right now.
+@MainActor
+final class EventRegistryActiveEventsTests: XCTestCase {
+
+    func testActiveEventsIsASubsetOfAllEvents() {
+        let allIDs = Set(EventRegistry.allEvents.map(\.id))
+        for event in EventRegistry.activeEvents {
+            XCTAssertTrue(allIDs.contains(event.id))
+        }
+    }
+
+    func testActiveEventsMatchesIndependentlyReimplementedIsActiveFilter() {
+        // Deliberately re-derives the filter here rather than calling
+        // EventDefinition.isActive, so a bug in activeEvents' EventScheduler
+        // wiring can't cancel out against the same bug in the property under
+        // test.
+        let now = Date()
+        let expectedIDs = Set(EventRegistry.allEvents
+            .filter { now >= $0.startDate && now < $0.endDate }
+            .map(\.id))
+        let actualIDs = Set(EventRegistry.activeEvents.map(\.id))
+        XCTAssertEqual(actualIDs, expectedIDs)
+    }
+
+    func testActiveEventsIsSortedByPriorityThenStartDate() {
+        let events = EventRegistry.activeEvents
+        for (a, b) in zip(events, events.dropFirst()) {
+            if a.priority != b.priority {
+                XCTAssertGreaterThan(a.priority, b.priority)
+            } else {
+                XCTAssertLessThanOrEqual(a.startDate, b.startDate)
+            }
+        }
+    }
+
+    /// Today's real event list never has two events overlap, so the new
+    /// list-returning property and the old single-winner property must
+    /// always agree while that holds — a regression guard for this task's
+    /// "no behavior change yet" claim, not a test of the production calendar.
+    func testActiveEventsAgreesWithCurrentEventWhileNoneOverlap() {
+        XCTAssertEqual(EventRegistry.activeEvents.first?.id, EventRegistry.currentEvent?.id)
+    }
+}
