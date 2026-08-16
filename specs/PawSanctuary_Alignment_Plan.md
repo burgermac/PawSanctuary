@@ -257,7 +257,7 @@ Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite g
 
 **6c — Calendar**
 - [x] **Prerequisite, added 15 Aug 2026:** fix the single-active-event model (`EventRegistry.currentEvent`) — flagged three times without being fixed (Milestone track §7, Pass §0, Parallel board §1), and the real calendar below can't honor D5's "concurrently" clause without it. Spec `specs/Spec_Phase6c_ConcurrentEvents.md`, written cold by Claude Code at the user's request. Implemented across 6 commits (`b023431`…`0cd351c`, 16 Aug 2026) — `EventRegistry.activeEvents`, `checkEventLifecycle()`'s diffed multi-provider rider registration, UI wiring for concurrent event cards/sheets, and a real overlapping test event (`foster_weekend_aug2026`) proving it on screen. Design-authority review complete the same day.
-- [ ] Author a rolling 90-day `EventDefinition` calendar. Infrastructure without a calendar is exactly where you are now.
+- [ ] Author a rolling 90-day `EventDefinition` calendar. Infrastructure without a calendar is exactly where you are now. **Draft spec `specs/Spec_Phase6c_Calendar.md`, written cold by Claude Code at the user's request (16 Aug 2026), same exception made for Pass/Parallel Board/the concurrent-events prereq. Not yet reviewed by the design authority or implemented.** 13 weekly events (two alternating flavors, reusing Adoption Drive's exact reward-curve shape) plus 3 sequential 30-day Passes ("Sanctuary Circle," reusing Founders' Circle's exact curve) covering 2026-09-04 → 2026-12-03 — deliberately Milestone-track and Pass only, since Parallel Board isn't implemented and D8 is still undecided. Pure content authoring on top of the already-shipped concurrent-events infrastructure — introduces no new mechanism.
 
 ---
 

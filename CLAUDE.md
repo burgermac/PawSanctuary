@@ -17,7 +17,8 @@ The game is functionally near-complete but was built ad hoc from informal observ
 | `specs/Feature_Parity_Audit.md` | Feature-by-feature coverage vs. the three reference titles (complements the psychology-focused Gap Analysis docs) |
 | `specs/BoardStateManager_Extraction_Plan.md` | Phased plan for the `BoardStateManager` extraction — Phases A–C done, Phase D deferred. Read before attempting it. |
 | `specs/BoardStateManager_Phase_D_Plan.md` | Planning doc for Phase D (`attemptMergeOrMove` → `MergeResult`) — draft, open design questions unresolved, no code written yet. |
-| `specs/Spec_Phase6c_ConcurrentEvents.md` | Phase 6c prerequisite — fixes the single-active-event model so a weekly event and the continuous Pass can run genuinely concurrently, per D5. DRAFT, not yet reviewed or implemented. |
+| `specs/Spec_Phase6c_ConcurrentEvents.md` | Phase 6c prerequisite — fixes the single-active-event model so a weekly event and the continuous Pass can run genuinely concurrently, per D5. Implemented and design-reviewed 16 Aug 2026. |
+| `specs/Spec_Phase6c_Calendar.md` | Phase 6c — authors the real 90-day rolling `EventDefinition` calendar (13 weekly events + 3 sequential 30-day Passes) that the concurrent-events prerequisite unblocked. DRAFT, not yet reviewed or implemented. |
 | `PawSanctuary_GDD.md` | Game design doc v3.0. Section 5 (Sub-Object Spawning & Power-Ups) was rewritten from source on 27 July 2026 — it had described a rarity-weighted power-up table the code never implemented. That section is now accurate; the rest of the document was written from source but has drifted before, so verify before relying on any specific claim. |
 | `TODO.md` | Launch blockers and code-health debt |
 | `docs/CODE_HEALTH.md` | Known structural debt |
