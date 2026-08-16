@@ -6,6 +6,8 @@
 
 > **Not atomic.** Suggested landing order in §3 below — land as separate commits, verify each, stop if one resists.
 
+**Status (15 Aug 2026): §3.1 done, §3.2–§3.5 not started.** `EventRegistry.activeEvents` added (commit `b023431`), routed through `EventScheduler`. Purely additive — `currentEvent` is untouched, every existing caller (`MergeBoardViewModel.activeEvent`, `checkEventLifecycle()`, both UI sites) still reads it, unchanged. No behavior change: today's three events never overlap, so `activeEvents.first` and `currentEvent` agree (asserted by a new regression test, `EventSystemTests.testActiveEventsAgreesWithCurrentEventWhileNoneOverlap`). 4 new tests added, full suite verified at 285/285 green. **Next: §3.2** (migrate `MergeBoardViewModel.activeEvent` to the list) **then §3.3** — the actually load-bearing fix, `checkEventLifecycle()`'s single rider provider, which today can only track one event's rider even though `OrderRewardRegistry` beneath it already supports many. §3.4 (UI) and §4 (the overlapping test event that proves this on screen) depend on §3.2/§3.3 landing first.
+
 ---
 
 ## 0. Why
