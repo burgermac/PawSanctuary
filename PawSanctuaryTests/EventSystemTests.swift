@@ -571,3 +571,100 @@ final class WeeklyEventsMonth2Tests: XCTestCase {
         }
     }
 }
+
+/// Spec_Phase6c_Calendar.md §3.4 — the weekly track's final 4 instances
+/// (month 3: Nov 2026), completing the 13-event weekly track. All 4 sit
+/// entirely inside Season 3 — no straddle, same posture as month 1.
+@MainActor
+final class WeeklyEventsMonth3Tests: XCTestCase {
+
+    private let weeklyIDs = [
+        "playtime_rush_20261106",
+        "rescue_relay_20261113",
+        "playtime_rush_20261120",
+        "rescue_relay_20261127",
+    ]
+
+    private func weeklyEvent(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing weekly event \(id)")
+    }
+
+    func testAllFourExistInTheRegistry() throws {
+        for id in weeklyIDs {
+            _ = try weeklyEvent(id)
+        }
+    }
+
+    func testEachIsFourDaysLongWithAThreeDayGapToTheNext() throws {
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+
+        let events = try weeklyIDs.map { try weeklyEvent($0) }
+        for event in events {
+            let days = utcCalendar.dateComponents([.day], from: event.startDate, to: event.endDate).day
+            XCTAssertEqual(days, 4, "\(event.id) must run exactly 4 days")
+        }
+        for (a, b) in zip(events, events.dropFirst()) {
+            let gap = utcCalendar.dateComponents([.day], from: a.endDate, to: b.startDate).day
+            XCTAssertEqual(gap, 3, "gap between \(a.id) and \(b.id) must be exactly 3 days")
+        }
+    }
+
+    /// The month 2/month 3 boundary isn't covered by either batch's own
+    /// test in isolation.
+    func testGapFromMonthTwosLastInstanceIsAlsoThreeDays() throws {
+        let lastOfMonth2 = try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == "rescue_relay_20261030" }))
+        let firstOfMonth3 = try weeklyEvent("playtime_rush_20261106")
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let gap = utcCalendar.dateComponents([.day], from: lastOfMonth2.endDate, to: firstOfMonth3.startDate).day
+        XCTAssertEqual(gap, 3)
+    }
+
+    func testNoTwoOfTheFourOverlap() throws {
+        let events = try weeklyIDs.map { try weeklyEvent($0) }
+        for (a, b) in zip(events, events.dropFirst()) {
+            XCTAssertLessThanOrEqual(a.endDate, b.startDate, "\(a.id) and \(b.id) must not overlap")
+        }
+    }
+
+    func testEachOverlapsOnlySeasonThreeThroughoutItsRun() throws {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let seasonIDs = Set(["sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004",
+                              "sanctuary_circle_s3_20261103"])
+        for id in weeklyIDs {
+            let event = try weeklyEvent(id)
+            for sampleDate in [event.startDate, event.endDate.addingTimeInterval(-3600)] {
+                let activeSeasons = Set(scheduler.activeEvents(at: sampleDate)).intersection(seasonIDs)
+                XCTAssertEqual(activeSeasons, ["sanctuary_circle_s3_20261103"],
+                               "\(id) at \(sampleDate) must overlap exactly Season 3")
+            }
+        }
+    }
+
+    func testEachHasAMatchingProgressTrackMatchingAdoptionDrivesTableVerbatim() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["adoption_drive_aug2026"])
+        for id in weeklyIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id])
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Adoption Drive's")
+        }
+    }
+
+    /// Capstone for the weekly track as a whole, landing exactly when the
+    /// 13th instance does — the full-calendar cross-cutting invariants
+    /// (max-2-concurrent day-by-day across all 90 days, etc.) are §3.5's
+    /// job, but "all 13 instances actually exist" is cheap to confirm right
+    /// here at the moment the set becomes complete.
+    func testAllThirteenWeeklyInstancesExistInTheRegistry() {
+        let expectedIDs: Set<String> = [
+            "rescue_relay_20260904", "playtime_rush_20260911", "rescue_relay_20260918", "playtime_rush_20260925",
+            "rescue_relay_20261002", "playtime_rush_20261009", "rescue_relay_20261016",
+            "playtime_rush_20261023", "rescue_relay_20261030",
+            "playtime_rush_20261106", "rescue_relay_20261113", "playtime_rush_20261120", "rescue_relay_20261127",
+        ]
+        XCTAssertEqual(expectedIDs.count, 13)
+        let actualIDs = Set(EventRegistry.allEvents.map(\.id))
+        XCTAssertTrue(expectedIDs.isSubset(of: actualIDs),
+                      "missing weekly instances: \(expectedIDs.subtracting(actualIDs))")
+    }
+}
