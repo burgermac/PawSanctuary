@@ -184,6 +184,57 @@ enum EventRegistry {
                 Color(red: 0.82, green: 0.74, blue: 0.93),
             ]
         ),
+        // Phase 6c real calendar (Spec_Phase6c_Calendar.md §3.1) — the
+        // continuous track, 3 sequential 30-day Passes covering the
+        // calendar's full 2026-09-04...2026-12-03 span, contiguous with
+        // zero gap (same convention as Adoption Drive -> Founders' Circle),
+        // starting the instant Founders' Circle above ends. Milestone table
+        // is a verbatim reuse of Founders' Circle's own 10-tier curve
+        // (ProgressTrackRegistry.tracks), re-keyed per season since token
+        // wallets/progress are ID-keyed — see spec §2.2 for why a shared ID
+        // across seasons would be wrong (Season 2 would open already-maxed).
+        EventDefinition(
+            id: "sanctuary_circle_s1_20260904",
+            name: "Sanctuary Circle",
+            tagline: "A season of rewards for the sanctuary's circle of supporters.",
+            startDate: date("2026-09-04"),
+            endDate:   date("2026-10-04"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
+        EventDefinition(
+            id: "sanctuary_circle_s2_20261004",
+            name: "Sanctuary Circle",
+            tagline: "A season of rewards for the sanctuary's circle of supporters.",
+            startDate: date("2026-10-04"),
+            endDate:   date("2026-11-03"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
+        EventDefinition(
+            id: "sanctuary_circle_s3_20261103",
+            name: "Sanctuary Circle",
+            tagline: "A season of rewards for the sanctuary's circle of supporters.",
+            startDate: date("2026-11-03"),
+            endDate:   date("2026-12-03"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {

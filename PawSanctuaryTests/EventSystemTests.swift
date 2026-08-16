@@ -245,3 +245,94 @@ final class ConcurrentEventRiderRegistrationTests: XCTestCase {
                        "a no-op check must not unregister and re-register the same still-active riders")
     }
 }
+
+/// Spec_Phase6c_Calendar.md §3.1 — the continuous track's 3 sequential
+/// Sanctuary Circle seasons. Unlike the concurrent-events prerequisite's
+/// tests, this is static authored data with real, fixed dates, so these
+/// checks are fully deterministic against synthetic query dates rather than
+/// the real wall clock — the calendar spec's own §4 flags this as stronger
+/// verification than the prerequisite could offer for its own tests.
+@MainActor
+final class SanctuaryCircleSeasonsTests: XCTestCase {
+
+    private let seasonIDs = [
+        "sanctuary_circle_s1_20260904",
+        "sanctuary_circle_s2_20261004",
+        "sanctuary_circle_s3_20261103",
+    ]
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private func season(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing season \(id)")
+    }
+
+    func testAllThreeSeasonsExistInTheRegistry() throws {
+        for id in seasonIDs {
+            _ = try season(id)
+        }
+    }
+
+    func testSeasonsAreContiguousWithZeroGapAndZeroOverlap() throws {
+        let s1 = try season(seasonIDs[0])
+        let s2 = try season(seasonIDs[1])
+        let s3 = try season(seasonIDs[2])
+
+        XCTAssertEqual(s1.endDate, s2.startDate, "Season 1 -> 2 must be contiguous, zero gap")
+        XCTAssertEqual(s2.endDate, s3.startDate, "Season 2 -> 3 must be contiguous, zero gap")
+    }
+
+    func testSeasonsSpanExactlyNinetyDays() throws {
+        let s1 = try season(seasonIDs[0])
+        let s3 = try season(seasonIDs[2])
+        // Dates are parsed by ISO8601DateFormatter, which defaults to UTC --
+        // the day-count Calendar must match that timezone, not the device's
+        // local one, or a DST transition between the two dates (the US
+        // clocks fall back 2026-11-01, squarely inside this span) silently
+        // shifts the wall-clock delta by an hour and rounds the day count
+        // down by one.
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let days = utcCalendar.dateComponents([.day], from: s1.startDate, to: s3.endDate).day
+        XCTAssertEqual(days, 90)
+    }
+
+    func testEachSeasonHasAMatchingProgressTrackOfTenMilestones() {
+        for id in seasonIDs {
+            XCTAssertEqual(ProgressTrackRegistry.tracks[id]?.count, 10,
+                           "\(id) must have a 10-milestone table (Founders' Circle's shape)")
+        }
+    }
+
+    /// Spec §2.2: every season's table is a *verbatim* reuse of Founders'
+    /// Circle's, not independently re-derived numbers that happen to look
+    /// similar.
+    func testEachSeasonsMilestoneTableIsAVerbatimCopyOfFoundersCircles() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["founders_circle_aug2026"])
+        for id in seasonIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id])
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Founders' Circle's")
+        }
+    }
+
+    /// Confirms the scheduler-level data source agrees with the raw dates
+    /// checked above — at a representative date inside each season, that
+    /// season (and only that season, among the 3) is reported active.
+    func testExactlyOneSeasonActiveAtASampleDateWithinEachSeason() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let sampleDates = [
+            seasonIDs[0]: date("2026-09-15"),
+            seasonIDs[1]: date("2026-10-15"),
+            seasonIDs[2]: date("2026-11-15"),
+        ]
+        for (expectedID, sampleDate) in sampleDates {
+            let activeSeasons = Set(scheduler.activeEvents(at: sampleDate)).intersection(seasonIDs)
+            XCTAssertEqual(activeSeasons, [expectedID],
+                           "at \(sampleDate), exactly \(expectedID) among the 3 seasons should be active")
+        }
+    }
+}

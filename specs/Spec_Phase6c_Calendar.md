@@ -6,6 +6,8 @@
 
 > **Not atomic.** Suggested landing order in §3 below — land as separate commits, verify each, stop if one resists.
 
+**Status (16 Aug 2026): §3.1 done, §3.2–§3.5 not started.** The 3 `sanctuary_circle_s*` `EventDefinition`s added to `EventRegistry.allEvents` and their `ProgressTrackRegistry.tracks` entries — verbatim copies of Founders' Circle's 10-milestone table, per §2.2 — added to `LiveOpsEngine.swift`. 6 new tests (`SanctuaryCircleSeasonsTests`, `EventSystemTests.swift`): contiguity (zero gap/overlap across all 3 seasons), 90-day total span, milestone-table presence and verbatim-copy equality, and a scheduler-level check that exactly one season is active at a representative date inside each. One real bug caught while writing these: the first draft of the 90-day span test used a `Calendar` with the device's local timezone against dates parsed as UTC by `ISO8601DateFormatter` — the US's 2026-11-01 DST fall-back (squarely inside this span) shifted the wall-clock delta and made the test read 89 days instead of 90. Fixed by pinning the test's `Calendar` to UTC to match the parser; the underlying calendar data was never wrong, only the test's own arithmetic was. Full suite verified at 297/297 green, 0 regressions. **Next: §3.2** (the first 4 weekly events).
+
 ---
 
 ## 0. Why
