@@ -2,7 +2,7 @@
 
 **Self-contained brief.** Assumes no prior conversation. Follows Phase 6c's concurrent-events prerequisite (`specs/Spec_Phase6c_ConcurrentEvents.md`), which is fully implemented, tested, and design-reviewed as of 16 Aug 2026.
 
-**DRAFT — written cold by Claude Code at the user's request, not yet reviewed by the design authority.** Same exception as Pass's, Parallel Board's, and the concurrent-events prereq's own drafts (no prior design-authority spec existed for this task).
+**Written cold by Claude Code at the user's request; design-authority review complete (16 Aug 2026).** Same exception as Pass's, Parallel Board's, and the concurrent-events prereq's own drafts (no prior design-authority spec existed for this task). Review outcome: implementation and target shape both agreed as-is — see §6 for the specific open questions reviewed and accepted without change.
 
 > **Not atomic.** Suggested landing order in §3 below — land as separate commits, verify each, stop if one resists.
 
@@ -165,10 +165,10 @@ Recommended tests (exact set to be finalized when 3.5 lands, once all entries ex
 
 ## 6. Open questions for design-authority review
 
-Flagged explicitly rather than silently decided, per this spec's DRAFT status:
+**Resolved 16 Aug 2026: reviewed and accepted as written, no changes requested.** Left in place below as the record of what was explicitly reviewed rather than silently decided, per the working method's "record the reasoning so it doesn't get relitigated" principle (Alignment Plan §3).
 
 - **Both weekly flavors share identical numbers** (§2.2) — differing only in cosmetic presentation. This was a deliberate choice to avoid inventing an unmodelled reason for one to pay more than the other, but it does mean "Rescue Relay" and "Playtime Rush" are mechanically the same event wearing two skins. If real variety is wanted (harder/richer alternating weeks, a different faucet mechanic, etc.), that's a new number this spec didn't derive and shouldn't guess at.
-- **Flavor names/taglines/icons/colors are placeholder-quality**, picked for internal consistency with existing naming (not run past the design authority). Cheap to swap before landing 3.2–3.4 if the design authority wants different branding — the structural cadence (§2.1) is the part that actually matters and is independent of naming.
+- **Flavor names/taglines/icons/colors** were picked for internal consistency with existing naming, not derived from a model — reviewed and kept as-is. The structural cadence (§2.1) was always the part that actually mattered and is independent of naming; a future rebrand would only touch cosmetic fields, not dates or reward tables.
 - **"Sanctuary Circle" reuses "Sanctuary Circle" as the name for all 3 seasons** rather than 3 distinct names (real games often do this — "Season 1/2/3" of one recurring pass brand — but it's a judgment call, not a measured one).
 - **The two-flavor, alternating-week structure** (vs. e.g. three or four flavors in rotation, or fully bespoke weekly content) was chosen to keep the total new design surface small, matching this phase's own stated risk mitigation. More flavors is easy to add later; this spec deliberately didn't reach for it up front.
 - **What happens after 2026-12-03**, when this 90-day batch runs out, is explicitly Phase 7's problem (Alignment Plan §10) — another calendar-authoring pass, structurally identical to this one, not a new mechanism.
