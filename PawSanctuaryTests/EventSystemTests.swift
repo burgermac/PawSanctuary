@@ -428,3 +428,146 @@ final class WeeklyEventsMonth1Tests: XCTestCase {
         }
     }
 }
+
+/// Spec_Phase6c_Calendar.md §3.3 — the weekly track's next 5 instances
+/// (month 2: Oct 2026). This batch contains the one weekly event in the
+/// whole calendar that straddles a season boundary — instance 5
+/// (rescue_relay_20261002) — so most of the coverage here is specifically
+/// about that transition, not just repeating month 1's pattern.
+@MainActor
+final class WeeklyEventsMonth2Tests: XCTestCase {
+
+    private let weeklyIDs = [
+        "rescue_relay_20261002",
+        "playtime_rush_20261009",
+        "rescue_relay_20261016",
+        "playtime_rush_20261023",
+        "rescue_relay_20261030",
+    ]
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private func weeklyEvent(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing weekly event \(id)")
+    }
+
+    func testAllFiveExistInTheRegistry() throws {
+        for id in weeklyIDs {
+            _ = try weeklyEvent(id)
+        }
+    }
+
+    func testEachIsFourDaysLongWithAThreeDayGapToTheNext() throws {
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+
+        let events = try weeklyIDs.map { try weeklyEvent($0) }
+        for event in events {
+            let days = utcCalendar.dateComponents([.day], from: event.startDate, to: event.endDate).day
+            XCTAssertEqual(days, 4, "\(event.id) must run exactly 4 days")
+        }
+        for (a, b) in zip(events, events.dropFirst()) {
+            let gap = utcCalendar.dateComponents([.day], from: a.endDate, to: b.startDate).day
+            XCTAssertEqual(gap, 3, "gap between \(a.id) and \(b.id) must be exactly 3 days")
+        }
+    }
+
+    /// The month 1/month 2 boundary isn't covered by either batch's own
+    /// test in isolation — this closes that gap rather than leaving it to
+    /// §3.5's full-calendar pass.
+    func testGapFromMonthOnesLastInstanceIsAlsoThreeDays() throws {
+        let lastOfMonth1 = try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == "playtime_rush_20260925" }))
+        let firstOfMonth2 = try weeklyEvent("rescue_relay_20261002")
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let gap = utcCalendar.dateComponents([.day], from: lastOfMonth1.endDate, to: firstOfMonth2.startDate).day
+        XCTAssertEqual(gap, 3)
+    }
+
+    func testNoTwoOfTheFiveOverlap() throws {
+        let events = try weeklyIDs.map { try weeklyEvent($0) }
+        for (a, b) in zip(events, events.dropFirst()) {
+            XCTAssertLessThanOrEqual(a.endDate, b.startDate, "\(a.id) and \(b.id) must not overlap")
+        }
+    }
+
+    /// The straddle itself: rescue_relay_20261002 runs under Season 1 at
+    /// its start and Season 2 at its end, per spec §2.1 -- proving the
+    /// event ID stays the same while its season partner changes mid-run,
+    /// never both seasons at once and never neither.
+    func testInstanceFiveStraddlesFromSeasonOneToSeasonTwo() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let seasonIDs = Set(["sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004",
+                              "sanctuary_circle_s3_20261103"])
+
+        let atStart = Set(scheduler.activeEvents(at: date("2026-10-02"))).intersection(seasonIDs)
+        XCTAssertEqual(atStart, ["sanctuary_circle_s1_20260904"],
+                       "at the straddling event's start, only Season 1 should be active")
+
+        // One hour before its endDate (2026-10-06), safely inside Season 2
+        // (which began 2026-10-04).
+        let nearEnd = date("2026-10-06").addingTimeInterval(-3600)
+        let atEnd = Set(scheduler.activeEvents(at: nearEnd)).intersection(seasonIDs)
+        XCTAssertEqual(atEnd, ["sanctuary_circle_s2_20261004"],
+                       "near the straddling event's end, only Season 2 should be active")
+    }
+
+    /// At the exact instant Season 1 ends and Season 2 begins (2026-10-04),
+    /// the straddling event is still active -- total simultaneously-active
+    /// count from the seasons+this batch must be exactly 2 (the straddler +
+    /// whichever season), never 3, confirming the transition is a clean
+    /// handoff rather than a moment of triple overlap.
+    func testAtTheSeasonBoundaryInstantOnlyTwoEventsAreActive() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let relevantIDs = Set(["sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004",
+                                "rescue_relay_20261002"])
+        let active = Set(scheduler.activeEvents(at: date("2026-10-04"))).intersection(relevantIDs)
+        XCTAssertEqual(active, ["sanctuary_circle_s2_20261004", "rescue_relay_20261002"])
+    }
+
+    /// Instances 6-8 don't straddle -- ordinary month-1-style containment
+    /// within Season 2 throughout.
+    func testInstancesSixThroughEightOverlapOnlySeasonTwoThroughoutTheirRun() throws {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let seasonIDs = Set(["sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004",
+                              "sanctuary_circle_s3_20261103"])
+        for id in ["playtime_rush_20261009", "rescue_relay_20261016", "playtime_rush_20261023"] {
+            let event = try weeklyEvent(id)
+            for sampleDate in [event.startDate, event.endDate.addingTimeInterval(-3600)] {
+                let activeSeasons = Set(scheduler.activeEvents(at: sampleDate)).intersection(seasonIDs)
+                XCTAssertEqual(activeSeasons, ["sanctuary_circle_s2_20261004"],
+                               "\(id) at \(sampleDate) must overlap exactly Season 2")
+            }
+        }
+    }
+
+    /// Instance 9 ends exactly as Season 2 ends (2026-11-03) -- contained
+    /// cleanly within Season 2, not a second straddle into Season 3.
+    func testInstanceNineEndsExactlyWithSeasonTwoNotStraddlingIntoSeasonThree() throws {
+        let event = try weeklyEvent("rescue_relay_20261030")
+        let season2 = try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == "sanctuary_circle_s2_20261004" }))
+        XCTAssertEqual(event.endDate, season2.endDate,
+                       "instance 9 should end at exactly the same instant Season 2 ends")
+
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let seasonIDs = Set(["sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004",
+                              "sanctuary_circle_s3_20261103"])
+        for sampleDate in [event.startDate, event.endDate.addingTimeInterval(-3600)] {
+            let activeSeasons = Set(scheduler.activeEvents(at: sampleDate)).intersection(seasonIDs)
+            XCTAssertEqual(activeSeasons, ["sanctuary_circle_s2_20261004"],
+                           "instance 9 at \(sampleDate) must overlap exactly Season 2, never Season 3")
+        }
+    }
+
+    func testEachHasAMatchingProgressTrackMatchingAdoptionDrivesTableVerbatim() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["adoption_drive_aug2026"])
+        for id in weeklyIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id])
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Adoption Drive's")
+        }
+    }
+}
