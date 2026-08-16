@@ -369,6 +369,64 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .cardPack, amount: 1,
                                                       payloadID: CardPackType.star4.rawValue)]),
         ],
+        // "Rescue Relay" / "Playtime Rush" (EventSystem.swift) — Phase 6c
+        // real calendar, weekly track month 1 (Spec_Phase6c_Calendar.md
+        // §2.2/§3.2). Verbatim reuse of Adoption Drive's 3-milestone table
+        // above, re-keyed per instance since progress is ID-keyed. Both
+        // flavors share this exact table — deliberate, not an oversight,
+        // see the spec's own §6 on why no new number was invented here.
+        "rescue_relay_20260904": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+        "playtime_rush_20260911": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+        "rescue_relay_20260918": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+        "playtime_rush_20260925": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
     ]
 }
 

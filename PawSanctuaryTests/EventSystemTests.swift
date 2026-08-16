@@ -336,3 +336,95 @@ final class SanctuaryCircleSeasonsTests: XCTestCase {
         }
     }
 }
+
+/// Spec_Phase6c_Calendar.md §3.2 — the weekly track's first 4 instances
+/// (month 1: Sep 2026). Static authored data, synthetic query dates, same
+/// deterministic approach as SanctuaryCircleSeasonsTests above.
+@MainActor
+final class WeeklyEventsMonth1Tests: XCTestCase {
+
+    private let weeklyIDs = [
+        "rescue_relay_20260904",
+        "playtime_rush_20260911",
+        "rescue_relay_20260918",
+        "playtime_rush_20260925",
+    ]
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private func weeklyEvent(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing weekly event \(id)")
+    }
+
+    func testAllFourExistInTheRegistry() throws {
+        for id in weeklyIDs {
+            _ = try weeklyEvent(id)
+        }
+    }
+
+    /// Each is a 4-day event with a 3-day gap to the next (7-day cadence),
+    /// per spec §2.1 — checked directly against dates, not the scheduler,
+    /// so a scheduler bug can't cancel out against the same bug in the
+    /// data it's reading.
+    func testEachIsFourDaysLongWithAThreeDayGapToTheNext() throws {
+        // UTC throughout, matching how ISO8601DateFormatter parsed these
+        // dates -- a local-timezone Calendar bit the Season span test in
+        // §3.1 via the 2026-11-01 DST transition; none of this batch's
+        // dates cross that boundary, but pinning to UTC here anyway rather
+        // than relying on "this particular set of dates happens to be
+        // safe."
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+
+        let events = try weeklyIDs.map { try weeklyEvent($0) }
+        for event in events {
+            let days = utcCalendar.dateComponents([.day], from: event.startDate, to: event.endDate).day
+            XCTAssertEqual(days, 4, "\(event.id) must run exactly 4 days")
+        }
+        for (a, b) in zip(events, events.dropFirst()) {
+            let gap = utcCalendar.dateComponents([.day], from: a.endDate, to: b.startDate).day
+            XCTAssertEqual(gap, 3, "gap between \(a.id) and \(b.id) must be exactly 3 days")
+        }
+    }
+
+    /// No two of the 4 are ever simultaneously active.
+    func testNoTwoOfTheFourOverlap() throws {
+        let events = try weeklyIDs.map { try weeklyEvent($0) }
+        for (a, b) in zip(events, events.dropFirst()) {
+            XCTAssertLessThanOrEqual(a.endDate, b.startDate,
+                                     "\(a.id) and \(b.id) must not overlap")
+        }
+    }
+
+    /// None of this batch's 4 instances straddle a season boundary (that's
+    /// month 2's instance 5, per spec §2.1/§3.3) — each should overlap
+    /// Season 1 and only Season 1 throughout its run.
+    func testEachOverlapsOnlySeasonOneThroughoutItsRun() throws {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let seasonIDs = Set(["sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004",
+                              "sanctuary_circle_s3_20261103"])
+        for id in weeklyIDs {
+            let event = try weeklyEvent(id)
+            // Sample the event's first and last active day, not just the
+            // start instant, since a boundary bug is more likely to show up
+            // at the edges than the middle.
+            for sampleDate in [event.startDate, event.endDate.addingTimeInterval(-3600)] {
+                let activeSeasons = Set(scheduler.activeEvents(at: sampleDate)).intersection(seasonIDs)
+                XCTAssertEqual(activeSeasons, ["sanctuary_circle_s1_20260904"],
+                               "\(id) at \(sampleDate) must overlap exactly Season 1, not zero or a different season")
+            }
+        }
+    }
+
+    func testEachHasAMatchingProgressTrackMatchingAdoptionDrivesTableVerbatim() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["adoption_drive_aug2026"])
+        for id in weeklyIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id])
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Adoption Drive's")
+        }
+    }
+}
