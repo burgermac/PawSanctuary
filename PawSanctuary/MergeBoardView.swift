@@ -568,9 +568,15 @@ struct MergeBoardView: View {
         switch route {
         case .shop:
             ShopView(storeManager: storeManager, viewModel: viewModel)
-        case .task(.event):
-            if let event = viewModel.activeEvents.first {
+        case .task(.event(let eventID)):
+            if let event = viewModel.activeEvents.first(where: { $0.id == eventID }) {
                 EventSheetView(viewModel: viewModel, event: event, storeManager: storeManager)
+            } else {
+                // The tapped event ended in the gap between the tap and the
+                // sheet presenting (narrow but real — the countdown can hit
+                // zero mid-transition). Dismiss rather than show a sheet for
+                // an event that's no longer active.
+                Color.clear.onAppear { activeRoute = nil }
             }
         case .task(let sheet):
             NavigationStack {
@@ -1482,7 +1488,7 @@ private enum SheetRoute: Identifiable, Equatable {
     var id: String {
         switch self {
         case .shop:                       return "shop"
-        case .task(let t):                return "task-\(t.rawValue)"
+        case .task(let t):                return "task-\(t.id)"
         case .kibbleRefill:               return "kibbleRefill"
         case .mergeProgression(let cid):  return "progression-\(cid)"
         case .bubblePop(let pos):         return "bubble-\(pos.row)-\(pos.col)"

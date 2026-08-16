@@ -1105,10 +1105,27 @@ struct LoyaltyClubPanelView: View {
 // MARK: - TASK STRIP
 // ============================================================
 
-/// Identifies which full-panel sheet the task strip opened.
-enum TaskSheet: String, Identifiable {
-    case adoptionOrders, dailyChallenges, quests, loyalty, invite, weeklyGoal, monthlyGoal, event
-    var id: String { rawValue }
+/// Identifies which full-panel sheet the task strip opened. `.event` carries
+/// the tapped card's event ID (Spec_Phase6c_ConcurrentEvents.md §3.4) — with
+/// more than one event potentially active at once, there's no longer one
+/// implicit "the" active event to fall back on.
+enum TaskSheet: Identifiable, Equatable {
+    case adoptionOrders, dailyChallenges, quests, loyalty, invite, weeklyGoal, monthlyGoal
+    case event(String)
+
+    var id: String {
+        switch self {
+        case .adoptionOrders:  return "adoptionOrders"
+        case .dailyChallenges: return "dailyChallenges"
+        case .quests:          return "quests"
+        case .loyalty:         return "loyalty"
+        case .invite:          return "invite"
+        case .weeklyGoal:      return "weeklyGoal"
+        case .monthlyGoal:     return "monthlyGoal"
+        case .event(let eventID): return "event-\(eventID)"
+        }
+    }
+
     var title: String {
         switch self {
         case .adoptionOrders:  return "Adoption Board"
@@ -1118,7 +1135,8 @@ enum TaskSheet: String, Identifiable {
         case .invite:          return "Invite Friends"
         case .weeklyGoal:      return "Weekly Goal"
         case .monthlyGoal:     return "Monthly Goal"
-        case .event:           return "Active Event"
+        case .event(let eventID):
+            return EventRegistry.allEvents.first { $0.id == eventID }?.name ?? "Active Event"
         }
     }
 }
@@ -1649,9 +1667,9 @@ struct TaskStripView: View {
                 LevelProgressTaskCard(viewModel: viewModel)
                 FreeChestTaskCard(viewModel: viewModel)
                 SpotlightTaskCard(viewModel: viewModel)
-                if let event = viewModel.activeEvents.first {
+                ForEach(viewModel.activeEvents) { event in
                     EventTaskCard(viewModel: viewModel, event: event)
-                        .onTapGesture { activeSheet = .event }
+                        .onTapGesture { activeSheet = .event(event.id) }
                 }
                 AdoptionOrdersTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .adoptionOrders }
