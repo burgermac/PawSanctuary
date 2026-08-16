@@ -152,3 +152,96 @@ final class EventRegistryActiveEventsTests: XCTestCase {
         XCTAssertTrue(EventRegistry.activeEvents.map(\.id).contains(currentID))
     }
 }
+
+/// Spec_Phase6c_ConcurrentEvents.md §5 acceptance: "Both events' order-token
+/// riders fire independently" and "ending one of the two overlapping events
+/// leaves the other's ... rider unaffected." Nothing exercised
+/// `OrderRewardRegistry` with more than one simultaneously-registered
+/// `EventTokenRiderProvider` before this — the mechanism (`flatMap` over
+/// every registered provider) was tested in isolation per-provider, never
+/// together, which is exactly the gap this task closes.
+@MainActor
+final class ConcurrentEventRiderRegistrationTests: XCTestCase {
+
+    /// Direct, deterministic proof (riderFrequency 1.0, matching the
+    /// existing single-provider convention in EventTokenRiderProviderTests)
+    /// that two simultaneously-registered providers both fire on the same
+    /// call — neither one starves the other by occupying a shared slot,
+    /// which is the exact bug this task fixed (previously only one
+    /// `activeEventRiderProvider` could ever be registered at a time).
+    func testOrderRewardRegistryFiresRidersForMultipleSimultaneouslyRegisteredEvents() {
+        let providerA = EventTokenRiderProvider(eventID: "test_event_a", tokensPerRider: 20, riderFrequency: 1.0)
+        let providerB = EventTokenRiderProvider(eventID: "test_event_b", tokensPerRider: 15, riderFrequency: 1.0)
+        OrderRewardRegistry.register(providerA)
+        OrderRewardRegistry.register(providerB)
+        defer {
+            OrderRewardRegistry.unregister(providerA)
+            OrderRewardRegistry.unregister(providerB)
+        }
+
+        let riders = OrderRewardRegistry.riders(playerLevel: 1)
+
+        XCTAssertTrue(riders.contains(OrderReward(kind: .eventToken, amount: 20, payloadID: "test_event_a")))
+        XCTAssertTrue(riders.contains(OrderReward(kind: .eventToken, amount: 15, payloadID: "test_event_b")))
+    }
+
+    /// Exercises the real, shipped `checkEventLifecycle()` — not a
+    /// reimplementation of its logic — against today's real calendar, which
+    /// genuinely has two overlapping events (`founders_circle_aug2026`,
+    /// `foster_weekend_aug2026`, Spec_Phase6c §4). `EventRegistry.activeEvents`
+    /// isn't injectable, so this guards on real overlap actually existing
+    /// right now rather than silently passing once Foster Weekend's window
+    /// (2026-08-14...18) closes -- if this guard fires, the fix is a fresh
+    /// overlapping test event, not a change to the assertion.
+    func testCheckEventLifecycleRegistersAnIndependentRiderForEachRealActiveEvent() {
+        let activeIDs = Set(EventRegistry.activeEvents.map(\.id))
+        guard activeIDs.count >= 2 else {
+            XCTFail("""
+                Needs >= 2 genuinely-overlapping real events to prove anything. \
+                Today's EventRegistry.activeEvents: \(activeIDs). Foster \
+                Weekend's window (2026-08-14...18) may have closed -- add a \
+                fresh overlapping EventDefinition to re-enable this test.
+                """)
+            return
+        }
+
+        let before = Set(OrderRewardRegistry.providers.map(ObjectIdentifier.init))
+        let vm = MergeBoardViewModel()
+        vm.checkEventLifecycle()
+        let newProviders = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
+        defer { newProviders.forEach { OrderRewardRegistry.unregister($0) } }
+
+        let registeredIDs = Set(newProviders.compactMap { ($0 as? EventTokenRiderProvider)?.eventID })
+        XCTAssertEqual(registeredIDs, activeIDs,
+                       "checkEventLifecycle must register exactly one independent rider per real active event")
+    }
+
+    /// The other half of "leaves the other unaffected": a no-op check (same
+    /// active events as last time) must not unregister-then-reregister a
+    /// still-active rider. Doesn't exercise a real event actually ending
+    /// (EventRegistry.activeEvents isn't injectable, and waiting for Foster
+    /// Weekend's real 2026-08-18 end date isn't practical here) but does
+    /// prove checkEventLifecycle's "leave unchanged ones alone" branch holds
+    /// against the real registry, using the real shipped method.
+    func testCheckEventLifecycleIsIdempotentWhenActiveEventsUnchanged() {
+        let activeIDs = EventRegistry.activeEvents.map(\.id)
+        guard !activeIDs.isEmpty else {
+            XCTFail("needs at least one real active event for this test to be meaningful")
+            return
+        }
+
+        let before = Set(OrderRewardRegistry.providers.map(ObjectIdentifier.init))
+        let vm = MergeBoardViewModel()
+        vm.checkEventLifecycle()
+        let afterFirst = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
+        let identitiesAfterFirst = Set(afterFirst.map(ObjectIdentifier.init))
+
+        vm.checkEventLifecycle()   // second call, nothing changed in EventRegistry.activeEvents
+        let afterSecond = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
+        let identitiesAfterSecond = Set(afterSecond.map(ObjectIdentifier.init))
+        defer { afterSecond.forEach { OrderRewardRegistry.unregister($0) } }
+
+        XCTAssertEqual(identitiesAfterFirst, identitiesAfterSecond,
+                       "a no-op check must not unregister and re-register the same still-active riders")
+    }
+}

@@ -86,6 +86,41 @@ final class EventSchedulerTests: XCTestCase {
         let scheduler = EventScheduler(events: [])
         XCTAssertNil(scheduler.contestedSlotWinner(at: day("2026-08-02"), playerLevel: 99))
     }
+
+    /// Spec_Phase6c_ConcurrentEvents.md §5 acceptance: "No event active ->
+    /// empty activeEvents, no cards, no crash." `EventRegistry.activeEvents`
+    /// isn't independently injectable (real wall clock against a hardcoded
+    /// list), so this exercises the actual primitive it's backed by —
+    /// filtering to zero overlapping events must return `[]`, not trap.
+    func testActiveEventsIsEmptyWhenNothingOverlapsTheQueriedDate() {
+        let events = [
+            makeEvent(id: "past",   start: "2026-01-01", end: "2026-01-02"),
+            makeEvent(id: "future", start: "2026-12-01", end: "2026-12-05"),
+        ]
+        let scheduler = EventScheduler(events: events)
+        XCTAssertEqual(scheduler.activeEvents(at: day("2026-08-02")), [])
+    }
+
+    /// Spec_Phase6c_ConcurrentEvents.md §5 acceptance: "Ending one of the two
+    /// overlapping events leaves the other's card, sheet, and rider
+    /// unaffected." This is the data-source half of that guarantee — the
+    /// active-ID set `checkEventLifecycle()` diffs against must correctly
+    /// drop the ended event while still reporting the other as active.
+    /// (`checkEventLifecycle()` itself isn't independently exercisable
+    /// across a real time skip without waiting for a real event to end —
+    /// see EventSystemTests.swift's ConcurrentEventRiderRegistrationTests
+    /// for the idempotent-no-op half of this guarantee, which is testable.)
+    func testEndingOneOverlappingEventLeavesTheOtherActive() {
+        let events = [
+            makeEvent(id: "weekly", start: "2026-08-14", end: "2026-08-18"),
+            makeEvent(id: "pass",   start: "2026-08-05", end: "2026-09-04"),
+        ]
+        let scheduler = EventScheduler(events: events)
+        XCTAssertEqual(Set(scheduler.activeEvents(at: day("2026-08-16"))), ["weekly", "pass"],
+                       "both genuinely active mid-overlap")
+        XCTAssertEqual(Set(scheduler.activeEvents(at: day("2026-08-18"))), ["pass"],
+                       "weekly's window closed -- pass must still be reported active, unaffected")
+    }
 }
 
 /// A bare-minimum, valid `GameState` — empty collections, zero counters — for
@@ -257,6 +292,37 @@ final class ProgressTrackTests: XCTestCase {
         track.capture(into: &captured)
         XCTAssertEqual(captured.progressTracks["t"]?.progress, 20)
         XCTAssertEqual(captured.progressTracks["t"]?.claimedFree, [0])
+    }
+
+    /// Spec_Phase6c_ConcurrentEvents.md §5 acceptance: "Save/load round-trips
+    /// both events' independent progressTracks entries correctly." Uses the
+    /// real production registry and the two real event IDs that genuinely
+    /// overlap right now (founders_circle_aug2026, foster_weekend_aug2026)
+    /// rather than synthetic stand-ins, since that's what this acceptance
+    /// item is specifically about — and round-trips through actual
+    /// Codable encode/decode, not just capture/restore in memory, to prove
+    /// GameState's persisted shape (already ID-keyed, no migration needed
+    /// per §3.5) actually carries two entries through a real save.
+    func testTwoConcurrentEventsProgressTracksRoundTripIndependently() throws {
+        var state = emptyGameState()
+
+        let track = ProgressTrack()
+        track.advance(trackID: "founders_circle_aug2026", by: 300)
+        track.advance(trackID: "foster_weekend_aug2026", by: 90)
+        _ = track.claim(trackID: "foster_weekend_aug2026", milestone: 0, paidLane: false)
+        track.capture(into: &state)
+
+        let data = try JSONEncoder().encode(state)
+        let decodedState = try JSONDecoder().decode(GameState.self, from: data)
+
+        let restored = ProgressTrack()
+        restored.restore(from: decodedState)
+
+        XCTAssertEqual(restored.progress(trackID: "founders_circle_aug2026"), 300)
+        XCTAssertEqual(restored.progress(trackID: "foster_weekend_aug2026"), 90)
+        XCTAssertTrue(restored.isClaimed(trackID: "foster_weekend_aug2026", milestone: 0, paidLane: false))
+        XCTAssertFalse(restored.isClaimed(trackID: "founders_circle_aug2026", milestone: 0, paidLane: false),
+                       "claiming Foster Weekend's milestone must not leak into Founders' Circle's independent state")
     }
 
     /// Regression for the OR-combined-ness of `claimable`: with the free lane
