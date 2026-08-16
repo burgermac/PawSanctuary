@@ -222,10 +222,14 @@ class MergeBoardViewModel {
 
     var activeEvents: [EventDefinition] { EventRegistry.activeEvents }
 
-    /// The rider provider currently registered for the live event, if any —
-    /// tracked so `checkEventLifecycle()` can unregister it by identity when
-    /// the event changes or ends. Not persisted; re-derived every launch.
-    private var activeEventRiderProvider: EventTokenRiderProvider?
+    /// Rider providers currently registered, one per active event ID —
+    /// tracked so `checkEventLifecycle()` can unregister each by identity
+    /// when its event ends or drops out of `activeEvents`. Not persisted;
+    /// re-derived every launch. Keyed by event ID rather than a single
+    /// optional so multiple concurrently-active events (Spec_Phase6c) each
+    /// keep earning tokens independently — before this, only one event's
+    /// rider could ever be registered at a time.
+    private var activeEventRiderProviders: [String: EventTokenRiderProvider] = [:]
 
     // Invite-a-friend
     var inviteProgress: InviteProgress = InviteProgress()
@@ -3434,22 +3438,28 @@ class MergeBoardViewModel {
         persist()
     }
 
-    /// Registers/unregisters the milestone track's order-rider provider as the
-    /// active event changes. Launch-only for now — an event starting mid-session
-    /// on a long-lived app instance won't be picked up until next launch
-    /// (Spec_Phase6b_MilestoneTrack.md §3.2, flagged as a known gap rather than
-    /// silently accepted).
+    /// Registers/unregisters each active event's order-rider provider,
+    /// diffed against `activeEvents` on every check — one provider per
+    /// concurrently-active event ID (Spec_Phase6c_ConcurrentEvents.md §3.3),
+    /// not just one overall. `OrderRewardRegistry` itself needed no change;
+    /// it already `flatMap`s every registered provider. Launch-only for now
+    /// — an event starting mid-session on a long-lived app instance won't be
+    /// picked up until next launch (Spec_Phase6b_MilestoneTrack.md §3.2,
+    /// flagged as a known gap rather than silently accepted; not made worse
+    /// by this change).
     func checkEventLifecycle() {
-        let currentID = EventRegistry.currentEvent?.id
-        guard activeEventRiderProvider?.eventID != currentID else { return }
-        if let old = activeEventRiderProvider {
-            OrderRewardRegistry.unregister(old)
-            activeEventRiderProvider = nil
+        let currentIDs = Set(EventRegistry.activeEvents.map(\.id))
+        let trackedIDs = Set(activeEventRiderProviders.keys)
+
+        for droppedID in trackedIDs.subtracting(currentIDs) {
+            if let provider = activeEventRiderProviders.removeValue(forKey: droppedID) {
+                OrderRewardRegistry.unregister(provider)
+            }
         }
-        if let currentID {
-            let provider = EventTokenRiderProvider(eventID: currentID)
+        for newID in currentIDs.subtracting(trackedIDs) {
+            let provider = EventTokenRiderProvider(eventID: newID)
             OrderRewardRegistry.register(provider)
-            activeEventRiderProvider = provider
+            activeEventRiderProviders[newID] = provider
         }
     }
 
