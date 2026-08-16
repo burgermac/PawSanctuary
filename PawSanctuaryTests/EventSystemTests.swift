@@ -138,11 +138,17 @@ final class EventRegistryActiveEventsTests: XCTestCase {
         }
     }
 
-    /// Today's real event list never has two events overlap, so the new
-    /// list-returning property and the old single-winner property must
-    /// always agree while that holds — a regression guard for this task's
-    /// "no behavior change yet" claim, not a test of the production calendar.
-    func testActiveEventsAgreesWithCurrentEventWhileNoneOverlap() {
-        XCTAssertEqual(EventRegistry.activeEvents.first?.id, EventRegistry.currentEvent?.id)
+    /// Superseded by Spec_Phase6c_ConcurrentEvents.md §4: the real registry
+    /// now has genuine overlap (`foster_weekend_aug2026` inside Founders'
+    /// Circle's window), so `activeEvents.first` and `currentEvent` are no
+    /// longer guaranteed to agree — sort order and array-declaration order
+    /// can differ once more than one event is active. What must still hold
+    /// unconditionally, independent of which real events happen to be active
+    /// at test-run time: `currentEvent` (`allEvents.first { isActive }`) can
+    /// never point at an event `activeEvents` (every active event) doesn't
+    /// also contain.
+    func testCurrentEventIsAlwaysContainedInActiveEventsWhenNonNil() {
+        guard let currentID = EventRegistry.currentEvent?.id else { return }
+        XCTAssertTrue(EventRegistry.activeEvents.map(\.id).contains(currentID))
     }
 }

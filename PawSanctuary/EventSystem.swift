@@ -156,6 +156,34 @@ enum EventRegistry {
                 Color(red: 0.96, green: 0.85, blue: 0.60),
             ]
         ),
+        // Phase 6c screen-verification content — the first EventDefinition
+        // whose sole purpose is proving two *real* events can be
+        // simultaneously active (Spec_Phase6c_ConcurrentEvents.md §4), not a
+        // new event type. Scheduled entirely inside Founders' Circle's
+        // still-open window so the two genuinely overlap rather than sit
+        // adjacent, matching D5's "short weekly event running concurrently
+        // with the continuous Pass" cadence. Dates chosen to bracket the
+        // date this task was implemented (16 Aug 2026) rather than the
+        // spec's original 20-24 Aug proposal, so the overlap is verifiable
+        // on screen against the real registry immediately, per the spec's
+        // own note to re-verify dates at implementation time. Free-lane-only
+        // milestone table lives in ProgressTrackRegistry.tracks, same
+        // posture as Adoption Drive above — `milestones: []` here is
+        // correct and intentional. NOT the real 6c rolling calendar.
+        EventDefinition(
+            id: "foster_weekend_aug2026",
+            name: "Foster Weekend",
+            tagline: "Take in extra fosters this weekend to earn bonus rewards!",
+            startDate: date("2026-08-14"),
+            endDate:   date("2026-08-18"),
+            milestones: [],
+            icon: "gift.fill",
+            accentColor: Color(red: 0.45, green: 0.30, blue: 0.65),
+            gradientColors: [
+                Color(red: 0.93, green: 0.90, blue: 0.98),
+                Color(red: 0.82, green: 0.74, blue: 0.93),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
@@ -166,13 +194,15 @@ enum EventRegistry {
     /// specs/Spec_Phase6c_ConcurrentEvents.md §3.1. Routes through
     /// `EventScheduler` (Phase 6a) rather than duplicating its `isActive`
     /// filter inline; this is that scheduler's first real caller. Sorted by
-    /// `priority` desc, then `startDate` asc, for stable display order once
-    /// a caller renders more than one at a time (§3.4, not yet wired — every
-    /// consumer today still reads `currentEvent` above; migrating them off
-    /// it is §3.2/§3.3, separate tasks). No behavior change to `currentEvent`
-    /// itself: today's three events never overlap, so `activeEvents.first`
-    /// and `currentEvent` always agree — verified in
-    /// `EventSystemTests.testActiveEventsAgreesWithCurrentEventWhileNoneOverlap`.
+    /// `priority` desc, then `startDate` asc, for stable display order when
+    /// rendering more than one at a time (§3.4 — every UI/ViewModel consumer
+    /// now reads this instead of `currentEvent` below). `currentEvent`
+    /// itself is untouched and can now genuinely diverge from
+    /// `activeEvents.first` once real overlap exists (§4's
+    /// `foster_weekend_aug2026`, inside Founders' Circle's window) — the two
+    /// are no longer guaranteed to agree, only that `currentEvent`, when
+    /// non-nil, is always contained somewhere in `activeEvents` (see
+    /// `EventSystemTests.testCurrentEventIsAlwaysContainedInActiveEventsWhenNonNil`).
     @MainActor
     static var activeEvents: [EventDefinition] {
         let scheduler = EventScheduler()

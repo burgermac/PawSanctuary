@@ -190,6 +190,24 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .cardPack, amount: 1,
                                                       payloadID: CardPackType.star4.rawValue)]),
         ],
+        // "Foster Weekend" (EventSystem.swift) — Phase 6c §4 screen-verification
+        // content proving two real events can run concurrently. Free-lane-only,
+        // same posture as Adoption Drive above: a short event has no business
+        // offering a paid Pass-style unlock of its own. Thresholds scaled down
+        // from Adoption Drive's 60/140/220 to fit the shorter 4-day window.
+        "foster_weekend_aug2026": [
+            TrackMilestone(index: 0, threshold: 40,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 30)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 90,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 45),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 150,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 70),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: []),
+        ],
     ]
 }
 
