@@ -569,7 +569,7 @@ struct MergeBoardView: View {
         case .shop:
             ShopView(storeManager: storeManager, viewModel: viewModel)
         case .task(.event):
-            if let event = viewModel.activeEvent {
+            if let event = viewModel.activeEvents.first {
                 EventSheetView(viewModel: viewModel, event: event, storeManager: storeManager)
             }
         case .task(let sheet):

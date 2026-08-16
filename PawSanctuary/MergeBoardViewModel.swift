@@ -201,13 +201,13 @@ class MergeBoardViewModel {
     /// The event an Event Pass purchase was started for, captured at the
     /// moment the buy button was tapped — not persisted, lives only for the
     /// duration of one purchase flow. `applyPurchase` used to read
-    /// `activeEvent?.id` only after the async StoreKit purchase resolved,
+    /// `activeEvents.first?.id` only after the async StoreKit purchase resolved,
     /// which can be arbitrarily later (the purchase-sheet confirmation is a
     /// real, unbounded wait): if the active event's window closed in that
     /// gap, the transaction still finalized (`StoreManager.grantIfNew` calls
     /// `tx.finish()` unconditionally) but the unlock was silently dropped —
     /// charged, nothing granted. `applyPurchase` now prefers this captured
-    /// value and falls back to `activeEvent?.id` only for a grant that
+    /// value and falls back to `activeEvents.first?.id` only for a grant that
     /// arrives with no matching button tap in this session (e.g. a
     /// transaction StoreKit redelivers via `listenForTransactions()` after a
     /// relaunch) — there's no better answer available in that case either.
@@ -220,7 +220,7 @@ class MergeBoardViewModel {
     /// even heavy receiving, far more than any real CloudKit confirmation delay.
     private let maxClaimedTradeIDs = 200
 
-    var activeEvent: EventDefinition? { EventRegistry.currentEvent }
+    var activeEvents: [EventDefinition] { EventRegistry.activeEvents }
 
     /// The rider provider currently registered for the live event, if any —
     /// tracked so `checkEventLifecycle()` can unregister it by identity when
@@ -3423,7 +3423,7 @@ class MergeBoardViewModel {
     }
 
     func claimEventMilestone(tier: Int) {
-        guard let event = activeEvent,
+        guard let event = EventRegistry.currentEvent,
               let milestone = event.milestones.first(where: { $0.id == tier }),
               eventProgress.canClaim(milestone) else { return }
         eventProgress.claimedMilestones.append(tier)
@@ -3614,11 +3614,11 @@ class MergeBoardViewModel {
             // Prefer the event captured when the purchase was *started*, not
             // whichever event happens to be active now that it's resolved —
             // see pendingEventPassEventID's doc comment for why that gap is
-            // real. Falls back to activeEvent?.id for a grant with no
+            // real. Falls back to activeEvents.first?.id for a grant with no
             // matching button tap this session. No active event either way
             // -> safe no-op; the storefront must never offer this purchase
             // out of context (§3.3).
-            if let eventID = pendingEventPassEventID ?? activeEvent?.id {
+            if let eventID = pendingEventPassEventID ?? activeEvents.first?.id {
                 passUnlockedEventIDs.insert(eventID)
             }
             pendingEventPassEventID = nil

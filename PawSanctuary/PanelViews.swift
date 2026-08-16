@@ -1649,7 +1649,7 @@ struct TaskStripView: View {
                 LevelProgressTaskCard(viewModel: viewModel)
                 FreeChestTaskCard(viewModel: viewModel)
                 SpotlightTaskCard(viewModel: viewModel)
-                if let event = viewModel.activeEvent {
+                if let event = viewModel.activeEvents.first {
                     EventTaskCard(viewModel: viewModel, event: event)
                         .onTapGesture { activeSheet = .event }
                 }
