@@ -8,8 +8,8 @@
 //  architecture. See specs/Spec_Phase6b_ParallelBoard.md §2.
 //
 //  Built incrementally: §3.3 added the fresh-board setup and the generator
-//  mechanic; this task (§3.4) adds merge resolution. Event lifecycle (§3.7)
-//  lands in a later task.
+//  mechanic, §3.4 added merge resolution. This task (§3.5) adds the
+//  progress/reward hookup. Event lifecycle (§3.7) lands in a later task.
 //
 
 import Foundation
@@ -23,15 +23,25 @@ final class ParallelBoardCoordinator {
     let boardState = BoardStateManager()
     var energy = ParallelBoardEnergy()
 
+    /// The storage/claim half of progress is a genuine drop-in reuse of the
+    /// existing `ProgressTrack` primitive (§2/§3.5) — same type, same
+    /// `ProgressTrackRegistry`-backed mechanism Milestone track and Pass
+    /// already share, keyed here by `eventID`. Injectable so a real event
+    /// can eventually share `MergeBoardViewModel`'s own persisted instance
+    /// (§3.7) instead of this standalone default, the same pattern
+    /// `ProgressTrack`'s own `registry` parameter already uses.
+    let progressTrack: ProgressTrack
+
     /// Fixed for the event's lifetime. Per §3.3: the generator isn't a
     /// distinct cell type — it's an ordinary cell at a known position,
     /// tracked here, not by anything in the cell's own data. The UI queries
     /// this to render generator chrome on that one cell.
     let generatorPosition = GridPosition(row: 0, col: 0)
 
-    init(eventID: String, chainID: ChainID) {
+    init(eventID: String, chainID: ChainID, progressTrack: ProgressTrack = ProgressTrack()) {
         self.eventID = eventID
         self.chainID = chainID
+        self.progressTrack = progressTrack
         boardState.board = (0..<parallelBoardRows).map { row in
             (0..<parallelBoardCols).map { col in
                 BoardCell(position: GridPosition(row: row, col: col), item: nil, producer: nil, isUnlocked: true)
@@ -85,7 +95,12 @@ final class ParallelBoardCoordinator {
             boardState.clearItem(at: from)
             boardState.recalc()
             if outcome.isTopTierCompletion {
-                // award the event's ProgressTrack — see §3.5
+                // Merge-completion-triggered, not order-fulfillment-triggered
+                // (§3.5) — EventTokenRiderProvider's rider/frequency layer
+                // doesn't apply here; the parallel board's own merges are
+                // already the throttle, so a fixed amount per completion is
+                // the whole mechanism.
+                progressTrack.advance(trackID: eventID, by: parallelBoardTokensPerCompletion)
             }
         } else {
             boardState.setItem(srcItem, at: to)

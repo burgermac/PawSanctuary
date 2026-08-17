@@ -1223,6 +1223,11 @@ let parallelBoardRows          = 5
 let parallelBoardCols          = 5   // 25 cells, fully unlocked from the start — no row-progression
 let parallelBoardGeneratorCost = 2   // energy per tap — 15 generations per full energy bar
 
+// ── Parallel Board progress (Phase 6b, Task 3.5) ─────────────────
+// No economy model run for this one either — the doc's §4 covers the
+// board/energy numbers but not this; a genuinely new first-cut estimate.
+let parallelBoardTokensPerCompletion = 10   // per top-tier item, no rider/chance layer needed
+
 // ── Board dimensions (fixed — never changes at runtime) ──────
 let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 6 rows start locked
 /// `deepestUnlockedTier` (PlayerProgression) required to unlock each board row

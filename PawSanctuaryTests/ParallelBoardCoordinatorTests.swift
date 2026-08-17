@@ -151,6 +151,69 @@ final class ParallelBoardCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.boardState.item(at: to)?.tier, top)
     }
 
+    // MARK: - §3.5 progress / reward hookup
+
+    func testAttemptMergeToCompletionAdvancesTheProgressTrackByTokensPerCompletion() {
+        let coordinator = makeCoordinator(chainID: catChain)
+        let from = GridPosition(row: 1, col: 1)
+        let to = GridPosition(row: 1, col: 2)
+        let top = animalChainTopTier
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: top - 1), at: from)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: top - 1), at: to)
+        coordinator.boardState.recalc()
+
+        coordinator.attemptMerge(from: from, to: to)
+
+        XCTAssertEqual(coordinator.progressTrack.progress(trackID: coordinator.eventID), parallelBoardTokensPerCompletion)
+    }
+
+    func testAttemptMergeNotReachingTopTierDoesNotAdvanceTheProgressTrack() {
+        let coordinator = makeCoordinator(chainID: catChain)
+        let from = GridPosition(row: 1, col: 1)
+        let to = GridPosition(row: 1, col: 2)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: 2), at: from)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: 2), at: to)
+        coordinator.boardState.recalc()
+
+        coordinator.attemptMerge(from: from, to: to)
+
+        XCTAssertEqual(coordinator.progressTrack.progress(trackID: coordinator.eventID), 0)
+    }
+
+    func testTwoSeparateTopTierCompletionsAccumulateProgress() {
+        let coordinator = makeCoordinator(chainID: catChain)
+        let top = animalChainTopTier
+        let firstFrom = GridPosition(row: 1, col: 1)
+        let firstTo = GridPosition(row: 1, col: 2)
+        let secondFrom = GridPosition(row: 2, col: 1)
+        let secondTo = GridPosition(row: 2, col: 2)
+        for pos in [firstFrom, firstTo, secondFrom, secondTo] {
+            coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: top - 1), at: pos)
+        }
+        coordinator.boardState.recalc()
+
+        coordinator.attemptMerge(from: firstFrom, to: firstTo)
+        coordinator.attemptMerge(from: secondFrom, to: secondTo)
+
+        XCTAssertEqual(coordinator.progressTrack.progress(trackID: coordinator.eventID), parallelBoardTokensPerCompletion * 2)
+    }
+
+    func testInjectedProgressTrackIsSharedNotCopied() {
+        let sharedTrack = ProgressTrack()
+        let coordinator = ParallelBoardCoordinator(eventID: "shared-e1", chainID: catChain, progressTrack: sharedTrack)
+        let from = GridPosition(row: 1, col: 1)
+        let to = GridPosition(row: 1, col: 2)
+        let top = animalChainTopTier
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: top - 1), at: from)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: top - 1), at: to)
+        coordinator.boardState.recalc()
+
+        coordinator.attemptMerge(from: from, to: to)
+
+        XCTAssertEqual(sharedTrack.progress(trackID: "shared-e1"), parallelBoardTokensPerCompletion,
+                        "the coordinator must advance the injected instance itself, not a private copy")
+    }
+
     func testAttemptMergeFromAnEmptySourceIsANoOp() {
         let coordinator = makeCoordinator(chainID: catChain)
         let from = GridPosition(row: 1, col: 1)
