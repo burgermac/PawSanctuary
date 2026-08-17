@@ -208,18 +208,89 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .dogTags, amount: 4)],
                            paidRewards: []),
         ],
-        // "Second Chances" (ParallelBoardEvents.swift) — Phase 6b, Task 3.7/§5
-        // screen-verification content for the Parallel Board event type.
-        // Reuses Founders' Circle's own linear-step shape (§4: "reuses §4's
-        // Founders' Circle shape as a template") — free-lane-only, 8
-        // milestones instead of 10, steps of 20 rather than 60, scaled down
-        // for a 3-day board fed by merge-completion tokens
+        // "Second Chances" seasons 1-3 (ParallelBoardEvents.swift) — Phase 6b
+        // Task 3.7/§5 screen-verification content, now also Parallel
+        // Board's own layer of the real Phase 6c calendar (design
+        // authority, 17 Aug 2026: monthly cadence, one per Sanctuary Circle
+        // season). Reuses Founders' Circle's own linear-step shape (§4:
+        // "reuses §4's Founders' Circle shape as a template") — free-lane-
+        // only, 8 milestones instead of 10, steps of 20 rather than 60,
+        // scaled down for a 3-day board fed by merge-completion tokens
         // (parallelBoardTokensPerCompletion = 10, §3.5) rather than an
         // order-fulfillment rider — 16 top-tier completions clears the whole
         // table, comfortably achievable in 3 days without an economy model
         // run for it (same first-cut posture as every other number in this
-        // event type — see Spec_Phase6b_ParallelBoard.md §4).
+        // event type — see Spec_Phase6b_ParallelBoard.md §4). Verbatim
+        // reuse across all 3 seasons, re-keyed per event ID — same
+        // discipline Sanctuary Circle's own re-keying below already
+        // established, for the same reason: progress is ID-keyed, so a
+        // shared ID would open a later season already-maxed from an
+        // earlier one's leftover progress.
         "second_chances_20260911": [
+            TrackMilestone(index: 0, threshold: 20,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 30)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 40,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 35)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 40),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 3, threshold: 80,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 45),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 4, threshold: 100,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 5, threshold: 120,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 55),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 6, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 60),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: []),
+            TrackMilestone(index: 7, threshold: 160,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 80),
+                                         OrderReward(kind: .dogTags, amount: 6)],
+                           paidRewards: []),
+        ],
+        "second_chances_20261011": [
+            TrackMilestone(index: 0, threshold: 20,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 30)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 40,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 35)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 40),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 3, threshold: 80,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 45),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 4, threshold: 100,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 5, threshold: 120,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 55),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 6, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 60),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: []),
+            TrackMilestone(index: 7, threshold: 160,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 80),
+                                         OrderReward(kind: .dogTags, amount: 6)],
+                           paidRewards: []),
+        ],
+        "second_chances_20261110": [
             TrackMilestone(index: 0, threshold: 20,
                            freeRewards: [OrderReward(kind: .kibble, amount: 30)],
                            paidRewards: []),

@@ -133,3 +133,83 @@ final class ParallelBoardSecondChancesEventTests: XCTestCase {
         XCTAssertEqual(topThreshold / parallelBoardTokensPerCompletion, 16)
     }
 }
+
+// MARK: - Calendar layer: one "Second Chances" instance per season
+
+/// Coverage for extending `Spec_Phase6c_Calendar.md`'s 90-day calendar with
+/// Parallel Board content — design authority, 17 Aug 2026: monthly cadence,
+/// one instance per Sanctuary Circle season, reusing "Second Chances"
+/// verbatim across all three (name, chain, progress-track shape), matching
+/// the same "reward-curve reuse, not new numbers" discipline the weekly
+/// track and Sanctuary Circle itself already established.
+final class ParallelBoardCalendarLayerTests: XCTestCase {
+
+    private let seasonalIDs = [
+        "second_chances_20260911",
+        "second_chances_20261011",
+        "second_chances_20261110",
+    ]
+
+    private let pairedSeasonIDs = [
+        "second_chances_20260911": "sanctuary_circle_s1_20260904",
+        "second_chances_20261011": "sanctuary_circle_s2_20261004",
+        "second_chances_20261110": "sanctuary_circle_s3_20261103",
+    ]
+
+    private func instance(_ id: String) throws -> ParallelBoardEventDefinition {
+        try XCTUnwrap(ParallelBoardEventRegistry.allEvents.first(where: { $0.id == id }), "missing instance \(id)")
+    }
+
+    func testAllThreeSeasonalInstancesExistInTheRegistry() throws {
+        for id in seasonalIDs {
+            _ = try instance(id)
+        }
+        XCTAssertEqual(ParallelBoardEventRegistry.allEvents.count, 3, "no extra or missing instances")
+    }
+
+    func testEachRunsExactlyThreeDays() throws {
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        for id in seasonalIDs {
+            let event = try instance(id)
+            let days = utcCalendar.dateComponents([.day], from: event.startDate, to: event.endDate).day
+            XCTAssertEqual(days, 3, "\(id) must run exactly 3 days")
+        }
+    }
+
+    func testEachFallsEntirelyWithinItsPairedSeason() throws {
+        for (eventID, seasonID) in pairedSeasonIDs {
+            let event = try instance(eventID)
+            let season = try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == seasonID }))
+            XCTAssertGreaterThanOrEqual(event.startDate, season.startDate, "\(eventID) starts before \(seasonID)")
+            XCTAssertLessThanOrEqual(event.endDate, season.endDate, "\(eventID) ends after \(seasonID)")
+        }
+    }
+
+    func testNoTwoSeasonalInstancesEverOverlap() throws {
+        let events = try seasonalIDs.map { try instance($0) }.sorted { $0.startDate < $1.startDate }
+        for (a, b) in zip(events, events.dropFirst()) {
+            XCTAssertLessThanOrEqual(a.endDate, b.startDate, "\(a.id) and \(b.id) must not overlap")
+        }
+    }
+
+    func testAllThreeShareTheSameNameAndChain() throws {
+        for id in seasonalIDs {
+            let event = try instance(id)
+            XCTAssertEqual(event.name, "Second Chances")
+            XCTAssertEqual(event.chainID, ContentRegistry.parallelBoardSecondChancesChainID)
+        }
+    }
+
+    func testAllThreeHaveAMatchingProgressTrackWithTheIdenticalShape() throws {
+        for id in seasonalIDs {
+            let milestones = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing a progress track")
+            XCTAssertEqual(milestones.count, 8)
+            for milestone in milestones {
+                XCTAssertTrue(milestone.paidRewards.isEmpty, "free-lane-only, per §5, reused verbatim across seasons")
+            }
+            let thresholds = milestones.sorted(by: { $0.index < $1.index }).map(\.threshold)
+            XCTAssertEqual(thresholds, [20, 40, 60, 80, 100, 120, 140, 160], "\(id)'s table must match the others verbatim")
+        }
+    }
+}
