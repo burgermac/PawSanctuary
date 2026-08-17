@@ -131,6 +131,22 @@ class MergeBoardViewModel {
     let progressTrack = ProgressTrack()
     let boardState    = BoardStateManager()
 
+    /// The active Parallel Board event's coordinator, or `nil` when none is
+    /// running (Phase 6b, Task 3.7). Unlike the `let` sub-coordinators above,
+    /// this one is created/torn down by `checkEventLifecycle()` as
+    /// `ParallelBoardEventRegistry.activeEvent` changes — it shares this
+    /// view model's own `progressTrack` (a genuine drop-in reuse, §3.5), so
+    /// event tokens persist through the normal `ProgressTrack` mechanism
+    /// even though the coordinator instance itself does not survive a
+    /// relaunch — see `parallelBoardState` in `GameStore.swift` for how its
+    /// board/energy are separately persisted and restored.
+    var activeParallelBoardEvent: ParallelBoardCoordinator?
+
+    /// Staged by `apply(_:)` from a loaded save's `parallelBoardState`,
+    /// consumed and cleared by `checkEventLifecycle()` on the same launch.
+    /// Not kept in sync afterward — a one-shot restore seed, not live state.
+    @ObservationIgnored private var pendingParallelBoardRestore: ParallelBoardSaveState?
+
     // MARK: Board state
 
     var rows = boardRows   // always 9 — fixed board size
@@ -941,6 +957,7 @@ class MergeBoardViewModel {
     @MainActor
     private func timerTick() {
         kibbleEngine.tick(bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
+        activeParallelBoardEvent?.energy.tick()
         // Equines Sprint: second kibble tick and countdown.
         if equineSprintRemaining > 0 {
             kibbleEngine.tick(bonusPerRegen: cachedActiveBonuses.kibblePerRegen)
@@ -1098,6 +1115,7 @@ class MergeBoardViewModel {
         s.claimedTradeIDs           = claimedTradeIDs
         s.piggyBankCoins            = piggyBankCoins
         s.freeChestReadyAt          = freeChestReadyAt
+        s.parallelBoardState        = activeParallelBoardEvent?.makeSaveState()
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -1171,6 +1189,7 @@ class MergeBoardViewModel {
         claimedTradeIDs           = s.claimedTradeIDs
         piggyBankCoins            = s.piggyBankCoins
         freeChestReadyAt          = s.freeChestReadyAt
+        pendingParallelBoardRestore = s.parallelBoardState
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -3461,6 +3480,24 @@ class MergeBoardViewModel {
             OrderRewardRegistry.register(provider)
             activeEventRiderProviders[newID] = provider
         }
+
+        // Parallel Board (Phase 6b, Task 3.7) — entirely separate from the
+        // milestone-lane bookkeeping above, per §0.5's own registry. Same
+        // launch-only posture as the rider providers: a new coordinator is
+        // only created/torn down here, not on a mid-session poll.
+        if let event = ParallelBoardEventRegistry.activeEvent {
+            if activeParallelBoardEvent?.eventID != event.id {
+                let coordinator = ParallelBoardCoordinator(
+                    eventID: event.id, chainID: event.chainID, progressTrack: progressTrack)
+                if let saved = pendingParallelBoardRestore, saved.eventID == event.id {
+                    coordinator.restore(from: saved)
+                }
+                activeParallelBoardEvent = coordinator
+            }
+        } else {
+            activeParallelBoardEvent = nil
+        }
+        pendingParallelBoardRestore = nil
     }
 
     /// Claims a track-milestone reward, free or paid lane (Phase 6b, Pass —

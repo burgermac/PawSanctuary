@@ -251,4 +251,52 @@ final class ParallelBoardCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.boardState.item(at: from)?.tier, 2, "a locked destination must reject the attempt entirely")
         XCTAssertNil(coordinator.boardState.item(at: to))
     }
+
+    // MARK: - §3.7 persistence
+
+    func testMakeSaveStateCapturesBoardAndEnergy() {
+        let coordinator = ParallelBoardCoordinator(eventID: "e1", chainID: catChain)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: 3), at: GridPosition(row: 2, col: 2))
+        coordinator.boardState.recalc()
+        coordinator.energy.spend(7)
+
+        let saved = coordinator.makeSaveState()
+
+        XCTAssertEqual(saved.eventID, "e1")
+        XCTAssertEqual(saved.energyBalance, parallelBoardEnergyCap - 7)
+        XCTAssertEqual(saved.energySecondsUntilNext, coordinator.energy.secondsUntilNext)
+        XCTAssertEqual(saved.board[2][2].item?.chainID, catChain)
+        XCTAssertEqual(saved.board[2][2].item?.tier, 3)
+    }
+
+    func testRestoreAppliesBoardAndEnergyFromASaveState() {
+        let coordinator = ParallelBoardCoordinator(eventID: "e1", chainID: catChain)
+        var board = coordinator.boardState.board
+        board[3][3].item = BoardItem(chainID: catChain, tier: 5)
+        let saved = ParallelBoardSaveState(eventID: "e1", board: board, energyBalance: 11, energySecondsUntilNext: 44)
+
+        coordinator.restore(from: saved)
+
+        XCTAssertEqual(coordinator.energy.balance, 11)
+        XCTAssertEqual(coordinator.energy.secondsUntilNext, 44)
+        XCTAssertEqual(coordinator.boardState.item(at: GridPosition(row: 3, col: 3))?.chainID, catChain)
+        XCTAssertEqual(coordinator.boardState.item(at: GridPosition(row: 3, col: 3))?.tier, 5)
+        XCTAssertEqual(coordinator.boardState.emptyUnlockedCells.count, parallelBoardRows * parallelBoardCols - 1,
+                       "recalc() must run after restoring so emptyUnlockedCells reflects the restored board")
+    }
+
+    func testMakeSaveStateThenRestoreRoundTrips() {
+        let original = ParallelBoardCoordinator(eventID: "e1", chainID: catChain)
+        original.boardState.setItem(BoardItem(chainID: catChain, tier: 1), at: GridPosition(row: 1, col: 4))
+        original.boardState.recalc()
+        original.energy.spend(3)
+
+        let saved = original.makeSaveState()
+        let restored = ParallelBoardCoordinator(eventID: "e1", chainID: catChain)
+        restored.restore(from: saved)
+
+        XCTAssertEqual(restored.energy.balance, original.energy.balance)
+        XCTAssertEqual(restored.boardState.item(at: GridPosition(row: 1, col: 4))?.chainID,
+                       original.boardState.item(at: GridPosition(row: 1, col: 4))?.chainID)
+    }
 }

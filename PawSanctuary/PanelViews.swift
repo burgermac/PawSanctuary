@@ -1364,6 +1364,50 @@ struct EventTaskCard: View {
     }
 }
 
+// MARK: Parallel Board card (Phase 6b, Task 3.7)
+
+/// Styled like `EventTaskCard` above but a distinct type, not a reuse —
+/// `EventTaskCard` is bound to `EventDefinition`, which a parallel-board
+/// event never appears in (§0.5's separate-registry decision). Tapping
+/// opens `ParallelBoardView` full-screen, not a sheet — see
+/// `MergeBoardView`'s `.fullScreenCover`, not `TaskSheet`.
+struct ParallelBoardTaskCard: View {
+    let event: ParallelBoardEventDefinition
+    let coordinator: ParallelBoardCoordinator
+    var body: some View {
+        let maxTokens = (ProgressTrackRegistry.tracks[event.id]?.last?.threshold) ?? 1
+        let earned = coordinator.progressTrack.progress(trackID: event.id)
+        let fraction = Double(earned) / Double(max(1, maxTokens))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: event.icon).font(.system(size: 11))
+                    .foregroundColor(Color(red: 0.0, green: 0.35, blue: 0.65))
+                Text("Event").font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(red: 0.0, green: 0.35, blue: 0.65))
+                Spacer()
+                Text(event.timerLabel)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color(red: 0.05, green: 0.30, blue: 0.55))
+                    .padding(.horizontal, 4).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(red: 0.80, green: 0.90, blue: 1.0)))
+            }
+            Spacer(minLength: 0)
+            Text(event.name)
+                .font(.system(size: 10))
+                .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                .lineLimit(2)
+            TaskProgressBar(fraction: fraction, color: Color.blue.opacity(0.7))
+            Text("\(earned)/\(maxTokens) tokens")
+                .font(.system(size: 9)).foregroundColor(.secondary)
+        }
+        .padding(10)
+        .frame(width: taskCardWidth, height: taskCardHeight)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 0.87, green: 0.94, blue: 1.0)))
+    }
+}
+
 // MARK: Adoption orders card
 
 struct AdoptionOrdersTaskCard: View {
@@ -1653,6 +1697,9 @@ struct InviteTaskCard: View {
 struct TaskStripView: View {
     var viewModel: MergeBoardViewModel
     @Binding var activeSheet: TaskSheet?
+    /// Separate from `activeSheet` — Parallel Board presents full-screen,
+    /// not as a sheet (Phase 6b, Task 3.7, spec's own §3.6 framing).
+    @Binding var showParallelBoard: Bool
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -1670,6 +1717,11 @@ struct TaskStripView: View {
                 ForEach(viewModel.activeEvents) { event in
                     EventTaskCard(viewModel: viewModel, event: event)
                         .onTapGesture { activeSheet = .event(event.id) }
+                }
+                if let coordinator = viewModel.activeParallelBoardEvent,
+                   let event = ParallelBoardEventRegistry.activeEvent, event.id == coordinator.eventID {
+                    ParallelBoardTaskCard(event: event, coordinator: coordinator)
+                        .onTapGesture { showParallelBoard = true }
                 }
                 AdoptionOrdersTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .adoptionOrders }

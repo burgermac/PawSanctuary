@@ -8,12 +8,28 @@
 //  architecture. See specs/Spec_Phase6b_ParallelBoard.md §2.
 //
 //  Built incrementally: §3.3 added the fresh-board setup and the generator
-//  mechanic, §3.4 added merge resolution. This task (§3.5) adds the
-//  progress/reward hookup. Event lifecycle (§3.7) lands in a later task.
+//  mechanic, §3.4 added merge resolution, §3.5 added the progress/reward
+//  hookup. This task (§3.7) adds event lifecycle — persisted board/energy
+//  (design authority, 16 Aug 2026: force-quit mid-event must not lose
+//  progress, matching the main board's own persistence) — and wires
+//  creation/teardown + the foreground timer tick into MergeBoardViewModel.
 //
 
 import Foundation
 import Observation
+
+/// Snapshot of one Parallel Board event's in-progress board + energy,
+/// persisted via `GameState.parallelBoardState` (v36) so a force-quit
+/// mid-event doesn't lose placement, the same guarantee the main board's
+/// own `GameState.board` already gives. `progressTrack`/event tokens are
+/// NOT part of this — that's the shared, already-persisted `ProgressTrack`
+/// instance (§3.5), a separate mechanism.
+struct ParallelBoardSaveState: Codable {
+    var eventID: String
+    var board: [[BoardCell]]
+    var energyBalance: Int
+    var energySecondsUntilNext: Int
+}
 
 @Observable
 @MainActor
@@ -106,5 +122,24 @@ final class ParallelBoardCoordinator {
             boardState.setItem(srcItem, at: to)
             boardState.setItem(dstItem, at: from)
         }
+    }
+
+    // MARK: Persistence (§3.7)
+
+    /// Restores board + energy from a save-state snapshot. Callers (only
+    /// `MergeBoardViewModel.checkEventLifecycle()`) are responsible for
+    /// checking `saved.eventID` matches the event this coordinator was just
+    /// created for before calling this — a stale snapshot from a since-ended
+    /// event must never be applied to a new one.
+    func restore(from saved: ParallelBoardSaveState) {
+        boardState.board = saved.board
+        boardState.recalc()
+        energy.balance = saved.energyBalance
+        energy.secondsUntilNext = saved.energySecondsUntilNext
+    }
+
+    func makeSaveState() -> ParallelBoardSaveState {
+        ParallelBoardSaveState(eventID: eventID, board: boardState.board,
+                                energyBalance: energy.balance, energySecondsUntilNext: energy.secondsUntilNext)
     }
 }

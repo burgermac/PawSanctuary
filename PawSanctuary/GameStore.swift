@@ -216,6 +216,16 @@ struct GameState: Codable {
     /// ready now — a fresh save gets its first chest immediately. Derived live
     /// like `ProducerTile.readyAt`, never ticked by hand.
     var freeChestReadyAt: Date = .distantPast
+
+    /// Parallel Board event's in-progress board + energy (v36, Phase 6b,
+    /// Task 3.7, design authority: force-quit mid-event must not lose
+    /// progress). `nil` when no parallel-board event is active. Optional, so
+    /// no `additiveDefaultsSinceV8` entry is needed — restoring it is a
+    /// one-shot seed for a freshly (re)created `ParallelBoardCoordinator` at
+    /// launch (`MergeBoardViewModel.checkEventLifecycle()`), not state kept
+    /// in sync afterward; `captureState()` reads the live coordinator
+    /// directly on every subsequent save.
+    var parallelBoardState: ParallelBoardSaveState? = nil
 }
 
 // ============================================================
@@ -304,7 +314,9 @@ enum GameStore {
     ///      more than once. Purely additive.
     /// v34: piggyBankCoins added (Gap_Analysis_Round2 3.4). Purely additive.
     /// v35: freeChestReadyAt added (Gap_Analysis_Round2 3.6). Purely additive.
-    static let currentVersion = 35
+    /// v36: parallelBoardState added (Phase 6b, Task 3.7). Optional — purely
+    ///      additive, no default needed.
+    static let currentVersion = 36
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -481,6 +493,7 @@ enum GameStore {
         if version == 32 { return migrateByInjecting(from: 32, defaults: [:], into: data) }   // claimedTradeIDs covered by additiveDefaultsSinceV8
         if version == 33 { return migrateByInjecting(from: 33, defaults: [:], into: data) }   // piggyBankCoins covered by additiveDefaultsSinceV8
         if version == 34 { return migrateByInjecting(from: 34, defaults: [:], into: data) }   // freeChestReadyAt covered by additiveDefaultsSinceV8
+        if version == 35 { return migrateByInjecting(from: 35, defaults: [:], into: data) }   // parallelBoardState is Optional — no default needed
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).

@@ -32,6 +32,9 @@ struct MergeBoardView: View {
     @State private var viewModel    = MergeBoardViewModel()
     @State private var storeManager = StoreManager()
     @State private var activeRoute: SheetRoute?
+    /// Full-screen, not a sheet (Phase 6b, Task 3.7) — kept separate from
+    /// `activeRoute`/`SheetRoute`, which only ever drive `.sheet`.
+    @State private var showParallelBoard = false
 
     /// Used to flush a final save when the app leaves the foreground.
     @Environment(\.scenePhase) private var scenePhase
@@ -267,6 +270,11 @@ struct MergeBoardView: View {
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .sheet(item: $activeRoute) { route in routeContent(route) }
+        .fullScreenCover(isPresented: $showParallelBoard) {
+            if let coordinator = viewModel.activeParallelBoardEvent {
+                ParallelBoardView(coordinator: coordinator, onDismiss: { showParallelBoard = false })
+            }
+        }
         .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -498,7 +506,7 @@ struct MergeBoardView: View {
             TaskStripView(viewModel: viewModel, activeSheet: Binding(
                 get: { if case .task(let t) = activeRoute { return t } else { return nil } },
                 set: { activeRoute = $0.map { .task($0) } }
-            ))
+            ), showParallelBoard: $showParallelBoard)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                 tutorialTaskFrame = $0
             }

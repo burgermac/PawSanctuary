@@ -1215,6 +1215,40 @@ final class PersistenceTests: XCTestCase {
                        readyAt.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    func testV35toV36MigrationLeavesParallelBoardStateNil() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "parallelBoardState")
+        obj["version"] = 35
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v35 save should migrate to v36")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertNil(loaded.parallelBoardState, "no parallel-board event existed pre-v36 — the field must migrate to nil, not a default board")
+    }
+
+    func testParallelBoardStateRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        let board: [[BoardCell]] = [[BoardCell(position: GridPosition(row: 0, col: 0), item: BoardItem(chainID: "animal.cat", tier: 2), producer: nil, isUnlocked: true)]]
+        state.parallelBoardState = ParallelBoardSaveState(
+            eventID: "parallelboard_test", board: board, energyBalance: 17, energySecondsUntilNext: 42)
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        let saved = try XCTUnwrap(decoded.parallelBoardState)
+        XCTAssertEqual(saved.eventID, "parallelboard_test")
+        XCTAssertEqual(saved.energyBalance, 17)
+        XCTAssertEqual(saved.energySecondsUntilNext, 42)
+        XCTAssertEqual(saved.board[0][0].item?.chainID, "animal.cat")
+        XCTAssertEqual(saved.board[0][0].item?.tier, 2)
+    }
+
+    func testParallelBoardStateIsNilOnAFreshSaveByDefault() throws {
+        let state = makeSampleState()
+        let data = try encoder.encode(state)
+        let decoded = try decoder.decode(GameState.self, from: data)
+        XCTAssertNil(decoded.parallelBoardState)
+    }
+
     /// Every migrated tier must resolve to a real item in the 12-tier registry —
     /// an out-of-range tier makes `BoardItem.def` nil and the cell renders empty.
     func testEveryMigratedTierResolvesInTheRegistry() throws {
