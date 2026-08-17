@@ -43,10 +43,33 @@ struct ParallelBoardEventDefinition: Identifiable {
 }
 
 enum ParallelBoardEventRegistry {
-    /// Empty until §5's real, screen-verifiable test event is authored — a
-    /// separate task from §3.7, same as Milestone track's own lifecycle-wiring
-    /// task (6b.2) landing with no real event content yet.
-    static let allEvents: [ParallelBoardEventDefinition] = []
+    private static func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso) ?? .distantPast
+    }
+
+    /// "Second Chances" (§5) — test-only content to prove the second-board
+    /// flow end to end, not 6c's real rolling calendar, matching the
+    /// identical framing Milestone track's and Pass's own §5 used.
+    ///
+    /// **2026-09-11 to 2026-09-14** (3 days, D5-cadence-compliant) —
+    /// deliberately inside `sanctuary_circle_s1_20260904`'s window
+    /// (2026-09-04→10-04) *and* fully overlapping `playtime_rush_20260911`
+    /// (2026-09-11→09-15): a three-way concurrency case (continuous Pass +
+    /// weekly event + parallel-board event, all genuinely active at once)
+    /// proving a *third* kind of event layers onto the existing two without
+    /// incident — see `ParallelBoardEventsTests`.
+    static let allEvents: [ParallelBoardEventDefinition] = [
+        ParallelBoardEventDefinition(
+            id: "second_chances_20260911",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2026-09-11"),
+            endDate:   date("2026-09-14")
+        ),
+    ]
 
     static var activeEvent: ParallelBoardEventDefinition? {
         let now = Date()

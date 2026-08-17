@@ -208,6 +208,49 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .dogTags, amount: 4)],
                            paidRewards: []),
         ],
+        // "Second Chances" (ParallelBoardEvents.swift) — Phase 6b, Task 3.7/§5
+        // screen-verification content for the Parallel Board event type.
+        // Reuses Founders' Circle's own linear-step shape (§4: "reuses §4's
+        // Founders' Circle shape as a template") — free-lane-only, 8
+        // milestones instead of 10, steps of 20 rather than 60, scaled down
+        // for a 3-day board fed by merge-completion tokens
+        // (parallelBoardTokensPerCompletion = 10, §3.5) rather than an
+        // order-fulfillment rider — 16 top-tier completions clears the whole
+        // table, comfortably achievable in 3 days without an economy model
+        // run for it (same first-cut posture as every other number in this
+        // event type — see Spec_Phase6b_ParallelBoard.md §4).
+        "second_chances_20260911": [
+            TrackMilestone(index: 0, threshold: 20,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 30)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 40,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 35)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 40),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 3, threshold: 80,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 45),
+                                         OrderReward(kind: .dogTags, amount: 2)],
+                           paidRewards: []),
+            TrackMilestone(index: 4, threshold: 100,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 5, threshold: 120,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 55),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 6, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 60),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: []),
+            TrackMilestone(index: 7, threshold: 160,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 80),
+                                         OrderReward(kind: .dogTags, amount: 6)],
+                           paidRewards: []),
+        ],
         // "Sanctuary Circle" seasons 1-3 (EventSystem.swift) — Phase 6c real
         // calendar (Spec_Phase6c_Calendar.md §2.2/§3.1). Verbatim reuse of
         // Founders' Circle's 10-milestone table above, re-keyed per season

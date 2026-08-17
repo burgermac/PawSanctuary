@@ -127,6 +127,7 @@ struct ContentRegistry {
             register(Self.makeSuperpowerChain(species))
         }
         register(Self.makeWildcardChain())
+        register(Self.makeParallelBoardSecondChancesChain())
     }
 
     private mutating func register(_ chain: MergeChain) {
@@ -182,6 +183,10 @@ struct ContentRegistry {
     /// Single-tier consumable that merges with anything (Gap_Analysis_Round2 3.5).
     /// Bought with Dog Tags, never earned — see `purchaseWildcard`.
     static let wildcardChainID: ChainID = "wildcard.wildcard"
+
+    /// The Parallel Board event type's own chain (Phase 6b, §4/§5). Only
+    /// ever placed by `ParallelBoardCoordinator`, never the main board.
+    static let parallelBoardSecondChancesChainID: ChainID = "parallelboard.secondchances"
 
     /// Convenience: a random chain id from a category, drawn from a candidate list.
     static func randomChainID(in category: ChainCategory, from candidates: [ChainID]) -> ChainID? {
@@ -361,6 +366,35 @@ struct ContentRegistry {
         )
         return MergeChain(id: wildcardChainID, category: .wildcard,
                           displayName: "Merges with anything", tiers: [tier])
+    }
+
+    // MARK: Parallel Board chain builder (Phase 6b, Task 3.7/§5)
+
+    /// "Second Chances" — the Parallel Board event type's own single chain
+    /// (§4: 5 tiers, single chain). Category `.animal` reused rather than a
+    /// new `ChainCategory` case (§4's "not resolved here" left open, decided
+    /// here): nothing about this board needs a distinct storage-tab/behavior
+    /// hook, and every mechanic that reads `category == .animal`
+    /// (`isBubbleEligible`) is already unreachable here regardless, since
+    /// `ParallelBoardCoordinator.attemptMerge` always passes empty
+    /// orders/quests (§3.4). Distinct ID prefix per §4's own guidance —
+    /// never collides with a real `animal.<species>` chain.
+    private static func makeParallelBoardSecondChancesChain() -> MergeChain {
+        let tiers: [(name: String, short: String, symbol: String, color: Color, score: Int)] = [
+            ("Stray",        "Stray",   "pawprint",         Color(red: 0.60, green: 0.55, blue: 0.50), 20),
+            ("Rescued",      "Rescued", "pawprint.fill",    Color(red: 0.55, green: 0.60, blue: 0.42), 45),
+            ("Cared For",    "Cared",   "heart.fill",       Color(red: 0.80, green: 0.45, blue: 0.45), 80),
+            ("Thriving",     "Thrive",  "sparkles",         Color(red: 0.85, green: 0.60, blue: 0.20), 130),
+            ("Forever Home", "Home",    "house.fill",       Color(red: 0.70, green: 0.35, blue: 0.10), 200),
+        ]
+        return MergeChain(id: parallelBoardSecondChancesChainID, category: .animal,
+                          displayName: "Second Chances",
+                          tiers: tiers.map { t in
+            ChainTier(name: t.name, shortLabel: t.short, symbol: t.symbol,
+                      color: t.color, tint: t.color,
+                      badge: t.short == "Home" ? "checkmark.seal.fill" : nil,
+                      scoreValue: t.score, xpValue: t.score / 5)
+        })
     }
 
     // MARK: Currency chain builders (Phase 4, Task 4.1)
