@@ -1145,7 +1145,7 @@ private let taskCardWidth:  CGFloat = 150
 private let taskCardHeight: CGFloat = 85
 
 /// Thin progress bar reused by all task cards.
-private struct TaskProgressBar: View {
+struct TaskProgressBar: View {
     let fraction: Double
     let color: Color
     var body: some View {
