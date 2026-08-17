@@ -1217,6 +1217,12 @@ let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble r
 let parallelBoardEnergyCap      = 30
 let parallelBoardEnergyRegenSecs = 90   // full refill in 45 minutes
 
+// ── Parallel Board grid + generator (Phase 6b, Task 3.3) ────────
+// Same first-cut posture as the energy constants above.
+let parallelBoardRows          = 5
+let parallelBoardCols          = 5   // 25 cells, fully unlocked from the start — no row-progression
+let parallelBoardGeneratorCost = 2   // energy per tap — 15 generations per full energy bar
+
 // ── Board dimensions (fixed — never changes at runtime) ──────
 let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 6 rows start locked
 /// `deepestUnlockedTier` (PlayerProgression) required to unlock each board row
