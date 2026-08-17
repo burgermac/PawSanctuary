@@ -10,6 +10,8 @@
 
 **Both open architectural forks decided the same day (design authority):** §0.1/§3.1 — retire `ParallelBoardHosting` rather than expand it. §0.5 — a separate registry for parallel-board events rather than an `EventDefinition` kind discriminator. Both were the option this doc's own analysis leaned toward; neither was decided unilaterally by the doc itself. With both resolved, §3's landing order is unblocked — §3.1 (now a deletion, not a decision) is still the correct first task, since nothing downstream should be written against the protocol it retires.
 
+**§3.1 — done (16 Aug 2026).** `ParallelBoardHosting` (`LiveOpsPrimitives.swift`) and its lone conformer `ParallelBoardStub` (`LiveOpsEngine.swift`) deleted, along with `ParallelBoardStubTests` (`LiveOpsEngineTests.swift`). No other reference existed anywhere in the codebase (verified by grep before and after). Full suite green: 321/321, 0 failures. §3.2 is next.
+
 ---
 
 ## 0. Why
@@ -252,7 +254,7 @@ This is test-only content to prove the second-board flow end to end — not 6c's
 
 ## 6. Acceptance
 
-- [x] §3.1 decided (16 Aug 2026, design authority): retire `ParallelBoardHosting`. Remaining acceptance: `ParallelBoardHosting`/`ParallelBoardStub` are deleted, not just unused, and nothing else in the codebase still references either
+- [x] §3.1 decided and landed (16 Aug 2026): `ParallelBoardHosting`/`ParallelBoardStub` deleted (not just unused), `ParallelBoardStubTests` deleted, nothing else in the codebase references either — verified by grep
 - [x] §0.5 decided (16 Aug 2026, design authority): separate registry, not a `kind` discriminator. Remaining acceptance: parallel-board events never appear in `EventRegistry.allEvents`/`activeEvents`, never produce an automatic `EventTaskCard`, and tapping the dedicated entry point opens the board directly, never `EventSheetView`
 - [ ] `ParallelBoardCoordinator` owns an independent `BoardStateManager` — verify by placing items on both boards simultaneously and confirming neither's state leaks into the other
 - [ ] `ParallelBoardEnergy` regenerates on the existing foreground timer tick, caps correctly, and `spend(_:)` correctly rejects an insufficient balance

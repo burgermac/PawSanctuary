@@ -745,30 +745,3 @@ final class OfferHookRegistry: OfferHooking {
         offersByEvent.removeValue(forKey: eventID)
     }
 }
-
-// ============================================================
-// MARK: - 7. Parallel board instance — STUB ONLY
-// ============================================================
-
-/// **Not the Phase 6b "Parallel board" event type.** This is UUID bookkeeping
-/// only — no board grid, no chains, no energy regen — so `LiveOpsPrimitives`
-/// has a real conforming type for every protocol. `energyBalance` always
-/// reads 0. The real second board (its own `[[BoardCell]]`, its own energy
-/// system) is its own spec, deferred to 6b.
-@MainActor
-final class ParallelBoardStub: ParallelBoardHosting {
-    private var boards: [String: UUID] = [:]
-
-    func makeBoard(eventID: String) -> UUID {
-        if let existing = boards[eventID] { return existing }
-        let id = UUID()
-        boards[eventID] = id
-        return id
-    }
-
-    func teardownBoard(eventID: String) {
-        boards.removeValue(forKey: eventID)
-    }
-
-    func energyBalance(eventID: String) -> Int { 0 }
-}

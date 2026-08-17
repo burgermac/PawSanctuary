@@ -75,12 +75,4 @@ protocol OfferHooking {
     func activeOffers() -> [String]
 }
 
-// 7. Parallel board instance — a second board with its own chains, energy and offers.
-@MainActor
-protocol ParallelBoardHosting {
-    func makeBoard(eventID: String) -> UUID
-    func teardownBoard(eventID: String)
-    func energyBalance(eventID: String) -> Int
-}
-
-// 8. Rider injection — see OrderRewardRegistry.swift (Task 1.2).
+// 7. Rider injection — see OrderRewardRegistry.swift (Task 1.2).

@@ -459,36 +459,3 @@ final class OfferHookRegistryTests: XCTestCase {
         XCTAssertEqual(hook.activeOffers(), ["o2"])
     }
 }
-
-@MainActor
-final class ParallelBoardStubTests: XCTestCase {
-
-    func testMakeBoardIsStableForTheSameEventID() {
-        let stub = ParallelBoardStub()
-        let first = stub.makeBoard(eventID: "e1")
-        let second = stub.makeBoard(eventID: "e1")
-        XCTAssertEqual(first, second)
-    }
-
-    func testMakeBoardIsDistinctAcrossEventIDs() {
-        let stub = ParallelBoardStub()
-        let a = stub.makeBoard(eventID: "e1")
-        let b = stub.makeBoard(eventID: "e2")
-        XCTAssertNotEqual(a, b)
-    }
-
-    func testTeardownRemovesTheBoard() {
-        let stub = ParallelBoardStub()
-        let first = stub.makeBoard(eventID: "e1")
-        stub.teardownBoard(eventID: "e1")
-        let second = stub.makeBoard(eventID: "e1")
-        XCTAssertNotEqual(first, second, "a fresh makeBoard after teardown should mint a new UUID")
-    }
-
-    func testEnergyBalanceIsAlwaysZero() {
-        let stub = ParallelBoardStub()
-        _ = stub.makeBoard(eventID: "e1")
-        XCTAssertEqual(stub.energyBalance(eventID: "e1"), 0)
-        XCTAssertEqual(stub.energyBalance(eventID: "unknown"), 0)
-    }
-}
