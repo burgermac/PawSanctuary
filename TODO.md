@@ -21,6 +21,19 @@
 - [ ] Age rating declaration
 - [ ] Replace the placeholder App Store URL in `InviteSystem.swift` (`pawSanctuaryAppStoreURL`, currently `id0000000000`) once the app has a real listing.
 
+### Stale documentation — Alignment Plan Phase 1 checklist
+
+`specs/PawSanctuary_Alignment_Plan.md` §4 (Phase 1 — Foundations) shows all six items (1.1–1.6) unchecked, but the underlying work is very likely already shipped — every later phase built on top of these primitives and is itself already checked off:
+
+- **1.1** (`[OrderReward]` list + `RewardKind`) — `OrderReward` is used extensively throughout the codebase (Phase 5's order rewards, every Phase 6 event type's milestone tables).
+- **1.2** (rider-injection hook) — `OrderRewardRegistry` (`OrderRewardRegistry.swift`) is exactly this, and is load-bearing for Milestone track/Pass/the Phase 6c calendar's `EventTokenRiderProvider`s.
+- **1.3** (`ChainCategory.currency`) — Phase 4.1 explicitly cites "`ChainCategory.currency` from 1.3" as already existing when it shipped.
+- **1.4** (player purchase-state tracking) — `commerce.hasReachedFirstWall`, `hasEverPurchased`, `totalSpendMicros` all referenced as shipped in Phase 3.4/3.7.
+- **1.5** (live-ops primitive interfaces) — `LiveOpsPrimitives.swift`, real and stubbed-then-implemented per 6a.
+- **1.6** (schema migration) — obviously true given the v8→v35 migration chain.
+
+Same pattern as Phase 2's checklist, which sat unchecked for weeks despite being fully shipped (corrected 15 Aug 2026 in the Alignment Plan itself). **Before checking these off, verify each item against the actual code** (file/line, same rigor as the Phase 2 correction) rather than assuming from context — don't just flip the checkboxes on the strength of this TODO entry.
+
 ### Content gaps
 - [ ] **Seasonal Events — add future events to registry:** the infrastructure in `EventSystem.swift` is complete, but the only event ever defined (`rescue_rush_jun2026`, June 1–15 2026) has expired. Add new `EventDefinition` entries to `EventRegistry.allEvents` — nothing seasonal is currently active.
 - [ ] **Card artwork:** all 54 cards in `CardSystem.swift` use SF Symbols as stand-ins. Illustrated art is a content/asset-production task, not a code change.
