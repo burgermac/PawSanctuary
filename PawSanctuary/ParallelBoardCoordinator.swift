@@ -7,9 +7,9 @@
 //  already uses (kibbleEngine, inventoryStore, quests, ...) — not a new
 //  architecture. See specs/Spec_Phase6b_ParallelBoard.md §2.
 //
-//  Built incrementally: this task (§3.3) adds the fresh-board setup and the
-//  generator mechanic. attemptMerge (§3.4) and event lifecycle (§3.7) land
-//  in later tasks.
+//  Built incrementally: §3.3 added the fresh-board setup and the generator
+//  mechanic; this task (§3.4) adds merge resolution. Event lifecycle (§3.7)
+//  lands in a later task.
 //
 
 import Foundation
@@ -54,5 +54,42 @@ final class ParallelBoardCoordinator {
         guard energy.spend(parallelBoardGeneratorCost) else { return }
         boardState.setItem(BoardItem(chainID: chainID, tier: 0), at: target.position)
         boardState.recalc()
+    }
+
+    /// Reuses `computeMergeOutcome` for the merge *decision* (Phase D) and
+    /// writes a small new application step on top of it — deliberately a
+    /// fifth of `attemptMergeOrMove`'s size (`MergeBoardViewModel.swift`):
+    /// no producer branch (nothing on this board is a producer, per §3.3),
+    /// no superpower branch (the event's chain has no superpower pieces), no
+    /// bubbling (`orders`/`activeQuests` passed empty guarantees
+    /// `isBubbleEligible` is always `false`), no Nine Lives snapshot (a
+    /// 3-day side board doesn't need the undo guard the main board's own
+    /// economy needed). Neutral spotlight — nothing on this board earns a
+    /// spotlight bonus.
+    func attemptMerge(from: GridPosition, to: GridPosition) {
+        guard from != to,
+              boardState.isUnlocked(at: from), boardState.isUnlocked(at: to),
+              let srcItem = boardState.item(at: from) else { return }
+        guard let dstItem = boardState.item(at: to) else {
+            boardState.setItem(srcItem, at: to)
+            boardState.clearItem(at: from)
+            boardState.recalc()
+            return
+        }
+        if let outcome = computeMergeOutcome(
+            from: from, to: to, srcItem: srcItem, dstItem: dstItem,
+            spotlightChainID: "parallelboard.none", spotlightMultiplierBonus: 0,
+            orders: [], urgentOrder: nil, activeQuests: []
+        ) {
+            boardState.setItem(BoardItem(chainID: outcome.resultChainID, tier: outcome.resultTier), at: to)
+            boardState.clearItem(at: from)
+            boardState.recalc()
+            if outcome.isTopTierCompletion {
+                // award the event's ProgressTrack — see §3.5
+            }
+        } else {
+            boardState.setItem(srcItem, at: to)
+            boardState.setItem(dstItem, at: from)
+        }
     }
 }
