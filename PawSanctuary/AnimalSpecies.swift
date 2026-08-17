@@ -1212,6 +1212,11 @@ let loyaltyClubCycle: [LoyaltyReward] = [
 let passDailyKibble        = 20    // kibble granted on each daily pass claim
 let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble rewards
 
+// ── Parallel Board energy (Phase 6b, Task 3.2) ──────────────────
+// First-cut numbers, not derived from a model — see Spec_Phase6b_ParallelBoard.md §4.
+let parallelBoardEnergyCap      = 30
+let parallelBoardEnergyRegenSecs = 90   // full refill in 45 minutes
+
 // ── Board dimensions (fixed — never changes at runtime) ──────
 let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 6 rows start locked
 /// `deepestUnlockedTier` (PlayerProgression) required to unlock each board row
