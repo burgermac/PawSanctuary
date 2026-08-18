@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Partially reviewed by the design authority (18 Aug 2026): the §3.4/§6 anchor-sharing question and currency scope are both resolved (all three slots may share one spend anchor; both kibble and dog tags generate); §4's numbers and the standing-quest question remain open.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for what's still open.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Design-authority reviewed 18 Aug 2026: the §3.4/§6 anchor-sharing question, currency scope, and the standing-quest extension are all resolved (all three slots may share one spend anchor; both kibble and dog tags generate; standing quests stay out of scope). Only §4's numbers remain open.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for what's left.
 
 ---
 
@@ -81,9 +81,9 @@ Same story — no shared helper, every site does its own `guard`+`-=`. A longer 
 
 Seven recurring sinks vs. kibble's two — real additional wiring surface at Task 3.3, and a correspondingly larger surface for a future sink to go unnoticed if it's added without the new call (§3.3's existing caution applies with more weight here).
 
-### Standing quests (`Quest`, not `DailyChallenge`) — out of scope
+### Standing quests (`Quest`, not `DailyChallenge`) — out of scope, confirmed by the design authority, 18 Aug 2026
 
-The Alignment Plan's D6 text says "dailies" specifically. The standing-quest system (`Quest` struct, `QuestCoordinator.swift`'s `generateQuest`/`updateQuestsAfterMerge`) is structurally near-identical and could pick up the exact same `QuestGoal.spendCurrency` case cheaply later, but extending to it isn't attempted here — not asked for, and legendary/hard standing quests already pay real kibble/dog-tag rewards (§3 of `QuestDifficulty`), which changes the "does this need a new reward mechanic" answer this spec's dailies-only scope avoids.
+The Alignment Plan's D6 text says "dailies" specifically, and this draft's original text assumed extending to standing quests would be a cheap follow-up given the shared `QuestGoal` type — **that assumption turned out to be wrong, caught by actually reading `generateQuest` (`QuestCoordinator.swift:80-185`) rather than inferring from the type system.** Unlike dailies' shared-anchor/`staggeredCount` machinery (§0), standing quests don't derive their target counts from any formula at all — each of the four difficulty bands hand-codes its own goal pool with individually-picked counts (e.g. `.mergeAny` is 3/6/10 at easy/medium/hard, `.spawnBase` is 5/8/12). A `.spendCurrency` case would need **8 new hand-derived target counts** (4 difficulties × 2 currencies), each needing its own sizing rationale, since standing quests persist until claimed rather than resetting daily — a "spend N kibble" standing quest should plausibly ask for far more than a one-day quota, with no existing precedent to size that against. There's also a real reward-texture question dailies never raise: standing quests already pay `kibbleReward`/`dogTagReward` per difficulty regardless of goal type (`Quest.dogTagReward`/`kibbleReward`, `:176-184`) — claiming a "spend 40 kibble" quest would hand back a few kibble as a partial rebate of the currency just spent, which may or may not read as intended. **Confirmed: kept out of scope**, not attempted as part of this pass — a real follow-up spec's worth of work if ever wanted, not a mechanical extension.
 
 ---
 
@@ -208,14 +208,14 @@ This draft has **not** had a design-authority pass yet — everything below is g
 - **RESOLVED — the anchor-sharing question in §3.4.** Confirmed: all three slots can share one spend anchor on the same day, same as every other anchor. Not special-cased to soften the mechanic.
 - **RESOLVED — currency scope (§2).** Confirmed: both kibble and dog tags generate in v1. Dog tags run on a new, lighter-weight estimate built for this spec (§4) rather than an `EconomySimulation.swift`-grade model — that confidence gap is real and flagged, not something to forget once this is implemented.
 - **§4's numbers** — the 40-kibble and 8-dog-tag easy seeds, as always, and specifically the dog-tag supply estimate's own assumptions (order-tier average, "engaged player" throughput reused from the kibble model) given it's new and untested against real telemetry.
-- **Whether standing quests should get this goal type too** (§2) — not attempted here, explicitly out of scope, but cheap to add later given the shared `QuestGoal` type.
+- **RESOLVED — whether standing quests should get this goal type too (§2).** Confirmed: no. Turned out to be real, separate work (8 hand-derived target counts, a reward-rebate texture question), not the cheap extension this draft originally assumed — worth its own spec if ever revisited, not folded in here.
 
 ---
 
 ## 7. Out of scope
 
 - **A full `EconomySimulation.swift`-grade dog-tag model** — §4's dog-tag supply estimate is a new, lighter-weight, first-cut number built for this spec, not an addition to that file or an equivalent formal simulation.
-- **Standing-quest (`Quest`) spend goals** — see §2.
+- **Standing-quest (`Quest`) spend goals** — confirmed out of scope (§2/§6); real, separate follow-up work if ever wanted, not a cheap extension.
 - **A cap on spend-anchor frequency or same-day repeats** — considered and confirmed unnecessary (§3.4/§6); all three daily slots may share one spend anchor, same as every other anchor.
 - **Any new reward mechanic** — deliberately reuses the existing all-three-complete bonus untouched.
 - **Revisiting the Warmth-pillar objection itself** — that's D6's own decision, already made (§0); this spec only builds what was decided.
