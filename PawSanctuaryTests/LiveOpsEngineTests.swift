@@ -106,10 +106,11 @@ final class EventSchedulerTests: XCTestCase {
     /// unaffected." This is the data-source half of that guarantee — the
     /// active-ID set `checkEventLifecycle()` diffs against must correctly
     /// drop the ended event while still reporting the other as active.
-    /// (`checkEventLifecycle()` itself isn't independently exercisable
-    /// across a real time skip without waiting for a real event to end —
-    /// see EventSystemTests.swift's ConcurrentEventRiderRegistrationTests
-    /// for the idempotent-no-op half of this guarantee, which is testable.)
+    /// (`checkEventLifecycle()` gained an injectable `at date:` parameter 18
+    /// Aug 2026, so it's now independently exercisable across a real time
+    /// skip too — see EventSystemTests.swift's
+    /// `testCheckEventLifecycleUnregistersOnlyTheEndedEventsRiderWhenOneOfTwoOverlappingEventsEnds`,
+    /// which proves the full rider-lifecycle half this test doesn't reach.)
     func testEndingOneOverlappingEventLeavesTheOtherActive() {
         let events = [
             makeEvent(id: "weekly", start: "2026-08-14", end: "2026-08-18"),

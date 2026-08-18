@@ -163,6 +163,12 @@ final class EventRegistryActiveEventsTests: XCTestCase {
 @MainActor
 final class ConcurrentEventRiderRegistrationTests: XCTestCase {
 
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
     /// Direct, deterministic proof (riderFrequency 1.0, matching the
     /// existing single-provider convention in EventTokenRiderProviderTests)
     /// that two simultaneously-registered providers both fire on the same
@@ -186,28 +192,32 @@ final class ConcurrentEventRiderRegistrationTests: XCTestCase {
     }
 
     /// Exercises the real, shipped `checkEventLifecycle()` — not a
-    /// reimplementation of its logic — against today's real calendar, which
-    /// genuinely has two overlapping events (`founders_circle_aug2026`,
-    /// `foster_weekend_aug2026`, Spec_Phase6c §4). `EventRegistry.activeEvents`
-    /// isn't injectable, so this guards on real overlap actually existing
-    /// right now rather than silently passing once Foster Weekend's window
-    /// (2026-08-14...18) closes -- if this guard fires, the fix is a fresh
-    /// overlapping test event, not a change to the assertion.
+    /// reimplementation of its logic — at a fixed, permanent synthetic date
+    /// (2026-09-12) deep inside the real 90-day calendar
+    /// (`Spec_Phase6c_Calendar.md`), rather than today's real wall clock.
+    ///
+    /// **Found 18 Aug 2026: this test rotted twice.** The original version
+    /// guarded on `EventRegistry.activeEvents` (real `Date()`, not
+    /// injectable) actually containing a live overlap right now — first
+    /// against `founders_circle_aug2026`/`foster_weekend_aug2026`, and it
+    /// self-documented exactly how it would fail once Foster Weekend's
+    /// window (2026-08-14...18) closed. It closed, and the test failed
+    /// exactly as its own comment predicted. Rather than patch it with
+    /// another event that will just expire again later, `checkEventLifecycle`
+    /// itself gained an injectable `at date:` parameter (defaulting to
+    /// `Date()` for its one production call site) — this test now checks
+    /// against 2026-09-12, which sits inside both `sanctuary_circle_s1_20260904`
+    /// (2026-09-04...10-04) and `playtime_rush_20260911` (2026-09-11...09-15),
+    /// real, already-shipped calendar content that will never change.
     func testCheckEventLifecycleRegistersAnIndependentRiderForEachRealActiveEvent() {
-        let activeIDs = Set(EventRegistry.activeEvents.map(\.id))
-        guard activeIDs.count >= 2 else {
-            XCTFail("""
-                Needs >= 2 genuinely-overlapping real events to prove anything. \
-                Today's EventRegistry.activeEvents: \(activeIDs). Foster \
-                Weekend's window (2026-08-14...18) may have closed -- add a \
-                fresh overlapping EventDefinition to re-enable this test.
-                """)
-            return
-        }
+        let testDate = date("2026-09-12")
+        let activeIDs = Set(EventScheduler().activeEvents(at: testDate))
+        XCTAssertGreaterThanOrEqual(activeIDs.count, 2,
+                                     "the fixed test date must sit inside a genuine real overlap")
 
         let before = Set(OrderRewardRegistry.providers.map(ObjectIdentifier.init))
         let vm = MergeBoardViewModel()
-        vm.checkEventLifecycle()
+        vm.checkEventLifecycle(at: testDate)
         let newProviders = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
         defer { newProviders.forEach { OrderRewardRegistry.unregister($0) } }
 
@@ -218,31 +228,64 @@ final class ConcurrentEventRiderRegistrationTests: XCTestCase {
 
     /// The other half of "leaves the other unaffected": a no-op check (same
     /// active events as last time) must not unregister-then-reregister a
-    /// still-active rider. Doesn't exercise a real event actually ending
-    /// (EventRegistry.activeEvents isn't injectable, and waiting for Foster
-    /// Weekend's real 2026-08-18 end date isn't practical here) but does
-    /// prove checkEventLifecycle's "leave unchanged ones alone" branch holds
-    /// against the real registry, using the real shipped method.
+    /// still-active rider. Same fixed synthetic date as the test above, for
+    /// the same permanence reason.
     func testCheckEventLifecycleIsIdempotentWhenActiveEventsUnchanged() {
-        let activeIDs = EventRegistry.activeEvents.map(\.id)
-        guard !activeIDs.isEmpty else {
-            XCTFail("needs at least one real active event for this test to be meaningful")
-            return
-        }
+        let testDate = date("2026-09-12")
+        let activeIDs = EventScheduler().activeEvents(at: testDate)
+        XCTAssertFalse(activeIDs.isEmpty, "needs at least one real active event for this test to be meaningful")
 
         let before = Set(OrderRewardRegistry.providers.map(ObjectIdentifier.init))
         let vm = MergeBoardViewModel()
-        vm.checkEventLifecycle()
+        vm.checkEventLifecycle(at: testDate)
         let afterFirst = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
         let identitiesAfterFirst = Set(afterFirst.map(ObjectIdentifier.init))
 
-        vm.checkEventLifecycle()   // second call, nothing changed in EventRegistry.activeEvents
+        vm.checkEventLifecycle(at: testDate)   // second call, same synthetic date -- nothing changed
         let afterSecond = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
         let identitiesAfterSecond = Set(afterSecond.map(ObjectIdentifier.init))
         defer { afterSecond.forEach { OrderRewardRegistry.unregister($0) } }
 
         XCTAssertEqual(identitiesAfterFirst, identitiesAfterSecond,
                        "a no-op check must not unregister and re-register the same still-active riders")
+    }
+
+    /// The real-ending half of the same acceptance line, now exercisable
+    /// against the real shipped `checkEventLifecycle` for the first time —
+    /// LiveOpsEngineTests.swift's `testEndingOneOverlappingEventLeavesTheOtherActive`
+    /// covered only the data-source half of this before `at date:` existed
+    /// to make `checkEventLifecycle` itself steppable across a time skip.
+    /// `playtime_rush_20260911` (2026-09-11...09-15) ends while
+    /// `sanctuary_circle_s1_20260904` (2026-09-04...10-04) continues — proves
+    /// both that the ended event's rider is unregistered AND that the
+    /// surviving event's rider is the same object, not torn down and rebuilt.
+    func testCheckEventLifecycleUnregistersOnlyTheEndedEventsRiderWhenOneOfTwoOverlappingEventsEnds() {
+        let beforeEnd = date("2026-09-14")   // both sanctuary_circle_s1 and playtime_rush active
+        let afterEnd  = date("2026-09-15")   // playtime_rush's window has closed
+
+        let before = Set(OrderRewardRegistry.providers.map(ObjectIdentifier.init))
+        let vm = MergeBoardViewModel()
+
+        vm.checkEventLifecycle(at: beforeEnd)
+        let afterFirstCheck = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
+        let seasonProvider = afterFirstCheck.first {
+            ($0 as? EventTokenRiderProvider)?.eventID == "sanctuary_circle_s1_20260904"
+        }
+        XCTAssertNotNil(seasonProvider, "the continuous track's rider must be registered while both are active")
+        let seasonProviderIdentity = seasonProvider.map(ObjectIdentifier.init)
+
+        vm.checkEventLifecycle(at: afterEnd)
+        let afterSecondCheck = OrderRewardRegistry.providers.filter { !before.contains(ObjectIdentifier($0)) }
+        defer { afterSecondCheck.forEach { OrderRewardRegistry.unregister($0) } }
+
+        let registeredIDs = Set(afterSecondCheck.compactMap { ($0 as? EventTokenRiderProvider)?.eventID })
+        XCTAssertEqual(registeredIDs, ["sanctuary_circle_s1_20260904"],
+                       "playtime_rush_20260911's rider must be unregistered once its window ends")
+        let survivingSeasonProvider = afterSecondCheck.first {
+            ($0 as? EventTokenRiderProvider)?.eventID == "sanctuary_circle_s1_20260904"
+        }
+        XCTAssertEqual(survivingSeasonProvider.map(ObjectIdentifier.init), seasonProviderIdentity,
+                       "the still-active event's rider must be left alone, not unregistered and re-registered")
     }
 }
 

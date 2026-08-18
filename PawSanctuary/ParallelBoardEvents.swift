@@ -118,8 +118,12 @@ enum ParallelBoardEventRegistry {
         ),
     ]
 
-    static var activeEvent: ParallelBoardEventDefinition? {
-        let now = Date()
-        return allEvents.first { now >= $0.startDate && now < $0.endDate }
+    /// `at` defaults to `Date()` for production call sites — injectable so
+    /// tests can check lifecycle behavior against a fixed, permanent date
+    /// instead of real wall-clock time, which rots the moment whatever
+    /// event window it depended on closes (found 18 Aug 2026, fixed
+    /// alongside the identical issue in `checkEventLifecycle` itself).
+    static func activeEvent(at date: Date = Date()) -> ParallelBoardEventDefinition? {
+        allEvents.first { date >= $0.startDate && date < $0.endDate }
     }
 }

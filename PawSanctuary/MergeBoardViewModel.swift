@@ -3466,8 +3466,19 @@ class MergeBoardViewModel {
     /// picked up until next launch (Spec_Phase6b_MilestoneTrack.md §3.2,
     /// flagged as a known gap rather than silently accepted; not made worse
     /// by this change).
-    func checkEventLifecycle() {
-        let currentIDs = Set(EventRegistry.activeEvents.map(\.id))
+    ///
+    /// `at` defaults to `Date()` for the one production call site
+    /// (`loadGame()`) — injectable so tests can exercise this against a
+    /// fixed, permanent date instead of real wall-clock time. Found 18 Aug
+    /// 2026: the previous hardcoded-`Date()` version made its own tests rot
+    /// every time whatever real event they depended on for "genuine
+    /// overlap" expired (Foster Weekend's window, twice) — using
+    /// `EventScheduler`'s already-injectable `activeEvents(at:)` here
+    /// instead of `EventRegistry.activeEvents` (which only ever reads real
+    /// time) fixes that permanently, with zero behavior change for
+    /// `loadGame()`'s own no-argument call.
+    func checkEventLifecycle(at date: Date = Date()) {
+        let currentIDs = Set(EventScheduler().activeEvents(at: date))
         let trackedIDs = Set(activeEventRiderProviders.keys)
 
         for droppedID in trackedIDs.subtracting(currentIDs) {
@@ -3485,7 +3496,7 @@ class MergeBoardViewModel {
         // milestone-lane bookkeeping above, per §0.5's own registry. Same
         // launch-only posture as the rider providers: a new coordinator is
         // only created/torn down here, not on a mid-session poll.
-        if let event = ParallelBoardEventRegistry.activeEvent {
+        if let event = ParallelBoardEventRegistry.activeEvent(at: date) {
             if activeParallelBoardEvent?.eventID != event.id {
                 let coordinator = ParallelBoardCoordinator(
                     eventID: event.id, chainID: event.chainID, progressTrack: progressTrack)

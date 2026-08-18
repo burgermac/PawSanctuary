@@ -1719,7 +1719,7 @@ struct TaskStripView: View {
                         .onTapGesture { activeSheet = .event(event.id) }
                 }
                 if let coordinator = viewModel.activeParallelBoardEvent,
-                   let event = ParallelBoardEventRegistry.activeEvent, event.id == coordinator.eventID {
+                   let event = ParallelBoardEventRegistry.activeEvent(), event.id == coordinator.eventID {
                     ParallelBoardTaskCard(event: event, coordinator: coordinator)
                         .onTapGesture { showParallelBoard = true }
                 }
