@@ -2646,6 +2646,19 @@ class MergeBoardViewModel {
         }
     }
 
+    /// D6 (Spec_SpendQuotaDailies.md, Task 3.2) — the chokepoint every real
+    /// currency-spend site calls into (Task 3.3). No shared spend/deduct
+    /// helper exists anywhere in this codebase, so each site still does its
+    /// own balance math; this is purely additive on top of that, mirroring
+    /// updateAllAfterMerge/Rescue above.
+    func updateAllAfterSpend(kind: RewardKind, amount: Int) {
+        quests.updateDailyChallengesAfterSpend(kind: kind, amount: amount)
+        if let rewards = quests.checkAllDailyChallengesComplete(
+            coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
+            applyQuestRewards(rewards)
+        }
+    }
+
     // MARK: Superpower System
 
     /// Check whether the just-merged family should unlock its superpower now.

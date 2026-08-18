@@ -78,3 +78,100 @@ final class SpendQuotaDailiesProducerNeededTests: XCTestCase {
                       "a spendCurrency-only goal must not keep a producer from being offered for retirement")
     }
 }
+
+/// Task 3.2 — QuestCoordinator.updateDailyChallengesAfterSpend, the first
+/// daily-challenge update in the codebase that advances progress by a
+/// variable amount rather than +1 per discrete event.
+@MainActor
+final class SpendQuotaDailiesProgressTests: XCTestCase {
+
+    func testAdvancesByTheFullAmountNotOne() {
+        let coordinator = QuestCoordinator()
+        coordinator.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
+        ]
+
+        coordinator.updateDailyChallengesAfterSpend(kind: .kibble, amount: 15)
+
+        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 15,
+                       "must add the real spend amount, not +1 the way every other daily-challenge update does")
+    }
+
+    func testOnlyAdvancesSlotsMatchingTheSpentCurrency() {
+        let coordinator = QuestCoordinator()
+        coordinator.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
+            DailyChallenge(goal: .spendCurrency(.dogTags, count: 8), difficulty: .medium),
+        ]
+
+        coordinator.updateDailyChallengesAfterSpend(kind: .dogTags, amount: 5)
+
+        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 0, "a dog-tag spend must not advance a kibble slot")
+        XCTAssertEqual(coordinator.dailyChallenges[1].progress, 5)
+    }
+
+    func testIgnoresNonSpendGoals() {
+        let coordinator = QuestCoordinator()
+        coordinator.dailyChallenges = [DailyChallenge(goal: .mergeAny(count: 3), difficulty: .easy)]
+
+        coordinator.updateDailyChallengesAfterSpend(kind: .kibble, amount: 100)
+
+        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 0)
+    }
+
+    func testSkipsAlreadyCompleteSlots() {
+        let coordinator = QuestCoordinator()
+        coordinator.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy, progress: 40),
+        ]
+
+        coordinator.updateDailyChallengesAfterSpend(kind: .kibble, amount: 10)
+
+        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 40,
+                       "an already-complete slot must not keep accumulating")
+    }
+}
+
+/// Task 3.2 — MergeBoardViewModel.updateAllAfterSpend, the chokepoint every
+/// real spend site (Task 3.3) will call into.
+@MainActor
+final class SpendQuotaDailiesChokepointTests: XCTestCase {
+
+    private func makeViewModel() -> MergeBoardViewModel {
+        let vm = MergeBoardViewModel()
+        vm.board = (0..<boardRows).map { row in
+            (0..<7).map { col in
+                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+            }
+        }
+        return vm
+    }
+
+    func testAdvancesTheMatchingDailyChallengeToCompletion() {
+        let vm = makeViewModel()
+        vm.quests.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
+        ]
+
+        vm.updateAllAfterSpend(kind: .kibble, amount: 40)
+
+        XCTAssertTrue(vm.quests.dailyChallenges[0].isComplete)
+    }
+
+    func testCompletingAllThreeViaSpendStillPaysTheExistingBonus() {
+        let vm = makeViewModel()
+        vm.quests.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 50), difficulty: .medium),
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 65), difficulty: .hard),
+        ]
+        let dogTagsBefore = vm.dogTags
+        XCTAssertFalse(vm.quests.dailyChallengeBonusClaimed)
+
+        vm.updateAllAfterSpend(kind: .kibble, amount: 65)
+
+        XCTAssertTrue(vm.quests.dailyChallengeBonusClaimed)
+        XCTAssertGreaterThan(vm.dogTags, dogTagsBefore,
+                             "the existing all-three-complete bonus (spec §2) must still pay out — no new reward mechanic")
+    }
+}

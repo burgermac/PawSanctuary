@@ -350,6 +350,19 @@ class QuestCoordinator {
         }
     }
 
+    /// D6 (Spec_SpendQuotaDailies.md) — the first daily-challenge update that
+    /// advances by a variable amount rather than +1 per discrete event, since
+    /// a currency spend has a real size (spending 40 kibble should add 40,
+    /// not 1). Every other update* function above only ever adds 1.
+    func updateDailyChallengesAfterSpend(kind: RewardKind, amount: Int) {
+        for i in dailyChallenges.indices {
+            guard !dailyChallenges[i].isComplete else { continue }
+            if case .spendCurrency(let k, _) = dailyChallenges[i].goal, k == kind {
+                dailyChallenges[i].progress += amount
+            }
+        }
+    }
+
     /// Called after each daily challenge update. If all three are now complete and
     /// the bonus hasn't been claimed yet, returns a reward bundle for MBVM to apply.
     func checkAllDailyChallengesComplete(coinsPerDailyComplete: Int) -> QuestRewards? {

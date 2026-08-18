@@ -104,7 +104,7 @@ case spendCurrency(RewardKind, count: Int)
 
 **One more exhaustive switch this section's own draft missed:** `MergeBoardViewModel.producerIsNeeded(_:by:)` (`:727-743`) also switches over `QuestGoal` to decide whether an active goal should block a producer from being offered for retirement. The compiler caught it — added `.spendCurrency` to the existing `case .mergeAny, .reachTier: break` branch, since a spend goal isn't tied to any specific producer the way `.mergeInChain`/`.spawnBase` are.
 
-### 3.2 — Progress pathway: `updateDailyChallengesAfterSpend` + `updateAllAfterSpend`
+### 3.2 — Progress pathway: `updateDailyChallengesAfterSpend` + `updateAllAfterSpend` — implemented 18 Aug 2026
 
 `QuestCoordinator.swift`, mirroring `updateDailyChallengesAfterMerge` (`:330-344`) exactly except for the increment amount:
 
