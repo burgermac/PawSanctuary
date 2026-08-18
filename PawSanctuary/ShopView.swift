@@ -110,6 +110,14 @@ struct ShopView: View {
                             .font(.footnote).foregroundColor(.secondary).padding(.bottom, 20)
 
                         #if DEBUG
+                        // No "Unlock Monetization" button here — ShopView is
+                        // itself only reachable once isMonetizationUnlocked is
+                        // already true (MergeBoardView's Shop button is gated
+                        // on the same condition), so a toggle placed here
+                        // could only ever fire as a no-op. The real debug
+                        // affordance lives in MergeBoardView's HUD, in the
+                        // same slot the Shop button occupies once unlocked —
+                        // see MergeBoardViewModel.unlockMonetizationForTesting().
                         Button(role: .destructive) {
                             viewModel.resetToFreshGame()
                             dismiss()

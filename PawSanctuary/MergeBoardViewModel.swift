@@ -1334,6 +1334,18 @@ class MergeBoardViewModel {
         updateWeeklySpotlight()
         save()
     }
+
+    /// Debug-only shortcut to reach `isMonetizationUnlocked` without real
+    /// play. Added because `Spec_Phase6b_RewardLadder.md` §5 found no faster
+    /// path existed — `resetToFreshGame()` above resets *away* from this
+    /// state, not toward it — while trying to verify the Reward Ladder on
+    /// screen. Bumps rather than sets `playerLevel`, so real progress is
+    /// never lowered by calling this.
+    func unlockMonetizationForTesting() {
+        commerce.hasReachedFirstWall = true
+        progression.playerLevel = max(progression.playerLevel, monetizationUnlockLevel)
+        save()
+    }
     #endif
 
     // MARK: Cached state helpers

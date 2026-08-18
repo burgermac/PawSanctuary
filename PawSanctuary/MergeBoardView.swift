@@ -489,6 +489,30 @@ struct MergeBoardView: View {
                                 .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
                         }
                     }
+                    #if DEBUG
+                    // Reachable from a fresh account, unlike ShopView's own
+                    // "Unlock Monetization (Debug)" button — the Shop button
+                    // right above is itself gated on isMonetizationUnlocked,
+                    // so a debug toggle placed only inside ShopView could
+                    // never be reached before monetization is already
+                    // unlocked. Same slot as the Shop button, mutually
+                    // exclusive with it, so this naturally disappears once
+                    // real progression (or this button itself) flips the gate.
+                    if !viewModel.isMonetizationUnlocked {
+                        Button(action: { viewModel.unlockMonetizationForTesting() }) {
+                            VStack(spacing: 2) {
+                                Image(systemName: "lock.open.fill")
+                                    .font(.system(size: 18))
+                                Text("Unlock")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(red: 0.55, green: 0.25, blue: 0.75)))
+                        }
+                    }
+                    #endif
                 }
                 .padding(.horizontal)
 

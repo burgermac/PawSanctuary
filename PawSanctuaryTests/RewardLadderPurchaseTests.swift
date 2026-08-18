@@ -264,6 +264,52 @@ final class RewardLadderAvailabilityTests: XCTestCase {
     }
 }
 
+/// Debug-only helper added to unblock Reward Ladder on-screen verification
+/// (spec §5 found resetToFreshGame() resets *away* from isMonetizationUnlocked,
+/// not toward it). #if DEBUG only — these tests run in the Debug test
+/// configuration, same as the rest of this target.
+@MainActor
+final class UnlockMonetizationForTestingTests: XCTestCase {
+
+    private func makeViewModel() -> MergeBoardViewModel {
+        let vm = MergeBoardViewModel()
+        vm.board = (0..<boardRows).map { row in
+            (0..<7).map { col in
+                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+            }
+        }
+        return vm
+    }
+
+    func testFlipsIsRewardLadderAvailableTrueFromFreshState() {
+        let vm = makeViewModel()
+        XCTAssertFalse(vm.isRewardLadderAvailable)
+
+        vm.unlockMonetizationForTesting()
+
+        XCTAssertTrue(vm.isRewardLadderAvailable)
+    }
+
+    func testBumpsLevelToTheUnlockThresholdWhenBelowIt() {
+        let vm = makeViewModel()
+        vm.progression.playerLevel = 1
+
+        vm.unlockMonetizationForTesting()
+
+        XCTAssertEqual(vm.progression.playerLevel, monetizationUnlockLevel)
+    }
+
+    func testNeverLowersAnAlreadyHigherLevel() {
+        let vm = makeViewModel()
+        vm.progression.playerLevel = monetizationUnlockLevel + 10
+
+        vm.unlockMonetizationForTesting()
+
+        XCTAssertEqual(vm.progression.playerLevel, monetizationUnlockLevel + 10,
+                       "must bump toward the threshold, never lower real progress")
+    }
+}
+
 /// Task 3.2 — confirms, rather than assumes, that the Reward Ladder needs no
 /// new GameState field: its entire state is progressTrack's existing
 /// states[trackID] entry, already persisted via ProgressTrack.capture(into:)/
