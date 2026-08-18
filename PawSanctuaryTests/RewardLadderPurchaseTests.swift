@@ -7,14 +7,15 @@
 //  EventPassPurchaseTests' shape for the identical time-of-check/time-of-use
 //  reason (see pendingRewardLadderRung's doc comment).
 //
-//  Unlike eventPass, `rewardLadderTrackID` ("reward_ladder") has no
-//  ProgressTrackRegistry content yet — that lands in Task 3.5. So these tests
-//  cover only what's observable without it: progress bookkeeping and pending-
-//  state hygiene. Which paid/free rewards a given rung actually grants isn't
-//  testable until 3.5's registry entry exists. ProgressTrack.claim's
-//  below-threshold-returns-nothing guard (the safety net a stale/out-of-range
-//  pendingRewardLadderRung would hit) is already covered generically by
-//  LiveOpsEngineTests.testClaimBelowThresholdReturnsNothing — not re-tested here.
+//  RewardLadderPurchaseTests covered only progress bookkeeping and
+//  pending-state hygiene until Task 3.5 added rewardLadderTrackID's real
+//  ProgressTrackRegistry content (LiveOpsEngine.swift) — which paid/free
+//  rewards a given rung actually grants is now covered too. ProgressTrack.
+//  claim's below-threshold-returns-nothing guard (the safety net a stale/
+//  out-of-range pendingRewardLadderRung would hit) is already covered
+//  generically by LiveOpsEngineTests.testClaimBelowThresholdReturnsNothing —
+//  not re-tested here. RewardLadderContentTests below covers the registry
+//  entry's own shape (Task 3.5).
 //
 
 import XCTest
@@ -84,17 +85,119 @@ final class RewardLadderPurchaseTests: XCTestCase {
                        + "transaction after relaunch) must still advance via progress(trackID:) + 1, not no-op")
     }
 
-    func testPurchaseWithNoRegistryContentYetGrantsNoRewardsWithoutCrashing() {
+    /// Task 3.5 gave `rewardLadderTrackID` real registry content — this closes
+    /// the exact gap this file's header comment flagged as untestable before
+    /// that landed: rung 1's paid dog tags (36) plus both free rewards (35
+    /// kibble, 4 dog tags) must land together in one purchase, per §4's table.
+    func testFirstPurchaseGrantsExactlyRungOnesPaidAndFreeRewards() {
         let vm = makeViewModel()
         let kibbleBefore = vm.kibble
         let dogTagsBefore = vm.dogTags
 
         vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
 
-        XCTAssertEqual(vm.kibble, kibbleBefore,
-                       "reward_ladder has no ProgressTrackRegistry entry until Task 3.5 — claim() must return "
-                       + "[] safely rather than crash, so no kibble should be granted yet")
-        XCTAssertEqual(vm.dogTags, dogTagsBefore)
+        XCTAssertEqual(vm.kibble, kibbleBefore + 35, "rung 1's free-lane kibble must be granted")
+        XCTAssertEqual(vm.dogTags, dogTagsBefore + 36 + 4,
+                       "rung 1's paid (36) and free (4) dog tags must both land in one purchase")
+    }
+
+    func testSecondPurchaseGrantsRungTwosOwnRewardsNotRungOnesAgain() {
+        let vm = makeViewModel()
+        // Past every VIP tier's spend threshold (AnimalSpecies.swift's
+        // vipTiers tops out at $2,000) so neither purchase below newly
+        // crosses one and adds its own kibble/dog-tag bonus on top of the
+        // ladder's — this test is isolated to the ladder's own reward
+        // granting, not VIP interaction (a real, separate mechanic).
+        vm.commerce.totalSpendMicros = 3_000_000_000
+        vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)   // rung 1
+        let kibbleAfterRungOne = vm.kibble
+        let dogTagsAfterRungOne = vm.dogTags
+
+        vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)   // rung 2
+
+        XCTAssertEqual(vm.kibble, kibbleAfterRungOne + 35, "rung 2's free-lane kibble")
+        XCTAssertEqual(vm.dogTags, dogTagsAfterRungOne + 40 + 4, "rung 2's paid (40) and free (4) dog tags")
+    }
+}
+
+/// Task 3.5 — the real ProgressTrackRegistry[rewardLadderTrackID] entry
+/// (specs/Spec_Phase6b_RewardLadder.md §4/§5). Guards the one invariant the
+/// implementation's own comment (LiveOpsEngine.swift) flags as silently
+/// dangerous if wrong: threshold must equal index + 1 exactly, or
+/// applyPurchase's `claim(milestone: nextRung - 1, ...)` call stops matching
+/// a purchased rung to its reward.
+final class RewardLadderContentTests: XCTestCase {
+
+    private var milestones: [TrackMilestone] {
+        ProgressTrackRegistry.tracks[rewardLadderTrackID] ?? []
+    }
+
+    func testHasExactlySixRungsPerSpecSection4() {
+        XCTAssertEqual(milestones.count, 6)
+    }
+
+    func testEveryThresholdEqualsItsIndexPlusOne() {
+        for milestone in milestones {
+            XCTAssertEqual(milestone.threshold, milestone.index + 1,
+                           "rung \(milestone.index) has threshold \(milestone.threshold) — applyPurchase's "
+                           + "claim(milestone: nextRung - 1) silently stops matching if this ever drifts")
+        }
+    }
+
+    func testPaidLaneIsDogTagsOnlyAndStrictlyIncreasing() {
+        var previousAmount = 0
+        for milestone in milestones {
+            XCTAssertEqual(milestone.paidRewards.count, 1)
+            let reward = milestone.paidRewards[0]
+            XCTAssertEqual(reward.kind, .dogTags, "paid lane must be dog tags only per §4 — no cardPack hero reward")
+            XCTAssertGreaterThan(reward.amount, previousAmount, "paid-lane amount must strictly increase rung to rung")
+            previousAmount = reward.amount
+        }
+    }
+
+    func testPaidLaneNeverReachesDogTagsMediumsShelfRate() {
+        // dogTagsMedium: 60 dog tags for $2.99 — the real "shelf" comparison
+        // §4's recalibration is anchored against. The paid lane alone must
+        // always read as a worse deal than just buying dog tags directly.
+        for milestone in milestones {
+            let paidAmount = milestone.paidRewards.first?.amount ?? 0
+            XCTAssertLessThan(paidAmount, 60, "rung \(milestone.index)'s paid-alone dog tags must stay below shelf")
+        }
+    }
+
+    func testCombinedValueAlwaysExceedsShelf() {
+        // 1 kibble ≈ 0.6 dog-tag-equivalent at DogTagKibbleExchange's flat
+        // rate (§4's own conversion) — combined (paid + free, kibble
+        // converted) must always beat the 60-dog-tag shelf comparison.
+        for milestone in milestones {
+            let paidTags = milestone.paidRewards.first { $0.kind == .dogTags }?.amount ?? 0
+            let freeTags = milestone.freeRewards.first { $0.kind == .dogTags }?.amount ?? 0
+            let freeKibble = milestone.freeRewards.first { $0.kind == .kibble }?.amount ?? 0
+            let combinedTagEquivalent = Double(paidTags + freeTags) + Double(freeKibble) * 0.6
+            XCTAssertGreaterThan(combinedTagEquivalent, 60,
+                                 "rung \(milestone.index)'s combined value must exceed dogTagsMedium's shelf rate")
+        }
+    }
+
+    func testExactTableMatchesSpecSection4() {
+        let expected: [(index: Int, paidTags: Int, freeKibble: Int, freeTags: Int)] = [
+            (0, 36, 35, 4),
+            (1, 40, 35, 4),
+            (2, 43, 40, 5),
+            (3, 47, 40, 6),
+            (4, 50, 45, 7),
+            (5, 54, 50, 8),
+        ]
+        XCTAssertEqual(milestones.count, expected.count)
+        for row in expected {
+            guard let milestone = milestones.first(where: { $0.index == row.index }) else {
+                XCTFail("missing rung \(row.index)")
+                continue
+            }
+            XCTAssertEqual(milestone.paidRewards, [OrderReward(kind: .dogTags, amount: row.paidTags)])
+            XCTAssertEqual(milestone.freeRewards, [OrderReward(kind: .kibble, amount: row.freeKibble),
+                                                    OrderReward(kind: .dogTags, amount: row.freeTags)])
+        }
     }
 }
 

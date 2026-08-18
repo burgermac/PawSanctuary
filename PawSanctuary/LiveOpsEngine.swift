@@ -663,6 +663,47 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .dogTags, amount: 8)],
                            paidRewards: []),
         ],
+        // "Reward Ladder" (D8, ShopView.swift's RewardLadderSection) — Phase
+        // 6b, Task 3.5. Recalibrated numbers from Spec_Phase6b_RewardLadder.md
+        // §4, confirmed by the design authority 18 Aug 2026 (not a first-cut
+        // placeholder like most of this file's other tables — checked against
+        // dogTagsMedium/DogTagKibbleExchange as a real shelf comparison, see
+        // §4's own methodology). `threshold` must equal the rung number
+        // (index + 1) exactly — MergeBoardViewModel.applyPurchase's
+        // `.rewardLadderRung` case advances progress by 1 per purchase and
+        // claims milestone `nextRung - 1`, so a threshold mismatch here would
+        // silently make a rung unclaimable. `paidRewards` is dog tags only,
+        // always below dogTagsMedium's 60-tag/$2.99 shelf rate (60%→90% of
+        // shelf); `freeRewards` (kibble + dog tags) is what pushes the
+        // combined total above shelf (102%→153%) — the released reward is
+        // deliberately the richer half of the pair, per §0's "player is
+        // buying the release of rewards already visible" framing.
+        rewardLadderTrackID: [
+            TrackMilestone(index: 0, threshold: 1,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 35),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: [OrderReward(kind: .dogTags, amount: 36)]),
+            TrackMilestone(index: 1, threshold: 2,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 35),
+                                         OrderReward(kind: .dogTags, amount: 4)],
+                           paidRewards: [OrderReward(kind: .dogTags, amount: 40)]),
+            TrackMilestone(index: 2, threshold: 3,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 40),
+                                         OrderReward(kind: .dogTags, amount: 5)],
+                           paidRewards: [OrderReward(kind: .dogTags, amount: 43)]),
+            TrackMilestone(index: 3, threshold: 4,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 40),
+                                         OrderReward(kind: .dogTags, amount: 6)],
+                           paidRewards: [OrderReward(kind: .dogTags, amount: 47)]),
+            TrackMilestone(index: 4, threshold: 5,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 45),
+                                         OrderReward(kind: .dogTags, amount: 7)],
+                           paidRewards: [OrderReward(kind: .dogTags, amount: 50)]),
+            TrackMilestone(index: 5, threshold: 6,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: [OrderReward(kind: .dogTags, amount: 54)]),
+        ],
     ]
 }
 

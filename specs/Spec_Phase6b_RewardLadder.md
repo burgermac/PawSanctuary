@@ -121,9 +121,11 @@ New view, structurally its own thing (per §2 — nothing existing fits a vertic
 
 Gating for both surfaces: `isRewardLadderAvailable` (§3.3).
 
-### 3.5 — Test content
+### 3.5 — Test content — implemented 18 Aug 2026
 
-`ProgressTrackRegistry.tracks[rewardLadderTrackID]` needs a real entry — see §5.
+`ProgressTrackRegistry.tracks[rewardLadderTrackID]` (`LiveOpsEngine.swift`) now has the real 6-rung entry from §4, verbatim. `RewardLadderContentTests` (`PawSanctuaryTests/RewardLadderPurchaseTests.swift`) locks down the table itself (exact match against §4, paid-lane-below-shelf, combined-above-shelf, strictly-increasing paid amounts) and the one invariant that would silently break purchasing if it ever drifted: `threshold == index + 1` for every rung, since `applyPurchase`'s `.rewardLadderRung` case derives which milestone to claim from the purchase count, not a stored ID. `RewardLadderPurchaseTests` also gained two tests this content unlocked — a real purchase now grants the correct paid + free rewards, and a second purchase grants rung 2's own rewards rather than rung 1's again. 393/393 tests passing.
+
+Full interactive/on-screen verification is still not possible — same two blockers Task 3.4 already flagged (no debug lever to reach `isMonetizationUnlocked` short of real play, and this session's Simulator tap-registration issue), neither caused by this task. §5 below is the real screen-verifiable path once those are addressed.
 
 ---
 
@@ -152,9 +154,11 @@ Still open, deliberately not touched in this pass: whether 6 rungs and $2.99 fla
 
 ---
 
-## 5. Task — one screen-verifiable test instance
+## 5. Task — one screen-verifiable test instance — content done, real verification still blocked
 
-Add `rewardLadderTrackID = "reward_ladder"` (a fixed constant, not date-stamped — unlike every other event type's IDs, this isn't a calendar instance that gets superseded, per §0/§2) and its `ProgressTrackRegistry.tracks` entry (the 6 rungs from §4). Since this isn't calendar-scheduled, there's no date window to pick — it becomes screen-verifiable the moment `isMonetizationUnlocked` is true for a test account (already achievable today via existing debug/reset tooling, per `resetToFreshGame()`'s existing dev-only paths), not gated on any future date the way Parallel Board's real test event was.
+`rewardLadderTrackID = "reward_ladder"` (`AnimalSpecies.swift`, a fixed constant, not date-stamped — unlike every other event type's IDs, this isn't a calendar instance that gets superseded, per §0/§2) and its `ProgressTrackRegistry.tracks` entry (the 6 rungs from §4) both landed in Task 3.5. Since this isn't calendar-scheduled, there's no date window to wait for the way Parallel Board's real test event had — but this section's original claim that reaching `isMonetizationUnlocked` was **"already achievable today via existing debug/reset tooling, per `resetToFreshGame()`'s existing dev-only paths"** turned out to be wrong, caught while actually trying to verify Task 3.4/3.5 on screen rather than assumed: `resetToFreshGame()` (`MergeBoardViewModel.swift`) resets `progression.playerLevel` to 1 and doesn't touch `commerce.hasReachedFirstWall` — it resets *away* from monetization-unlocked, not toward it. There is currently no debug lever that gets a fresh test account to `isMonetizationUnlocked == true` faster than real play (reach player level 5 and the first kibble wall) would.
+
+- [ ] **Real screen verification, still open:** either play a test account to level 5 + the first wall the normal way, or add a small `#if DEBUG` toggle (mirroring `resetToFreshGame()`'s own precedent) that flips `commerce.hasReachedFirstWall = true` — a design-authority call on whether that debug affordance is worth adding, not assumed here. Once available: confirm the Shop's `RewardLadderSection` and the task-strip `RewardLadderTaskCard` both appear, confirm the ladder view's layout (purchased/next/locked states) matches §3.4's design, and complete a real rung purchase to confirm `applyPurchase` grants the right rewards on screen (unit-tested already in `RewardLadderPurchaseTests`/`RewardLadderContentTests`, but never watched happen).
 
 ---
 
