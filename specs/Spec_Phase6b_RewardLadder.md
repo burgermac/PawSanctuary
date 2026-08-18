@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar. Partially reviewed by the design authority (18 Aug 2026): the §0/§6 trigger question is resolved; §4's numbers and §3.4's UI placement are still open.** This spec exists because D8 was decided 18 Aug 2026 (Alignment Plan §3): **adopt, as a variant of the Pass primitive, coercive version** (visible-but-locked free nodes, matching both reference titles). That decision resolved *whether* and *which version* — it did not resolve *how this actually gets triggered/scheduled* or *what the exact ladder numbers should be*, both genuinely unaddressed by the Alignment Plan's own D8 entry. This draft proposed answers to both; the trigger question (§0) is now confirmed — see §6 for the remaining open items.
+**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar. Partially reviewed by the design authority (18 Aug 2026): the §0/§6 trigger question and §3.4's UI placement are both resolved; only §4's numbers remain open.** This spec exists because D8 was decided 18 Aug 2026 (Alignment Plan §3): **adopt, as a variant of the Pass primitive, coercive version** (visible-but-locked free nodes, matching both reference titles). That decision resolved *whether* and *which version* — it did not resolve *how this actually gets triggered/scheduled*, *where it lives in the UI*, or *what the exact ladder numbers should be*, all genuinely unaddressed by the Alignment Plan's own D8 entry. This draft proposed answers to all three; the trigger and placement questions are now confirmed — see §6 for what's left.
 
 ---
 
@@ -103,11 +103,17 @@ Unlike Pass's `passUnlockedEventIDs` (a new `GameState` field was needed because
 
 Add a computed property, `MergeBoardViewModel.isRewardLadderAvailable: Bool { isMonetizationUnlocked }` — a thin, explicitly-named wrapper rather than reusing `isMonetizationUnlocked` directly at every call site, so a future change to the trigger condition (§6) only touches one place. Gate the new UI entry point (§3.4) on this.
 
-### 3.4 — UI: the ladder view + entry point
+### 3.4 — UI: the ladder view + entry points
 
 New view, structurally its own thing (per §2 — nothing existing fits a vertical rung ladder). Rungs 1…N rendered top-to-bottom or left-to-right (design-authority call, not resolved here): purchased rungs show their claimed rewards plainly; the **one** next-purchasable rung shows both reward previews (paid + freed) with a buy CTA at `rewardLadderRung`'s live `displayPrice`; every rung beyond that renders locked/dimmed with no price shown (per the "coercive" decision — the *existence* of future rungs is visible, matching the reference titles' own screenshots, but not purchasable out of order).
 
-Entry point: a new Shop-adjacent surface, gated on `isRewardLadderAvailable` (§3.3) — exact placement (a `TaskStripView` card vs. a `ShopView` section) is a design-authority call, not resolved here; either is a small, mechanical wiring choice once the ladder view itself exists.
+**Entry points — confirmed by the design authority, 18 Aug 2026: both, not either/or.**
+
+- **Primary: a new `ShopView` section**, alongside `VIPSection` (`ShopView.swift:485`) — the closest existing precedent, both being permanent/untimed/progress-driven surfaces living in the Shop sheet rather than the task strip. This is the section that actually hosts the ladder view.
+- **Secondary: a new `TaskStripView` card**, next to `EventTaskCard`/`ParallelBoardTaskCard`, gated on `isRewardLadderAvailable` (§3.3), tapping through to the Shop's ladder section rather than opening its own sheet — matching how `EventTaskCard`/`ParallelBoardTaskCard` tap through to their own detail surfaces rather than duplicating one.
+- **Real design point this raises, flagged rather than glossed over:** every existing task-strip card carries a `timerLabel` countdown (`EventTaskCard.swift`/`ParallelBoardTaskCard` both render one, `PanelViews.swift:1343`/`1388`) — the strip's whole visual language is built around urgency. The Reward Ladder card would be the **first untimed card in that strip**. It needs a deliberately different treatment in that slot (e.g. a progress fraction — "Rung 3/6" — in place of the countdown badge, not an empty space where one would normally sit) rather than reusing `EventTaskCard`'s layout verbatim. Left as an implementation-time design call within the confirmed "both" placement, not a fork to redecide.
+
+Gating for both surfaces: `isRewardLadderAvailable` (§3.3).
 
 ### 3.5 — Test content
 
@@ -149,7 +155,7 @@ Add `rewardLadderTrackID = "reward_ladder"` (a fixed constant, not date-stamped 
 This draft had its first design-authority pass on 18 Aug 2026. Resolved and still-open items below:
 
 - **RESOLVED — the trigger/schedule proposal in §0.** Confirmed permanent-and-untimed: appears once `isMonetizationUnlocked` flips true, no expiry, no start-timestamp, no countdown. Real timer-bound behavior (matching the reference titles) was considered and explicitly not chosen, given the added complexity of the expiry sub-question (what happens to a half-purchased ladder — keep progress forever? reset it?) and no StoreKit revocation flow to hook a refund to.
-- **Ladder placement in the UI** (§3.4) — Shop section vs. task-strip card vs. something else entirely. Still open.
+- **RESOLVED — ladder placement in the UI (§3.4).** Both: primary `ShopView` section (alongside `VIPSection`) plus a secondary `TaskStripView` card that taps through to it. The task-strip card needs its own untimed visual treatment (no `timerLabel` to show) — flagged in §3.4, left as an implementation-time detail rather than a further fork.
 - **Does the ladder repeat once completed**, or stay maxed forever as a one-time unlock? This draft assumes one-time (simplest, matches how a completed Milestone/Pass track just sits claimed) — not stated anywhere in the Alignment Plan's own D8 entry.
 - **§4's numbers**, as always.
 
