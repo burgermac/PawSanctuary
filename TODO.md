@@ -2,6 +2,12 @@
 
 ## Pending
 
+### Test rot — `testCheckEventLifecycleRegistersAnIndependentRiderForEachRealActiveEvent` now failing (found 18 Aug 2026, incidentally, while running the full suite for an unrelated doc task)
+
+`ConcurrentEventRiderRegistrationTests` (`EventSystemTests.swift:196`) reads real wall-clock time against `EventRegistry.activeEvents` to prove `checkEventLifecycle()` registers an independent rider per genuinely-overlapping real event — a known, self-documented limitation of this test (`EventRegistry.activeEvents` isn't injectable, see `Spec_Phase6c_Calendar.md` §4) that its own author already anticipated: it `XCTFail`s with *"Foster Weekend's window (2026-08-14...18) may have closed -- add a fresh overlapping EventDefinition to re-enable this test."* That's now exactly what's happening — Foster Weekend's window closed as of today (2026-08-18), and this is the only failure in an otherwise-green 372-test suite.
+
+- [ ] **Fix:** add a fresh test-only `EventDefinition` (or two) to `EventRegistry.allEvents` with a window that genuinely overlaps another currently-active real event, mirroring Foster Weekend's own original purpose, OR make the test's date dependency injectable so it doesn't rot again the next time a hardcoded test-event window closes. Deliberately not fixed here — found in passing while verifying the unrelated Phase 1 checklist correction below; a real fix deserves its own session, not a bundled edit.
+
 ### Xcode capability toggles (Signing & Capabilities — not code changes)
 - [ ] **Phase 3, Task 3.5.** Enable **Push Notifications** capability. Required for `UNUserNotificationCenter` permission prompt to work on device — the scheduling logic in `NotificationManager.swift` is already fully implemented and just needs this to actually fire. (Works on a free/Personal Team.) Blocks nothing else in Phase 3 — 3.1–3.4 are done and don't depend on it.
 - [ ] **Re-enable Game Center capability — REGRESSED.** Enabled once in commit `adf1be4`, but `PawSanctuary/PawSanctuary.entitlements` is now an empty `<dict/>` with no `com.apple.developer.game-center` key, and `project.pbxproj` has no Game Center references. `CardTrading.swift` still imports GameKit and `authenticateGameCenter` runs at launch, so the code expects a capability the app no longer declares. Restore via Xcode → Signing & Capabilities → `+ Capability` → Game Center (**not** by hand-editing the plist — that skips App ID registration and causes signing failures). Works on a free/Personal Team. Commit on its own, noting it as a regression. Card trading also needs CloudKit, which remains blocked on paid enrolment.
@@ -21,18 +27,18 @@
 - [ ] Age rating declaration
 - [ ] Replace the placeholder App Store URL in `InviteSystem.swift` (`pawSanctuaryAppStoreURL`, currently `id0000000000`) once the app has a real listing.
 
-### Stale documentation — Alignment Plan Phase 1 checklist
+### Stale documentation — Alignment Plan Phase 1 checklist — RESOLVED 18 Aug 2026
 
-`specs/PawSanctuary_Alignment_Plan.md` §4 (Phase 1 — Foundations) shows all six items (1.1–1.6) unchecked, but the underlying work is very likely already shipped — every later phase built on top of these primitives and is itself already checked off:
+~~`specs/PawSanctuary_Alignment_Plan.md` §4 (Phase 1 — Foundations) shows all six items (1.1–1.6) unchecked, but the underlying work is very likely already shipped~~ — **verified against actual source, file/line, and checked off in the Alignment Plan itself** (§4), same rigor as the Phase 2 correction this entry asked for, not just assumed from context:
 
-- **1.1** (`[OrderReward]` list + `RewardKind`) — `OrderReward` is used extensively throughout the codebase (Phase 5's order rewards, every Phase 6 event type's milestone tables).
-- **1.2** (rider-injection hook) — `OrderRewardRegistry` (`OrderRewardRegistry.swift`) is exactly this, and is load-bearing for Milestone track/Pass/the Phase 6c calendar's `EventTokenRiderProvider`s.
-- **1.3** (`ChainCategory.currency`) — Phase 4.1 explicitly cites "`ChainCategory.currency` from 1.3" as already existing when it shipped.
-- **1.4** (player purchase-state tracking) — `commerce.hasReachedFirstWall`, `hasEverPurchased`, `totalSpendMicros` all referenced as shipped in Phase 3.4/3.7.
-- **1.5** (live-ops primitive interfaces) — `LiveOpsPrimitives.swift`, real and stubbed-then-implemented per 6a.
-- **1.6** (schema migration) — obviously true given the v8→v35 migration chain.
+- **1.1** (`[OrderReward]` list + `RewardKind`) — confirmed: `AnimalSpecies.swift:768-808`, `AdoptionBoard.swift:66-135`, `MergeBoardViewModel.swift:3109`.
+- **1.2** (rider-injection hook) — confirmed: `OrderRewardRegistry.swift:14-31`, called at generation time in `AdoptionBoard.swift:128`.
+- **1.3** (`ChainCategory.currency`) — confirmed: `ItemChain.swift:30`, real chains using it at `:417`/`:435`.
+- **1.4** (player purchase-state tracking) — confirmed: `PlayerCommerceState` (`AnimalSpecies.swift:953-977`), `firstLaunchDate` set exactly once at `MergeBoardViewModel.swift:888`.
+- **1.5** (live-ops primitive interfaces) — confirmed: `LiveOpsPrimitives.swift`, 6 of the original 8 still present with real Phase 6a implementations, rider injection folded directly into 1.2, and the 8th (`ParallelBoardHosting`) legitimately retired 16 Aug 2026 once Parallel Board's real shape was known — not a gap.
+- **1.6** (schema migration) — confirmed: unbroken chain, now at v36; the primitives' own fields got their migration at v29, tested.
 
-Same pattern as Phase 2's checklist, which sat unchecked for weeks despite being fully shipped (corrected 15 Aug 2026 in the Alignment Plan itself). **Before checking these off, verify each item against the actual code** (file/line, same rigor as the Phase 2 correction) rather than assuming from context — don't just flip the checkboxes on the strength of this TODO entry.
+See the Alignment Plan's §4 for the full per-item citations.
 
 ### Content gaps
 - [ ] **Seasonal Events — add future events to registry:** the infrastructure in `EventSystem.swift` is complete, but the only event ever defined (`rescue_rush_jun2026`, June 1–15 2026) has expired. Add new `EventDefinition` entries to `EventRegistry.allEvents` — nothing seasonal is currently active.
