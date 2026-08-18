@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Design-authority reviewed 18 Aug 2026: the §3.4/§6 anchor-sharing question, currency scope, and the standing-quest extension are all resolved (all three slots may share one spend anchor; both kibble and dog tags generate; standing quests stay out of scope). Only §4's numbers remain open.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for what's left.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Design-authority reviewed and fully confirmed 18 Aug 2026 — every fork resolved (anchor-sharing, currency scope, §4's numbers, the standing-quest extension). Ready to implement.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for the full review record.
 
 ---
 
@@ -165,9 +165,9 @@ Unlike D8, this doesn't add new registry content — the daily-challenge generat
 
 ---
 
-## 4. Numbers — first cut, flag before trusting
+## 4. Numbers — confirmed by the design authority, 18 Aug 2026
 
-Same posture as every other first-cut table in this project: modelled, not guessed, but at two different levels of rigor for the two currencies — flagged explicitly rather than presented as equally solid.
+Same posture as every other numbers section in this project: modelled, not guessed, but at two different levels of rigor for the two currencies — flagged explicitly rather than presented as equally solid. Reviewed and adopted as-is, both seed values below now final rather than first-cut.
 
 ### Kibble — anchored to the existing, reviewed `EconomySimulation.swift` model
 
@@ -203,12 +203,14 @@ No calendar window, no monetization gate, no debug lever needed (§3.5) — this
 
 ## 6. Open questions for design-authority review
 
-This draft has **not** had a design-authority pass yet — everything below is genuinely open:
+This draft's design-authority review is complete as of 18 Aug 2026 — every fork below was resolved rather than left assumed:
 
 - **RESOLVED — the anchor-sharing question in §3.4.** Confirmed: all three slots can share one spend anchor on the same day, same as every other anchor. Not special-cased to soften the mechanic.
 - **RESOLVED — currency scope (§2).** Confirmed: both kibble and dog tags generate in v1. Dog tags run on a new, lighter-weight estimate built for this spec (§4) rather than an `EconomySimulation.swift`-grade model — that confidence gap is real and flagged, not something to forget once this is implemented.
-- **§4's numbers** — the 40-kibble and 8-dog-tag easy seeds, as always, and specifically the dog-tag supply estimate's own assumptions (order-tier average, "engaged player" throughput reused from the kibble model) given it's new and untested against real telemetry.
+- **RESOLVED — §4's numbers.** Confirmed: the 40-kibble and 8-dog-tag easy seeds are adopted as final, including the dog-tag supply estimate's own assumptions (order-tier average, "engaged player" throughput reused from the kibble model) — reviewed and accepted despite being new and untested against real telemetry, not deferred pending more data.
 - **RESOLVED — whether standing quests should get this goal type too (§2).** Confirmed: no. Turned out to be real, separate work (8 hand-derived target counts, a reward-rebate texture question), not the cheap extension this draft originally assumed — worth its own spec if ever revisited, not folded in here.
+
+Nothing left open — this spec is ready to implement.
 
 ---
 
