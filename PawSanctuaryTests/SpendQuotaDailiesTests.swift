@@ -175,3 +175,147 @@ final class SpendQuotaDailiesChokepointTests: XCTestCase {
                              "the existing all-three-complete bonus (spec §2) must still pay out — no new reward mechanic")
     }
 }
+
+/// Task 3.3 — every real spend site actually calls updateAllAfterSpend with
+/// the right currency and the right amount, end to end through the public
+/// action a player would trigger, not just the chokepoint in isolation
+/// (already covered above). No existing test file covered any of these nine
+/// functions before this task, so setup is built from scratch per site.
+@MainActor
+final class SpendQuotaDailiesWiringTests: XCTestCase {
+
+    /// A viewmodel with a full empty unlocked board and a single easy daily
+    /// challenge for the given currency, generous enough (999) that no
+    /// individual site's spend could complete it — keeps every test focused
+    /// on "did progress advance by the right amount," not completion/bonus
+    /// interaction (already covered by SpendQuotaDailiesChokepointTests).
+    private func makeViewModel(dailyGoalCurrency: RewardKind) -> MergeBoardViewModel {
+        let vm = MergeBoardViewModel()
+        vm.board = (0..<boardRows).map { row in
+            (0..<7).map { col in
+                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+            }
+        }
+        // The board setter doesn't recompute BoardStateManager's cached
+        // emptyUnlockedCells on its own (see freshStart()'s own comment on
+        // this exact gotcha) — without this, buyProducer/activateProducer
+        // see a stale empty cache and silently no-op via their "nowhere to
+        // place it" guard, never reaching the spend at all.
+        vm.boardState.recalc()
+        vm.quests.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(dailyGoalCurrency, count: 999), difficulty: .easy),
+        ]
+        return vm
+    }
+
+    private func progress(_ vm: MergeBoardViewModel) -> Int { vm.quests.dailyChallenges[0].progress }
+
+    func testBuyProducerAdvancesTheKibbleGoalByItsDogTagCost() {
+        // buyProducer spends dog tags, not kibble — this confirms the wiring
+        // uses .dogTags (not accidentally .kibble) by pointing the daily
+        // goal at dog tags and expecting real progress.
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = 100
+
+        vm.buyProducer(.rescueCrate)
+
+        XCTAssertEqual(progress(vm), ProducerLevel.rescueCrate.dogTagCost)
+    }
+
+    func testPaidRefreshDogTagStoreAdvancesTheDogTagGoal() {
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = 100
+
+        XCTAssertTrue(vm.paidRefreshDogTagStore())
+
+        XCTAssertEqual(progress(vm), dogTagStoreRefreshCost)
+    }
+
+    func testPurchaseDogTagStoreSlotAdvancesByTheSlotsActualPrice() {
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = 100
+        let slot = DogTagStoreSlot(chainID: ContentRegistry.animalChainID(.dog), tier: 0, priceDogTags: 33)
+        vm.dogTagStore.slots = [slot]
+
+        XCTAssertTrue(vm.purchaseDogTagStoreSlot(slot))
+
+        XCTAssertEqual(progress(vm), 33)
+    }
+
+    func testPurchaseWildcardAdvancesByTheWildcardCost() {
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = wildcardCostDogTags
+
+        XCTAssertTrue(vm.purchaseWildcard())
+
+        XCTAssertEqual(progress(vm), wildcardCostDogTags)
+    }
+
+    func testPopBubbleWithDogTagsAdvancesByTheTierDependentCost() {
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = 100
+        let pos = GridPosition(row: 0, col: 0)
+        let item = BoardItem(chainID: ContentRegistry.animalChainID(.dog), tier: 2,
+                             bubbledAt: Date().timeIntervalSince1970)
+        vm.boardState.setItem(item, at: pos)
+        let expectedCost = bubblePopDogTagCost(tier: 2)
+
+        vm.popBubbleWithDogTags(at: pos)
+
+        XCTAssertEqual(progress(vm), expectedCost)
+    }
+
+    func testCrackPiggyBankAdvancesByItsFixedCost() {
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = 100
+        vm.piggyBankCoins = piggyBankCap   // isPiggyBankFull
+
+        XCTAssertTrue(vm.crackPiggyBank())
+
+        XCTAssertEqual(progress(vm), piggyBankCrackCostDogTags)
+    }
+
+    func testClaimOrSkipFreeChestOnThePaidSkipPathAdvancesBySkipCost() {
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.kibbleEngine.dogTags = 100
+        vm.freeChestReadyAt = Date().addingTimeInterval(3600)   // not ready -> forces the paid-skip branch
+
+        XCTAssertTrue(vm.claimOrSkipFreeChest())
+
+        XCTAssertEqual(progress(vm), freeChestSkipCostDogTags)
+    }
+
+    func testClaimingAReadyFreeChestForFreeDoesNotAdvanceTheDogTagGoal() {
+        // The free (not skipped) path must NOT count as a spend.
+        let vm = makeViewModel(dailyGoalCurrency: .dogTags)
+        vm.freeChestReadyAt = .distantPast   // already ready — free path
+
+        XCTAssertTrue(vm.claimOrSkipFreeChest())
+
+        XCTAssertEqual(progress(vm), 0)
+    }
+
+    func testSkipOrderAdvancesTheKibbleGoalByTheSkipCost() {
+        let vm = makeViewModel(dailyGoalCurrency: .kibble)
+        vm.kibbleEngine.kibble = 100
+        vm.adoptionBoardCoordinator.adoptionOrders = [
+            AdoptionOrder(familyIndex: 0, wantedChainID: ContentRegistry.animalChainID(.dog),
+                         wantedTier: 0, wantedCount: 1),
+        ]
+
+        vm.skipOrder(at: 0)
+
+        XCTAssertEqual(progress(vm), adoptionSkipCost)
+    }
+
+    func testFinishSpawnViaActivateProducerAdvancesTheKibbleGoalBySpawnCost() {
+        let vm = makeViewModel(dailyGoalCurrency: .kibble)
+        vm.kibbleEngine.kibble = 100
+        let pos = GridPosition(row: 0, col: 0)
+        vm.boardState.setProducer(ProducerTile(level: .rescueCrate), at: pos)
+
+        vm.activateProducer(at: pos)
+
+        XCTAssertGreaterThan(progress(vm), 0, "activating a producer must spend kibble and advance the kibble goal")
+    }
+}

@@ -1369,6 +1369,7 @@ class MergeBoardViewModel {
     private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int) {
         boardState.setItem(item, at: target.position)
         kibbleEngine.kibble -= cost
+        updateAllAfterSpend(kind: .kibble, amount: cost)
         if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
             NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
         }
@@ -1544,6 +1545,7 @@ class MergeBoardViewModel {
         let empty = emptyUnlockedCells
         guard let target = empty.randomElement() else { triggerToast(.boardFull); return }
         kibbleEngine.dogTags -= level.dogTagCost
+        updateAllAfterSpend(kind: .dogTags, amount: level.dogTagCost)
         boardState.setProducer(ProducerTile(level: level), at: target.position)
         recalcBoardIsFull()
         persist()
@@ -1564,6 +1566,7 @@ class MergeBoardViewModel {
     func paidRefreshDogTagStore() -> Bool {
         guard kibbleEngine.dogTags >= dogTagStoreRefreshCost else { return false }
         kibbleEngine.dogTags -= dogTagStoreRefreshCost
+        updateAllAfterSpend(kind: .dogTags, amount: dogTagStoreRefreshCost)
         dogTagStore.forceRefresh(deepestUnlockedTier: deepestUnlockedTier,
                                  unlockedChainIDs: progression.unlockedChainIDs)
         SoundManager.shared.playButtonTap()
@@ -1583,6 +1586,7 @@ class MergeBoardViewModel {
         // Deduct only once the item has somewhere to land.
         guard placeOrBankItem(item) else { return false }
         kibbleEngine.dogTags -= slot.priceDogTags
+        updateAllAfterSpend(kind: .dogTags, amount: slot.priceDogTags)
         dogTagStore.markPurchased(slotID: slot.id)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
@@ -1602,6 +1606,7 @@ class MergeBoardViewModel {
         let item = BoardItem(chainID: ContentRegistry.wildcardChainID, tier: 0)
         guard placeOrBankItem(item) else { return false }
         kibbleEngine.dogTags -= wildcardCostDogTags
+        updateAllAfterSpend(kind: .dogTags, amount: wildcardCostDogTags)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
         persist()
@@ -2187,6 +2192,7 @@ class MergeBoardViewModel {
         let cost = bubblePopDogTagCost(tier: item.tier)
         guard kibbleEngine.dogTags >= cost else { return }
         kibbleEngine.dogTags -= cost
+        updateAllAfterSpend(kind: .dogTags, amount: cost)
         boardState.setBubbledAt(nil, at: pos)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
@@ -3258,6 +3264,7 @@ class MergeBoardViewModel {
                                                kibbleCost: adoptionSkipCost,
                                                currentKibble: kibbleEngine.kibble) else { return }
         kibbleEngine.kibble -= adoptionSkipCost
+        updateAllAfterSpend(kind: .kibble, amount: adoptionSkipCost)
         adoptionBoardCoordinator.skipOrder(at: index,
                                            unlockedChainIDs: progression.unlockedAnimalChainIDs,
                                            playerLevel: progression.playerLevel)
@@ -3452,6 +3459,7 @@ class MergeBoardViewModel {
     func crackPiggyBank() -> Bool {
         guard isPiggyBankFull, kibbleEngine.dogTags >= piggyBankCrackCostDogTags else { return false }
         kibbleEngine.dogTags -= piggyBankCrackCostDogTags
+        updateAllAfterSpend(kind: .dogTags, amount: piggyBankCrackCostDogTags)
         earnCoins(piggyBankCoins)
         // Reset after the payout (not before) so the payout itself doesn't get
         // re-skimmed into a bank that's supposed to start back at zero.
@@ -3481,7 +3489,10 @@ class MergeBoardViewModel {
         }
         let item = BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
         guard placeOrBankItem(item) else { return false }
-        if isSkip { kibbleEngine.dogTags -= freeChestSkipCostDogTags }
+        if isSkip {
+            kibbleEngine.dogTags -= freeChestSkipCostDogTags
+            updateAllAfterSpend(kind: .dogTags, amount: freeChestSkipCostDogTags)
+        }
         freeChestReadyAt = Date().addingTimeInterval(freeChestCooldownHours * 3600)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()

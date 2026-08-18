@@ -133,7 +133,7 @@ func updateAllAfterSpend(kind: RewardKind, amount: Int) {
 
 No overshoot guard needed — `DailyChallenge.progressFraction` already clamps to `1.0` (`AnimalSpecies.swift:725`), and `isComplete`'s `>=` comparison is already overshoot-safe.
 
-### 3.3 — Wire the chokepoint into every real spend site (both currencies)
+### 3.3 — Wire the chokepoint into every real spend site (both currencies) — implemented 18 Aug 2026
 
 Additive only — no existing site's own balance math changes. Nine call sites total (§2's two tables):
 
@@ -151,6 +151,8 @@ Additive only — no existing site's own balance math changes. Nine call sites t
 - `claimOrSkipFreeChest()` (`:3468`, paid-skip branch only): `amount: freeChestSkipCostDogTags`.
 
 **Guard against future sinks going unnoticed:** any *new* spend site added later (either currency) needs this same call, and there's no compiler-enforced way to catch a forgotten one (matches the existing pattern's own risk — `updateAllAfterMerge`/`Rescue` have the identical property, every merge/rescue call site must remember to call them). With nine sites instead of two, this is a real, larger surface for a future miss than kibble alone would have been — flagged, not solved, same posture the rest of this codebase already accepts for this class of problem.
+
+**All nine sites wired and individually integration-tested** (`SpendQuotaDailiesWiringTests`, `PawSanctuaryTests/SpendQuotaDailiesTests.swift`) — each test triggers the real public action (not the chokepoint directly, already covered by Task 3.2's tests) and confirms progress advances by the exact real amount spent, including a negative case (`claimOrSkipFreeChest`'s free — not skipped — path must not count as a spend). `finishSpawn` is private, so its coverage goes through `activateProducer(at:)`, its real public caller. Writing these surfaced a pre-existing gotcha the codebase's own `freshStart()` comment already documents but no other test file had hit before: setting `board` directly doesn't refresh `BoardStateManager`'s cached `emptyUnlockedCells`, so `buyProducer`/`activateProducer` silently no-op via their "nowhere to place it" guard without an explicit `boardState.recalc()` first — not a bug in this task's own code, but real friction worth documenting since none of these nine functions had any test coverage at all before this task.
 
 ### 3.4 — Add the anchor to the daily-challenge generator
 
