@@ -89,7 +89,7 @@ The Alignment Plan's D6 text says "dailies" specifically, and this draft's origi
 
 ## 3. Tasks, suggested landing order
 
-### 3.1 — `QuestGoal.spendCurrency` case + generic switches
+### 3.1 — `QuestGoal.spendCurrency` case + generic switches — implemented 18 Aug 2026
 
 Add to `QuestGoal` (`AnimalSpecies.swift:619`):
 
@@ -101,6 +101,8 @@ case spendCurrency(RewardKind, count: Int)
 - `description`: `"Spend \(c) Kibble"` for `.kibble`, `"Spend \(c) Dog Tags"` for `.dogTags` — both generate in v1 (§2).
 - `icon`/`iconColor`: reuse the same iconography `ShopView.swift`'s rows already use for each currency (`"pawprint"`/green for kibble, `"tag.fill"`/blue for dog tags) rather than inventing new symbols.
 - `dedupeKey`: `"spendCurrency:\(kind.rawValue)"` — irrelevant to dailies (dedup only matters for standing quests, §2) but keeps the switch exhaustive and correct if this case is ever reused there.
+
+**One more exhaustive switch this section's own draft missed:** `MergeBoardViewModel.producerIsNeeded(_:by:)` (`:727-743`) also switches over `QuestGoal` to decide whether an active goal should block a producer from being offered for retirement. The compiler caught it — added `.spendCurrency` to the existing `case .mergeAny, .reachTier: break` branch, since a spend goal isn't tied to any specific producer the way `.mergeInChain`/`.spawnBase` are.
 
 ### 3.2 — Progress pathway: `updateDailyChallengesAfterSpend` + `updateAllAfterSpend`
 

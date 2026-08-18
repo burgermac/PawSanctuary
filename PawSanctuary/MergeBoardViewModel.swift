@@ -735,7 +735,10 @@ class MergeBoardViewModel {
                 } else if producer.level.targetChainID == chainID {
                     return true
                 }
-            case .mergeAny, .reachTier:
+            case .mergeAny, .reachTier, .spendCurrency:
+                // spendCurrency (D6) isn't tied to any specific producer — it's
+                // satisfied by spending through any real sink (§2 of
+                // Spec_SpendQuotaDailies.md), not by running one producer type.
                 break
             }
         }

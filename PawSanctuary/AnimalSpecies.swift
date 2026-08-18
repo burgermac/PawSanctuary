@@ -621,11 +621,18 @@ enum QuestGoal: Codable {
     case mergeInChain(ChainID, count: Int)                  // was mergeSpecies(AnimalSpecies)
     case reachTier(ChainCategory, tier: Int, count: Int)    // was reachStage(RescueStage)
     case spawnBase(count: Int)                              // was rescueStrays
+    /// D6 (Spec_SpendQuotaDailies.md) — spend N of a currency. Daily challenges
+    /// only, for now: standing quests would need their own hand-derived
+    /// per-difficulty counts and raise a reward-rebate question neither
+    /// applies to dailies, which pay no per-slot reward at all (see that
+    /// spec's §2 for why extending there was confirmed out of scope).
+    case spendCurrency(RewardKind, count: Int)
 
     var targetCount: Int {
         switch self {
         case .mergeAny(let c), .mergeInChain(_, let c),
-             .reachTier(_, _, let c), .spawnBase(let c): return c
+             .reachTier(_, _, let c), .spawnBase(let c),
+             .spendCurrency(_, let c): return c
         }
     }
     var description: String {
@@ -642,6 +649,8 @@ enum QuestGoal: Codable {
             return "Get \(c) animal\(c == 1 ? "" : "s") to \(stageLabel) (Tier \(tier + 1))"
         case .spawnBase(let c):
             return "Rescue \(c) animal\(c == 1 ? "" : "s")"
+        case .spendCurrency(let kind, let c):
+            return "Spend \(c) \(kind == .kibble ? "Kibble" : "Dog Tags")"
         }
     }
     /// SF Symbol name for this goal type.
@@ -651,6 +660,7 @@ enum QuestGoal: Codable {
         case .mergeInChain(let id, _):   return ContentRegistry.shared.chain(id)?.tiers.first?.symbol ?? "pawprint.fill"
         case .reachTier(_, let tier, _): return QuestGoal.animalTierAppearance(tier: tier).symbol
         case .spawnBase:                 return "house.fill"
+        case .spendCurrency(let kind, _): return kind == .kibble ? "pawprint" : "tag.fill"
         }
     }
     var iconColor: Color {
@@ -659,6 +669,7 @@ enum QuestGoal: Codable {
         case .mergeInChain(let id, _):   return ContentRegistry.shared.chain(id)?.tiers.first?.tint ?? .brown
         case .reachTier(_, let tier, _): return QuestGoal.animalTierAppearance(tier: tier).color
         case .spawnBase:                 return .green
+        case .spendCurrency(let kind, _): return kind == .kibble ? .green : .blue
         }
     }
 
@@ -670,6 +681,7 @@ enum QuestGoal: Codable {
         case .mergeInChain(let id, _):   return "mergeInChain:\(id)"
         case .reachTier(_, let tier, _): return "reachTier:\(tier)"
         case .spawnBase:                 return "spawnBase"
+        case .spendCurrency(let kind, _): return "spendCurrency:\(kind.rawValue)"
         }
     }
 
