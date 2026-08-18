@@ -97,3 +97,66 @@ final class RewardLadderPurchaseTests: XCTestCase {
         XCTAssertEqual(vm.dogTags, dogTagsBefore)
     }
 }
+
+/// Task 3.3 — isRewardLadderAvailable is a thin wrapper reusing D7's
+/// isMonetizationUnlocked gate exactly (spec §0/§3.3), not a new condition.
+/// These tests exercise both halves of that gate directly rather than
+/// asserting equality with isMonetizationUnlocked itself, so a future
+/// divergence between the two properties would actually be caught here.
+@MainActor
+final class RewardLadderAvailabilityTests: XCTestCase {
+
+    private func makeViewModel() -> MergeBoardViewModel {
+        let vm = MergeBoardViewModel()
+        vm.board = (0..<boardRows).map { row in
+            (0..<7).map { col in
+                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+            }
+        }
+        return vm
+    }
+
+    func testUnavailableBeforeEitherHalfOfTheGateIsMet() {
+        let vm = makeViewModel()
+        vm.commerce.hasReachedFirstWall = false
+        vm.progression.playerLevel = 1
+
+        XCTAssertFalse(vm.isRewardLadderAvailable)
+    }
+
+    func testUnavailableWhenOnlyTheLevelHalfIsMet() {
+        let vm = makeViewModel()
+        vm.commerce.hasReachedFirstWall = false
+        vm.progression.playerLevel = monetizationUnlockLevel
+
+        XCTAssertFalse(vm.isRewardLadderAvailable)
+    }
+
+    func testUnavailableWhenOnlyTheWallHalfIsMet() {
+        let vm = makeViewModel()
+        vm.commerce.hasReachedFirstWall = true
+        vm.progression.playerLevel = monetizationUnlockLevel - 1
+
+        XCTAssertFalse(vm.isRewardLadderAvailable)
+    }
+
+    func testAvailableOnceBothHalvesOfTheGateAreMet() {
+        let vm = makeViewModel()
+        vm.commerce.hasReachedFirstWall = true
+        vm.progression.playerLevel = monetizationUnlockLevel
+
+        XCTAssertTrue(vm.isRewardLadderAvailable)
+    }
+
+    func testTracksIsMonetizationUnlockedExactly() {
+        let vm = makeViewModel()
+        for wall in [false, true] {
+            for level in [1, monetizationUnlockLevel - 1, monetizationUnlockLevel, monetizationUnlockLevel + 1] {
+                vm.commerce.hasReachedFirstWall = wall
+                vm.progression.playerLevel = level
+                XCTAssertEqual(vm.isRewardLadderAvailable, vm.isMonetizationUnlocked,
+                               "must never diverge from the gate it wraps (wall=\(wall), level=\(level))")
+            }
+        }
+    }
+}

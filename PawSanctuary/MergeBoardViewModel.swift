@@ -362,6 +362,15 @@ class MergeBoardViewModel {
         commerce.hasReachedFirstWall && progression.playerLevel >= monetizationUnlockLevel
     }
 
+    /// Reward Ladder (Phase 6b, D8) becomes available the instant monetization
+    /// itself does — reuses D7's gate exactly rather than a new condition, per
+    /// specs/Spec_Phase6b_RewardLadder.md §0/§3.3 (design-authority confirmed
+    /// permanent/untimed, no separate trigger). A thin, explicitly-named
+    /// wrapper rather than reusing `isMonetizationUnlocked` at every call
+    /// site, so a future change to the trigger condition (spec §6) only
+    /// touches one place.
+    var isRewardLadderAvailable: Bool { isMonetizationUnlocked }
+
     // Superpower session-only state (not persisted).
     var preMoveSnapshot: BoardSnapshot? = nil
     var leapMode: Bool = false
