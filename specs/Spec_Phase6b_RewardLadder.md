@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar. Not yet reviewed by the design authority.** This spec exists because D8 was decided 18 Aug 2026 (Alignment Plan §3): **adopt, as a variant of the Pass primitive, coercive version** (visible-but-locked free nodes, matching both reference titles). That decision resolved *whether* and *which version* — it did not resolve *how this actually gets triggered/scheduled* or *what the exact ladder numbers should be*, both genuinely unaddressed by the Alignment Plan's own D8 entry. This draft proposes answers to both, flagged explicitly as proposals rather than settled facts — see §0's naming/trigger discussion and §4's numbers.
+**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar. Partially reviewed by the design authority (18 Aug 2026): the §0/§6 trigger question is resolved; §4's numbers and §3.4's UI placement are still open.** This spec exists because D8 was decided 18 Aug 2026 (Alignment Plan §3): **adopt, as a variant of the Pass primitive, coercive version** (visible-but-locked free nodes, matching both reference titles). That decision resolved *whether* and *which version* — it did not resolve *how this actually gets triggered/scheduled* or *what the exact ladder numbers should be*, both genuinely unaddressed by the Alignment Plan's own D8 entry. This draft proposed answers to both; the trigger question (§0) is now confirmed — see §6 for the remaining open items.
 
 ---
 
@@ -30,7 +30,7 @@ The Alignment Plan describes this as *"the same primitive... one predicate"* dif
 
 Milestone track, Pass, and Parallel Board are all **calendar-scheduled**: a fixed `startDate`/`endDate`, visible to every player during that window, driven by `checkEventLifecycle()`. The Alignment Plan's D8 entry describes the reference titles' version as *"timer-bound, and in both observed cases surfaced at the energy wall"* — which reads as **personalized and player-triggered**, not a calendar event every player sees on the same dates. Nothing in this codebase currently does that; the closest existing mechanism is `isMonetizationUnlocked` (`MergeBoardViewModel.swift:346`, `commerce.hasReachedFirstWall && playerLevel >= monetizationUnlockLevel`, per D7), which today only gates whether the **Shop button itself** is visible — a one-time permanent flip, not a per-offer timer.
 
-**Proposal (this spec's own default, not yet design-authority-reviewed):** the Reward Ladder is **not** an `EventDefinition`/`ParallelBoardEventDefinition`-style scheduled thing at all. It becomes available the instant `isMonetizationUnlocked` flips true (reusing D7's existing gate exactly, no new trigger condition invented), surfaces as a new Shop-adjacent entry point, and — deliberately, as a first-cut scope cut — **has no expiry timer**. The player can complete it at their own pace, same posture Founders' Circle/Sanctuary Circle's 30-day window already gives Pass, rather than the reference titles' harder countdown-then-lose-it framing. **This is the one piece of this draft most likely to need revision** — see §6 for the specific tradeoff and why "timer-bound" was cut rather than guessed at.
+**Confirmed by the design authority, 18 Aug 2026:** the Reward Ladder is **not** an `EventDefinition`/`ParallelBoardEventDefinition`-style scheduled thing at all. It becomes available the instant `isMonetizationUnlocked` flips true (reusing D7's existing gate exactly, no new trigger condition invented), surfaces as a new Shop-adjacent entry point, and **has no expiry timer**. The player can complete it at their own pace, same posture Founders' Circle/Sanctuary Circle's 30-day window already gives Pass, rather than the reference titles' harder countdown-then-lose-it framing. This was the one piece of this draft flagged as most likely to need revision (§6) — reviewed and kept as originally proposed rather than changed to real timer-bound behavior, given the added complexity of the expiry sub-question (what happens to a half-purchased ladder) and no StoreKit revocation flow to hook a refund to.
 
 ---
 
@@ -146,10 +146,10 @@ Add `rewardLadderTrackID = "reward_ladder"` (a fixed constant, not date-stamped 
 
 ## 6. Open questions for design-authority review
 
-Unlike Pass/Parallel Board/Calendar, this draft has **not** had even a first design-authority pass yet — everything below is genuinely open, not "reviewed and accepted as written":
+This draft had its first design-authority pass on 18 Aug 2026. Resolved and still-open items below:
 
-- **The trigger/schedule proposal in §0 is the biggest open item.** Permanent-and-untimed (this draft's proposal) is the cheapest, lowest-risk option and reuses D7's existing gate exactly — but it's a real departure from *"timer-bound"*, which both reference titles actually ship, and which may be load-bearing for the mechanic's urgency/conversion psychology in ways a permanent, no-pressure version loses. If the design authority wants real timer-bound behavior, that's materially more work: a start-timestamp, a countdown, and — the genuinely hard part — a decision about what happens to a half-purchased ladder when its timer expires (keep progress forever? Reset it? Refund nothing, matching this project's existing no-revocation-handling precedent for `eventPass`?). Not scoped here; flagged as the single question most likely to change this spec's shape if answered differently.
-- **Ladder placement in the UI** (§3.4) — Shop section vs. task-strip card vs. something else entirely.
+- **RESOLVED — the trigger/schedule proposal in §0.** Confirmed permanent-and-untimed: appears once `isMonetizationUnlocked` flips true, no expiry, no start-timestamp, no countdown. Real timer-bound behavior (matching the reference titles) was considered and explicitly not chosen, given the added complexity of the expiry sub-question (what happens to a half-purchased ladder — keep progress forever? reset it?) and no StoreKit revocation flow to hook a refund to.
+- **Ladder placement in the UI** (§3.4) — Shop section vs. task-strip card vs. something else entirely. Still open.
 - **Does the ladder repeat once completed**, or stay maxed forever as a one-time unlock? This draft assumes one-time (simplest, matches how a completed Milestone/Pass track just sits claimed) — not stated anywhere in the Alignment Plan's own D8 entry.
 - **§4's numbers**, as always.
 
@@ -157,7 +157,7 @@ Unlike Pass/Parallel Board/Calendar, this draft has **not** had even a first des
 
 ## 7. Out of scope
 
-- **Real timer-bound behavior** — see §6; this draft's own proposal explicitly cuts it, not silently.
+- **Real timer-bound behavior** — see §6; confirmed cut by the design authority, not silently dropped.
 - **Repeating/resetting the ladder** — one-time only, per §6's stated assumption.
 - **A player-facing name other than "Reward Ladder"** — placeholder chosen only to avoid the "chain" collision (§0); final copy is a design-authority call, same posture `Spec_Phase6b_Pass.md` took for "Event Pass."
 - **Re-deriving §4's numbers against a real model.**
