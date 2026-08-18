@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Not yet reviewed by the design authority.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for what's flagged rather than assumed.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Partially reviewed by the design authority (18 Aug 2026): the §3.4/§6 anchor-sharing question is resolved (all three slots may share the spend-kibble anchor); currency scope, §4's numbers, and the standing-quest question remain open.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for what's still open.
 
 ---
 
@@ -129,7 +129,7 @@ Additive only — neither existing site's own balance math changes:
 - `DailyChallengeAnchor`: new case `.spendKibble`, with `goal(count:)` returning `.spendCurrency(.kibble, count: count)` and `baseEasyCount` returning the value from §4.
 - `pickDailyChallengeAnchor` (`:292-307`): add `.spendKibble` to the `pool` array, unconditionally (kibble always exists from the start of a save, unlike e.g. `.mergeInChain` which needs an unlocked chain first) — so it's eligible from day one, same footing as `.mergeAny`/`.spawnBase`.
 
-**This is the spec's biggest open design question, flagged rather than decided here — see §6.** Because one anchor is shared across all three of a day's slots, days where `.spendKibble` gets picked mean **all three** daily challenges are "spend kibble" that day, just at three staggered thresholds — not one spend slot mixed with two others. Whether that reads as fine (consistent with how every other anchor already works) or as exactly the kind of day the Warmth-pillar objection was worried about (three moneyish tasks in a row) isn't something to guess at silently.
+**Confirmed by the design authority, 18 Aug 2026: allow all three.** Days where `.spendKibble` gets picked make **all three** daily challenges "spend kibble" that day, just at three staggered thresholds — not one spend slot mixed with two others. This was flagged rather than assumed (§6) because it's the exact shape the Warmth-pillar objection this decision already overrode (§0) was worried about; reviewed and kept as the simpler, consistent-with-every-other-anchor default rather than special-cased. No new logic beyond adding `.spendKibble` to the existing pool — it doesn't get its own generation path.
 
 ### 3.5 — Test content: none needed
 
@@ -157,7 +157,7 @@ No calendar window, no monetization gate, no debug lever needed (§3.5) — this
 
 This draft has **not** had a design-authority pass yet — everything below is genuinely open:
 
-- **The biggest one, per §3.4:** should `.spendKibble` sharing the anchor mechanism mean *all three* daily slots can be spend-kibble on the same day, same as every other anchor already works — or does the Warmth-pillar concern this decision explicitly overrode (not refuted, §0) mean spend-quota tasks should be capped to *at most one* of the three slots per day, as a deliberate design accommodation? The former is the simpler, more-consistent-with-existing-code default this draft assumes; the latter is real extra work (breaking the shared-anchor assumption that's been true for every goal type so far) done specifically to soften the mechanic the decision already chose to adopt anyway.
+- **RESOLVED — the anchor-sharing question in §3.4.** Confirmed: all three slots can be spend-kibble on the same day, same as every other anchor. Not special-cased to soften the mechanic.
 - **Currency scope (§2):** kibble-only for v1, dog tags deferred pending a dog-tag economy model — confirm, or decide dog tags matter enough to model now.
 - **§4's numbers** — the 40-kibble easy seed, as always.
 - **Whether standing quests should get this goal type too** (§2) — not attempted here, explicitly out of scope, but cheap to add later given the shared `QuestGoal` type.
@@ -168,6 +168,6 @@ This draft has **not** had a design-authority pass yet — everything below is g
 
 - **Dog-tag spend quotas** — see §2/§6; the enum case supports it, generation doesn't use it yet.
 - **Standing-quest (`Quest`) spend goals** — see §2.
-- **A cap on spend-anchor frequency or same-day repeats** — see §6; not addressed, flagged as the main open question instead of guessed at.
+- **A cap on spend-anchor frequency or same-day repeats** — considered and confirmed unnecessary (§3.4/§6); all three daily slots may share the spend-kibble anchor, same as every other anchor.
 - **Any new reward mechanic** — deliberately reuses the existing all-three-complete bonus untouched.
 - **Revisiting the Warmth-pillar objection itself** — that's D6's own decision, already made (§0); this spec only builds what was decided.
