@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar. Partially reviewed by the design authority (18 Aug 2026): the §0/§6 trigger question and §3.4's UI placement are both resolved; only §4's numbers remain open.** This spec exists because D8 was decided 18 Aug 2026 (Alignment Plan §3): **adopt, as a variant of the Pass primitive, coercive version** (visible-but-locked free nodes, matching both reference titles). That decision resolved *whether* and *which version* — it did not resolve *how this actually gets triggered/scheduled*, *where it lives in the UI*, or *what the exact ladder numbers should be*, all genuinely unaddressed by the Alignment Plan's own D8 entry. This draft proposed answers to all three; the trigger and placement questions are now confirmed — see §6 for what's left.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar. Design-authority reviewed 18 Aug 2026: the §0/§6 trigger question, §3.4's UI placement, and §4's numbers are all confirmed.** This spec exists because D8 was decided 18 Aug 2026 (Alignment Plan §3): **adopt, as a variant of the Pass primitive, coercive version** (visible-but-locked free nodes, matching both reference titles). That decision resolved *whether* and *which version* — it did not resolve *how this actually gets triggered/scheduled*, *where it lives in the UI*, or *what the exact ladder numbers should be*, all genuinely unaddressed by the Alignment Plan's own D8 entry. This draft proposed answers to all three; all three are now confirmed — see §6 for the one remaining open item (repeat-vs-one-time), not load-bearing for implementation to begin.
 
 ---
 
@@ -121,26 +121,28 @@ Gating for both surfaces: `isRewardLadderAvailable` (§3.3).
 
 ---
 
-## 4. First-cut numbers — flag before trusting
+## 4. Numbers — recalibrated and confirmed by the design authority, 18 Aug 2026
 
-Same posture as every other Phase 6b spec's §4: **no economy model was run for these.** Anchored against the closest existing real price point (`dogTagsMedium`, 60 dog tags for $2.99, `PawSanctuary.storekit`) rather than the reference titles' own gem economy, which doesn't map onto this game's currencies.
+The original placeholder table (this section's first draft) was written cold with no shared unit between the paid lane's dog tags and the free lane's kibble — it couldn't be checked against the reference economics (§0) at the time it was written. This codebase already has an exchange rate between the two: the Shop's tag→kibble exchange (`DogTagKibbleExchange`, `AnimalSpecies.swift:1130`) settles at a flat 60 dog tags → 100 kibble once its daily discount is used up, i.e. **1 kibble ≈ 0.6 dog-tag-equivalent** at steady state. That, plus `dogTagsMedium` (60 dog tags for $2.99, `PawSanctuary.storekit`) as the real "shelf" comparison for this price point, gives a real check the original table never had.
 
-- **Ladder length:** 6 rungs — shorter than Pass's 10 (a permanent Shop feature reads as smaller than a 30-day pass), longer than a 3-day weekly event's 3 (this isn't time-boxed, so more room to build anticipation).
-- **Price per rung:** $2.99 flat throughout, matching the Alignment Plan's own *"same price, slightly richer payout"* — richness scales in the reward table, not the price.
-- **Paid-lane (direct) reward:** dog tags only, deliberately **below** what $2.99 buys via `dogTagsSmall` (15 dog tags for $0.99, i.e. ~45 dog tags' worth at that per-dollar rate) — the reference economics (§0) show the paid node *alone* underperforms shelf price; this game's version should too, so the combined total is what earns its keep. Starting at 10 dog tags, escalating.
-- **Free-lane (released) reward:** kibble + dog tags, richer than the paid lane at every rung, scaling up faster — this is the reward the player is "unlocking," so it should read as the better half of the pair, matching the reference's own inversion (§0).
-- **No `.cardPack` hero reward** at the final rung, unlike Pass's — deliberately: this is a repeatable-feeling Shop surface, not a seasonal pass with a singular capstone; revisit if playtesting wants a stronger finish.
+Run through that conversion, the original table's escalation was inconsistent with the reference data it claimed to follow: paid-alone value started at only 17% of shelf and combined value at 62% (both *worse* than shelf — a bad deal at rung 1), while by rung 6 paid-alone reached 47% and combined reached 215% of shelf — a swing far more extreme than the reference's own measured ~83% paid-alone / ~109% combined (§0), and not a smooth *"slightly richer payout"* curve (the Alignment Plan's own D8 quote) so much as a discontinuous jump.
 
-| Rung | Price | Paid (direct) dog tags | Free (released) kibble | Free (released) dog tags |
-|---|---|---|---|---|
-| 1 | $2.99 | 10 | 40  | 3  |
-| 2 | $2.99 | 12 | 55  | 4  |
-| 3 | $2.99 | 15 | 70  | 6  |
-| 4 | $2.99 | 18 | 90  | 8  |
-| 5 | $2.99 | 22 | 115 | 10 |
-| 6 | $2.99 | 28 | 145 | 14 |
+**Recalibrated table, confirmed:** paid-alone value rises steadily from 60% to 90% of shelf across the six rungs (always below shelf, so the paid lane alone never looks like a substitute for just buying `dogTagsMedium`); combined value rises from 102% to 153% of shelf (always above shelf, and growing — genuine, mounting reason to keep going, not a flat repeat).
 
-**This entire table is a placeholder for the design authority to replace, not a designed ladder.** It exists so the flow is screen-verifiable; treat the exact reward mix, rung count, and price as provisional, same as every other first-cut table in this project.
+- **Ladder length:** 6 rungs — kept from the original draft (shorter than Pass's 10, longer than a 3-day weekly event's 3); not revisited in this pass.
+- **Price per rung:** $2.99 flat throughout — kept, matches *"same price, slightly richer payout."*
+- **No `.cardPack` hero reward** at the final rung — kept, per the original draft's reasoning (this is a repeatable-feeling Shop surface, not a seasonal pass with a singular capstone).
+
+| Rung | Price | Paid (direct) dog tags | Free (released) kibble | Free (released) dog tags | Paid-alone vs. shelf | Combined vs. shelf |
+|---|---|---|---|---|---|---|
+| 1 | $2.99 | 36 | 35 | 4 | 60% | 102% |
+| 2 | $2.99 | 40 | 35 | 4 | 67% | 108% |
+| 3 | $2.99 | 43 | 40 | 5 | 72% | 120% |
+| 4 | $2.99 | 47 | 40 | 6 | 78% | 128% |
+| 5 | $2.99 | 50 | 45 | 7 | 83% | 140% |
+| 6 | $2.99 | 54 | 50 | 8 | 90% | 153% |
+
+Still open, deliberately not touched in this pass: whether 6 rungs and $2.99 flat are themselves the right length/price (not challenged here — only the reward *mix* was recalibrated), and any real playtesting-driven tuning once this ships.
 
 ---
 
@@ -156,8 +158,8 @@ This draft had its first design-authority pass on 18 Aug 2026. Resolved and stil
 
 - **RESOLVED — the trigger/schedule proposal in §0.** Confirmed permanent-and-untimed: appears once `isMonetizationUnlocked` flips true, no expiry, no start-timestamp, no countdown. Real timer-bound behavior (matching the reference titles) was considered and explicitly not chosen, given the added complexity of the expiry sub-question (what happens to a half-purchased ladder — keep progress forever? reset it?) and no StoreKit revocation flow to hook a refund to.
 - **RESOLVED — ladder placement in the UI (§3.4).** Both: primary `ShopView` section (alongside `VIPSection`) plus a secondary `TaskStripView` card that taps through to it. The task-strip card needs its own untimed visual treatment (no `timerLabel` to show) — flagged in §3.4, left as an implementation-time detail rather than a further fork.
-- **Does the ladder repeat once completed**, or stay maxed forever as a one-time unlock? This draft assumes one-time (simplest, matches how a completed Milestone/Pass track just sits claimed) — not stated anywhere in the Alignment Plan's own D8 entry.
-- **§4's numbers**, as always.
+- **RESOLVED — §4's numbers.** Recalibrated against the game's real dog-tag/kibble exchange rate and confirmed — see §4 for the table and methodology.
+- **Does the ladder repeat once completed**, or stay maxed forever as a one-time unlock? This draft assumes one-time (simplest, matches how a completed Milestone/Pass track just sits claimed) — not stated anywhere in the Alignment Plan's own D8 entry. Still open.
 
 ---
 
@@ -166,6 +168,6 @@ This draft had its first design-authority pass on 18 Aug 2026. Resolved and stil
 - **Real timer-bound behavior** — see §6; confirmed cut by the design authority, not silently dropped.
 - **Repeating/resetting the ladder** — one-time only, per §6's stated assumption.
 - **A player-facing name other than "Reward Ladder"** — placeholder chosen only to avoid the "chain" collision (§0); final copy is a design-authority call, same posture `Spec_Phase6b_Pass.md` took for "Event Pass."
-- **Re-deriving §4's numbers against a real model.**
+- **Full economy modeling / playtesting of §4's numbers.** The recalibration in §4 checks internal consistency (paid-alone vs. shelf, combined vs. shelf, using the game's real exchange rate) — it is not a market-tested economy model, and the ladder length and $2.99 price point were carried over from the original draft without being re-examined.
 - **Refunds/revocation handling** for the new IAP product — matches existing precedent (`Spec_Phase6b_Pass.md` §7): no other consumable IAP in this codebase handles StoreKit revocation either.
 - **Any change to `EventRegistry`, `ParallelBoardEventRegistry`, `checkEventLifecycle()`, or the calendar** — per §0/§2, this feature deliberately doesn't touch either scheduling system at all.
