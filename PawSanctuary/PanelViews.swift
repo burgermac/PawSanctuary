@@ -1408,6 +1408,54 @@ struct ParallelBoardTaskCard: View {
     }
 }
 
+// MARK: Reward Ladder card (Phase 6b, D8, Task 3.4)
+
+/// Styled like `EventTaskCard`/`ParallelBoardTaskCard` above but with a real
+/// difference: the Reward Ladder is permanent and untimed (spec §0/§3.3
+/// design-authority confirmed), so it's the first task-strip card with no
+/// `timerLabel` countdown to show. A "Rung N/M" badge fills that slot instead
+/// of leaving it empty — spec §3.4's flagged design point. Tapping opens the
+/// Shop (where the actual ladder lives, `RewardLadderSection` in
+/// ShopView.swift) via `onOpenShop`, not its own sheet.
+struct RewardLadderTaskCard: View {
+    var viewModel: MergeBoardViewModel
+
+    private var milestones: [TrackMilestone] { ProgressTrackRegistry.tracks[rewardLadderTrackID] ?? [] }
+    private var progress: Int { viewModel.progressTrack.progress(trackID: rewardLadderTrackID) }
+    private var maxRungs: Int { milestones.count }
+    private var fraction: Double { maxRungs > 0 ? Double(progress) / Double(maxRungs) : 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: IAPProduct.rewardLadderRung.icon).font(.system(size: 11))
+                    .foregroundColor(Color(red: 0.40, green: 0.18, blue: 0.55))
+                Text("Reward").font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(red: 0.40, green: 0.18, blue: 0.55))
+                Spacer()
+                Text("\(min(progress + 1, max(maxRungs, 1)))/\(maxRungs)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color(red: 0.40, green: 0.18, blue: 0.55))
+                    .padding(.horizontal, 4).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(red: 0.90, green: 0.82, blue: 1.0)))
+            }
+            Spacer(minLength: 0)
+            Text("Reward Ladder")
+                .font(.system(size: 10))
+                .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                .lineLimit(2)
+            TaskProgressBar(fraction: fraction, color: Color(red: 0.55, green: 0.25, blue: 0.75).opacity(0.8))
+            Text("\(progress)/\(maxRungs) rungs")
+                .font(.system(size: 9)).foregroundColor(.secondary)
+        }
+        .padding(10)
+        .frame(width: taskCardWidth, height: taskCardHeight)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 0.94, green: 0.90, blue: 1.0)))
+    }
+}
+
 // MARK: Adoption orders card
 
 struct AdoptionOrdersTaskCard: View {
@@ -1700,6 +1748,11 @@ struct TaskStripView: View {
     /// Separate from `activeSheet` — Parallel Board presents full-screen,
     /// not as a sheet (Phase 6b, Task 3.7, spec's own §3.6 framing).
     @Binding var showParallelBoard: Bool
+    /// A closure rather than another `@Binding` — the Reward Ladder card taps
+    /// through to the Shop sheet (`SheetRoute.shop`), a type private to
+    /// MergeBoardView.swift that this file can't reference directly. The
+    /// caller supplies `{ activeRoute = .shop }` (Phase 6b, D8, Task 3.4).
+    var onOpenShop: () -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -1722,6 +1775,10 @@ struct TaskStripView: View {
                    let event = ParallelBoardEventRegistry.activeEvent(), event.id == coordinator.eventID {
                     ParallelBoardTaskCard(event: event, coordinator: coordinator)
                         .onTapGesture { showParallelBoard = true }
+                }
+                if viewModel.isRewardLadderAvailable {
+                    RewardLadderTaskCard(viewModel: viewModel)
+                        .onTapGesture { onOpenShop() }
                 }
                 AdoptionOrdersTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .adoptionOrders }

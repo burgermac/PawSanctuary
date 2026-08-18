@@ -506,7 +506,7 @@ struct MergeBoardView: View {
             TaskStripView(viewModel: viewModel, activeSheet: Binding(
                 get: { if case .task(let t) = activeRoute { return t } else { return nil } },
                 set: { activeRoute = $0.map { .task($0) } }
-            ), showParallelBoard: $showParallelBoard)
+            ), showParallelBoard: $showParallelBoard, onOpenShop: { activeRoute = .shop })
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                 tutorialTaskFrame = $0
             }

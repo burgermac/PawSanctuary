@@ -70,6 +70,16 @@ struct ShopView: View {
                         // ── VIP ladder (Gap_Analysis_Round2 3.7) ──────────
                         VIPSection(viewModel: viewModel)
 
+                        // ── Reward Ladder (Phase 6b, Task 3.4) ────────────
+                        // Gated on isRewardLadderAvailable, per spec §3.4 — hidden
+                        // entirely (including its own divider) rather than shown
+                        // empty/locked, same posture VIPSection's neighbors take
+                        // for content that isn't relevant yet.
+                        if viewModel.isRewardLadderAvailable {
+                            Divider().padding(.horizontal)
+                            RewardLadderSection(viewModel: viewModel, storeManager: storeManager)
+                        }
+
                         Divider().padding(.horizontal)
 
                         // ── Energy Packs (IAP bundles) ───────────────────
@@ -520,6 +530,159 @@ struct VIPSection: View {
         .background(RoundedRectangle(cornerRadius: 14)
             .fill(Color.white.opacity(0.75))
             .shadow(color: .black.opacity(0.05), radius: 4))
+    }
+}
+
+// ============================================================
+// MARK: - REWARD LADDER (Phase 6b, D8, Task 3.4)
+// ============================================================
+
+/// Vertical rung-by-rung layout — `EventSheetView`/`MilestoneRowView` are
+/// row-per-milestone but table-shaped for a different purpose (free vs. paid
+/// lane side by side); this needs "which single rung is next" front and
+/// center, closer in spirit to `ParallelBoardView`'s own "needed a new view"
+/// precedent. Gated by the caller on `isRewardLadderAvailable` (spec §3.4);
+/// also degrades to nothing here if `rewardLadderTrackID` has no
+/// `ProgressTrackRegistry` content yet (Task 3.5), rather than rendering an
+/// empty box.
+struct RewardLadderSection: View {
+    var viewModel: MergeBoardViewModel
+    var storeManager: StoreManager
+
+    private var milestones: [TrackMilestone] {
+        (ProgressTrackRegistry.tracks[rewardLadderTrackID] ?? []).sorted { $0.index < $1.index }
+    }
+    private var progress: Int { viewModel.progressTrack.progress(trackID: rewardLadderTrackID) }
+    private var product: Product? {
+        storeManager.products.first { $0.id == IAPProduct.rewardLadderRung.rawValue }
+    }
+
+    var body: some View {
+        if !milestones.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: IAPProduct.rewardLadderRung.icon)
+                        .foregroundColor(Color(red: 0.55, green: 0.25, blue: 0.75))
+                    Text("Reward Ladder")
+                        .font(.headline)
+                        .foregroundColor(Color(red: 0.40, green: 0.18, blue: 0.55))
+                    Spacer()
+                    Text("Rung \(min(progress + 1, milestones.count))/\(milestones.count)")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+
+                Text("Buy the next rung to instantly release its paid reward and unlock the free reward beside it.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(milestones, id: \.index) { milestone in
+                    RewardLadderRungRow(milestone: milestone, progress: progress,
+                                        product: product, viewModel: viewModel, storeManager: storeManager)
+                }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 14)
+                .fill(Color.white.opacity(0.75))
+                .shadow(color: .black.opacity(0.05), radius: 4))
+        }
+    }
+}
+
+private struct RewardLadderRungRow: View {
+    let milestone: TrackMilestone
+    let progress: Int
+    let product: Product?
+    var viewModel: MergeBoardViewModel
+    var storeManager: StoreManager
+
+    /// Purchases claim both lanes immediately (Task 3.1) — a rung's state is
+    /// fully determined by comparing its index to progress, no separate
+    /// claimed-lane query needed the way MilestoneRowView needs one.
+    private var isPurchased: Bool { milestone.index < progress }
+    private var isNext: Bool { milestone.index == progress }
+    private let accent = Color(red: 0.55, green: 0.25, blue: 0.75)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(isPurchased ? Color.green.opacity(0.8)
+                              : isNext ? accent : Color.gray.opacity(0.25))
+                        .frame(width: 30, height: 30)
+                    if isPurchased {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold)).foregroundColor(.white)
+                    } else if isNext {
+                        Text("\(milestone.threshold)")
+                            .font(.system(size: 12, weight: .bold)).foregroundColor(.white)
+                    } else {
+                        // Coercive (D8): future rungs are visible, not hidden —
+                        // just not purchasable out of order. See spec §3.4/§0.
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11)).foregroundColor(.white)
+                    }
+                }
+
+                Text("Rung \(milestone.threshold)")
+                    .font(.subheadline.bold())
+                    .foregroundColor(isPurchased || isNext ? .primary : .secondary)
+
+                Spacer()
+
+                if isPurchased {
+                    Text("Purchased").font(.caption.bold()).foregroundColor(.green)
+                } else if isNext, let product {
+                    Button(action: {
+                        // Captured now, before the async purchase — see
+                        // MergeBoardViewModel.pendingRewardLadderRung's doc comment.
+                        viewModel.pendingRewardLadderRung = milestone.threshold
+                        Task { await storeManager.purchase(product) }
+                    }) {
+                        Text(product.displayPrice)
+                            .font(.subheadline.bold()).foregroundColor(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(accent))
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                rewardGroup("Direct", milestone.paidRewards)
+                rewardGroup("Unlocks", milestone.freeRewards)
+            }
+            .opacity(isPurchased || isNext ? 1.0 : 0.45)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(isNext ? accent.opacity(0.08) : Color.gray.opacity(0.05)))
+    }
+
+    private func rewardGroup(_ label: String, _ rewards: [OrderReward]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 9)).foregroundColor(.secondary)
+            HStack(spacing: 6) {
+                ForEach(Array(rewards.enumerated()), id: \.offset) { _, reward in
+                    rewardIcon(reward)
+                }
+            }
+        }
+    }
+
+    /// Kibble and dog tags only — §4's table has no other reward kind, unlike
+    /// Pass's paid lane, which needed a `.cardPack` case for its hero reward.
+    @ViewBuilder
+    private func rewardIcon(_ reward: OrderReward) -> some View {
+        switch reward.kind {
+        case .kibble:
+            Label("+\(reward.amount)", systemImage: "pawprint.fill")
+                .font(.caption.bold()).foregroundColor(.green)
+        case .dogTags:
+            Label("+\(reward.amount)", systemImage: "tag.fill")
+                .font(.caption.bold()).foregroundColor(.blue)
+        default:
+            Text("+\(reward.amount)").font(.caption.bold()).foregroundColor(.secondary)
+        }
     }
 }
 
