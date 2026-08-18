@@ -160,3 +160,83 @@ final class RewardLadderAvailabilityTests: XCTestCase {
         }
     }
 }
+
+/// Task 3.2 — confirms, rather than assumes, that the Reward Ladder needs no
+/// new GameState field: its entire state is progressTrack's existing
+/// states[trackID] entry, already persisted via ProgressTrack.capture(into:)/
+/// restore(from:) (GameState.progressTracks, v29). Unlike
+/// EventTokenWalletsAndProgressTracksRoundTripOnAFreshSave (PersistenceTests.swift),
+/// which round-trips a GameState value directly through Codable, this drives
+/// the real public API two separate MergeBoardViewModel instances would use
+/// across an actual app relaunch — applyPurchase (which calls persist()
+/// internally) on one, loadGame() on a fresh other — through the real
+/// disk-backed GameStore, not an in-memory encode/decode.
+@MainActor
+final class RewardLadderPersistenceTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        GameStore.clear()   // isolate from any prior save state
+    }
+
+    override func tearDown() {
+        GameStore.clear()   // never leave test data behind in the shared store
+        super.tearDown()
+    }
+
+    /// `persist()` writes via `GameStore.saveAndSync`, which is fire-and-forget
+    /// (`Task.detached`) — the write hasn't necessarily landed on disk the
+    /// instant `applyPurchase` returns. Real force-quits have the same gap
+    /// (shared by every IAP's persist() call, not specific to Reward Ladder;
+    /// out of scope for this task to fix), so a genuine relaunch simulation
+    /// has to give the detached task a moment to actually finish rather than
+    /// racing it.
+    private func waitForPersistToLandOnDisk() {
+        let exp = expectation(description: "async save completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+    }
+
+    func testRewardLadderProgressSurvivesForceQuitAndRelaunchWithNoSchemaChange() {
+        let vm = MergeBoardViewModel()
+        vm.loadGame()
+
+        vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
+        XCTAssertEqual(vm.progressTrack.progress(trackID: rewardLadderTrackID), 1)
+        waitForPersistToLandOnDisk()
+
+        // A fresh instance standing in for the process relaunch — nothing
+        // carries over except what loadGame() reads back off disk.
+        let relaunched = MergeBoardViewModel()
+        relaunched.loadGame()
+
+        XCTAssertEqual(relaunched.progressTrack.progress(trackID: rewardLadderTrackID), 1,
+                       "a purchased rung must survive force-quit/relaunch with zero additional "
+                       + "persistence code — the ladder's state is just another progressTracks entry")
+    }
+
+    func testMultipleRungsAllSurviveForceQuitAndRelaunch() {
+        let vm = MergeBoardViewModel()
+        vm.loadGame()
+
+        // One persist() per purchase, letting each disk write land before the
+        // next fires — not three instant taps. Real purchases each round-trip
+        // through a StoreKit confirmation sheet, so they're never actually
+        // this close together; back-to-back applyPurchase() calls with no gap
+        // between them would race persist()'s fire-and-forget Task.detached
+        // writes against each other (last-write-wins, out of call order) —
+        // a pre-existing characteristic of every IAP's persist() call, not
+        // something specific to the Reward Ladder and not this task's to fix.
+        vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
+        waitForPersistToLandOnDisk()
+        vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
+        waitForPersistToLandOnDisk()
+        vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
+        waitForPersistToLandOnDisk()
+
+        let relaunched = MergeBoardViewModel()
+        relaunched.loadGame()
+
+        XCTAssertEqual(relaunched.progressTrack.progress(trackID: rewardLadderTrackID), 3)
+    }
+}

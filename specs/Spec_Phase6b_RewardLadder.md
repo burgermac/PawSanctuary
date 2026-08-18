@@ -95,9 +95,13 @@ if product == .rewardLadderRung {
 
 **Guard:** if `nextRung` exceeds the ladder's milestone count (i.e., the player somehow triggers a purchase after already completing it — shouldn't be reachable if the UI correctly hides the CTA once maxed, but StoreKit purchase completion is a genuinely unbounded async wait, same class of race the `eventPass` fix addressed), `applyPurchase` must no-op rather than crash on an out-of-range `claim` call — verify `ProgressTrack.claim`'s existing `guard def.threshold <= state.progress` (`LiveOpsEngine.swift`) already covers this safely (it does — `claim` for a milestone index with no matching `TrackMilestone` returns `[]` via its own `guard let def = ...else { return [] }**, so this is very likely already safe by construction; confirm with a test rather than assuming).
 
-### 3.2 — Schema: nothing new required
+### 3.2 — Schema: nothing new required — confirmed 18 Aug 2026
 
-Unlike Pass's `passUnlockedEventIDs` (a new `GameState` field was needed because "unlocked" is state `ProgressTrack` itself doesn't track), the Reward Ladder's entire state **is** `progressTrack`'s existing `states[trackID]` entry — already persisted via `ProgressTrack.capture(into:)`/`restore(from:)` (`GameState.progressTracks`, v29). No schema bump, no migration, no new `GameState` field. Confirm this is actually true (not assumed) once 3.1 lands: a fresh purchase should survive force-quit/relaunch with zero additional persistence code written.
+Unlike Pass's `passUnlockedEventIDs` (a new `GameState` field was needed because "unlocked" is state `ProgressTrack` itself doesn't track), the Reward Ladder's entire state **is** `progressTrack`'s existing `states[trackID]` entry — already persisted via `ProgressTrack.capture(into:)`/`restore(from:)` (`GameState.progressTracks`, v29). No schema bump, no migration, no new `GameState` field.
+
+**Confirmed, not assumed:** `RewardLadderPersistenceTests` (`PawSanctuaryTests/RewardLadderPurchaseTests.swift`) drives the real public path — `applyPurchase` on one `MergeBoardViewModel`, then `loadGame()` on a fresh second instance — through the actual disk-backed `GameStore`, not an in-memory `Codable` round-trip. A single purchase survives force-quit/relaunch with zero additional persistence code, as claimed.
+
+**Real, unrelated finding surfaced while writing that test:** firing several `applyPurchase` calls with no gap between them can lose progress on relaunch — not a Reward Ladder bug, but a pre-existing race in `GameStore.saveAndSync`'s fire-and-forget `Task.detached` writes (two overlapping saves can finish out of order, and the earlier/stale one can land last). Flagged in `TODO.md` ("Back-to-back `persist()` calls can race each other's disk write") rather than fixed here — it's a persistence-layer issue affecting every IAP, not something this task should patch. The test itself spaces purchases realistically (matching how actual StoreKit confirmations round-trip) rather than working around the race.
 
 ### 3.3 — `isMonetizationUnlocked` as the trigger (per §0's proposal)
 
