@@ -182,6 +182,21 @@
       "productID" : "com.pawsanctuary.eventpass",
       "referenceName" : "Event Pass",
       "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "E8A2BC3B-E618-4EC2-A206-C6E78D95BC4B",
+      "localizations" : [
+        {
+          "description" : "Buy the next rung to instantly release its paid reward and unlock the free reward beside it.",
+          "displayName" : "Reward Ladder",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.rewardladder.rung",
+      "referenceName" : "Reward Ladder Rung",
+      "type" : "ConsumableIAP"
     }
   ],
   "subscriptionGroups" : [

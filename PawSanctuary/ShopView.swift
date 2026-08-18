@@ -658,8 +658,11 @@ struct ShopItemRow: View {
         // Energy packs are shown in the dedicated EnergyPackShopSection — skip here.
         // Event Pass is purchasable only from the active event's own sheet
         // (EventSheetView) — out of context here there's no event to attach the
-        // purchase to (specs/Spec_Phase6b_Pass.md §3.3).
-        if iap.energyPackContents != nil || iap == .eventPass { EmptyView() } else {
+        // purchase to (specs/Spec_Phase6b_Pass.md §3.3). Reward Ladder rungs are
+        // purchasable only from the dedicated Reward Ladder section (Task 3.4,
+        // not yet built) — this generic row has no way to show which rung is
+        // next or capture pendingRewardLadderRung correctly.
+        if iap.energyPackContents != nil || iap == .eventPass || iap == .rewardLadderRung { EmptyView() } else {
         HStack {
             Image(systemName: iap.icon).font(.title2)
             VStack(alignment: .leading, spacing: 2) {

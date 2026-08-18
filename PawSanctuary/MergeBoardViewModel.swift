@@ -229,6 +229,21 @@ class MergeBoardViewModel {
     /// relaunch) — there's no better answer available in that case either.
     var pendingEventPassEventID: String?
 
+    /// The rung a Reward Ladder purchase was started for, captured at the
+    /// moment the buy button was tapped — not persisted, lives only for the
+    /// duration of one purchase flow. Same time-of-check/time-of-use gap
+    /// pendingEventPassEventID exists to close (see its doc comment): the
+    /// StoreKit purchase-sheet confirmation is a genuinely unbounded wait, and
+    /// `progressTrack.progress(trackID:)` could advance again in that window
+    /// (e.g. a second purchase started and finished first) before this one
+    /// resolves. `applyPurchase` prefers this captured value and falls back to
+    /// a live re-read of `progress(trackID:) + 1` only for a grant with no
+    /// matching button tap this session (e.g. a transaction StoreKit
+    /// redelivers via `listenForTransactions()` after a relaunch) — there's no
+    /// better answer available in that case either. See
+    /// specs/Spec_Phase6b_RewardLadder.md §3.1.
+    var pendingRewardLadderRung: Int?
+
     /// Trade IDs already granted via `claimIncomingTrade` — see GameState.claimedTradeIDs.
     var claimedTradeIDs: [UUID] = []
     /// Cap for `claimedTradeIDs` (TODO.md PERF-05). Generous relative to the
@@ -3680,6 +3695,20 @@ class MergeBoardViewModel {
                 passUnlockedEventIDs.insert(eventID)
             }
             pendingEventPassEventID = nil
+        }
+        if product == .rewardLadderRung {
+            // Same captured-at-tap-time preference as eventPass above — see
+            // pendingRewardLadderRung's doc comment. Unlike Milestone/Pass,
+            // both lanes claim immediately on purchase rather than requiring
+            // a separate claim tap (specs/Spec_Phase6b_RewardLadder.md §3.1):
+            // the reference mechanic's whole psychology is that buying
+            // instantly releases what was visibly locked.
+            let nextRung = pendingRewardLadderRung ?? (progressTrack.progress(trackID: rewardLadderTrackID) + 1)
+            pendingRewardLadderRung = nil
+            progressTrack.advance(trackID: rewardLadderTrackID, by: 1)
+            let paid = progressTrack.claim(trackID: rewardLadderTrackID, milestone: nextRung - 1, paidLane: true)
+            let free = progressTrack.claim(trackID: rewardLadderTrackID, milestone: nextRung - 1, paidLane: false)
+            applyRewards(paid + free)
         }
         // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
         //

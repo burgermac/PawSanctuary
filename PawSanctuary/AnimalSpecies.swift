@@ -864,6 +864,12 @@ enum IAPProduct: String, CaseIterable {
     /// permanent, recurring subscription; this is a per-event, one-time
     /// consumable unlock. See specs/Spec_Phase6b_Pass.md §0/§3.3.
     case eventPass = "com.pawsanctuary.eventpass"
+    /// Repeatable — one purchase advances the Reward Ladder by exactly one
+    /// rung (Phase 6b, Reward Ladder, D8). Reward comes from
+    /// ProgressTrackRegistry at purchase time via the current rung, same
+    /// reasoning as eventPass above — no static kibbleAmount/dogTagAmount.
+    /// See specs/Spec_Phase6b_RewardLadder.md §3.1.
+    case rewardLadderRung = "com.pawsanctuary.rewardladder.rung"
     // Energy Packs — bundle of kibble + dog tags + spawner + card pack
     case energySmall  = "com.pawsanctuary.energy.small"    // ~$0.99
     case energyMedium = "com.pawsanctuary.energy.medium"   // ~$2.99
@@ -881,6 +887,7 @@ enum IAPProduct: String, CaseIterable {
         case .starterBundle: return "Sanctuary Starter Pack"
         case .sanctuaryPass: return "Sanctuary Pass (Monthly)"
         case .eventPass:     return "Event Pass"
+        case .rewardLadderRung: return "Reward Ladder"
         case .energySmall:   return "Small Energy Pack"
         case .energyMedium:  return "Medium Energy Pack"
         case .energyLarge:   return "Large Energy Pack"
@@ -894,6 +901,7 @@ enum IAPProduct: String, CaseIterable {
         case .starterBundle:                               return "gift.fill"
         case .sanctuaryPass:                               return "medal.fill"
         case .eventPass:                                   return "star.circle.fill"
+        case .rewardLadderRung:                            return "arrow.up.right.square.fill"
         case .energySmall, .energyMedium,
              .energyLarge, .energyXL:                     return "bolt.circle.fill"
         }
@@ -1227,6 +1235,13 @@ let parallelBoardGeneratorCost = 2   // energy per tap — 15 generations per fu
 // No economy model run for this one either — the doc's §4 covers the
 // board/energy numbers but not this; a genuinely new first-cut estimate.
 let parallelBoardTokensPerCompletion = 10   // per top-tier item, no rider/chance layer needed
+
+// ── Reward Ladder (Phase 6b, Task 3.1) ────────────────────────────
+/// Fixed, not date-stamped — the ladder isn't a calendar event instance,
+/// just one permanent ProgressTrackRegistry entry (see
+/// specs/Spec_Phase6b_RewardLadder.md §0/§2). Real registry content (the 6
+/// rungs) lands in Task 3.5.
+let rewardLadderTrackID = "reward_ladder"
 
 // ── Board dimensions (fixed — never changes at runtime) ──────
 let boardRows = 9   // 9 rows × 7 cols = 63 positions; bottom 6 rows start locked
