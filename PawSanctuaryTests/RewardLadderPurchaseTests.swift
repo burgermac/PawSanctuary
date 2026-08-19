@@ -335,11 +335,9 @@ final class RewardLadderPersistenceTests: XCTestCase {
 
     /// `persist()` writes via `GameStore.saveAndSync`, which is fire-and-forget
     /// (`Task.detached`) — the write hasn't necessarily landed on disk the
-    /// instant `applyPurchase` returns. Real force-quits have the same gap
-    /// (shared by every IAP's persist() call, not specific to Reward Ladder;
-    /// out of scope for this task to fix), so a genuine relaunch simulation
-    /// has to give the detached task a moment to actually finish rather than
-    /// racing it.
+    /// instant `applyPurchase` returns. Real force-quits have the same gap,
+    /// so a genuine relaunch simulation has to give the detached task a
+    /// moment to actually finish before reading it back.
     private func waitForPersistToLandOnDisk() {
         let exp = expectation(description: "async save completes")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
@@ -364,28 +362,28 @@ final class RewardLadderPersistenceTests: XCTestCase {
                        + "persistence code — the ladder's state is just another progressTracks entry")
     }
 
-    func testMultipleRungsAllSurviveForceQuitAndRelaunch() {
+    /// Three instant taps, no gap at all — this used to require artificial
+    /// spacing between purchases to pass (see git history), because
+    /// persist()'s fire-and-forget writes could land out of order and lose
+    /// progress. Fixed at the root in GameStore (TODO.md, "Back-to-back
+    /// persist() calls can race each other's disk write" — every write is
+    /// now timestamped at capture and a stale one can never clobber a
+    /// fresher one, regardless of which detached task finishes first), so
+    /// this is now a real regression test for that fix, not a workaround.
+    func testMultipleRungsAllSurviveForceQuitAndRelaunchEvenFiredBackToBack() {
         let vm = MergeBoardViewModel()
         vm.loadGame()
 
-        // One persist() per purchase, letting each disk write land before the
-        // next fires — not three instant taps. Real purchases each round-trip
-        // through a StoreKit confirmation sheet, so they're never actually
-        // this close together; back-to-back applyPurchase() calls with no gap
-        // between them would race persist()'s fire-and-forget Task.detached
-        // writes against each other (last-write-wins, out of call order) —
-        // a pre-existing characteristic of every IAP's persist() call, not
-        // something specific to the Reward Ladder and not this task's to fix.
         vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
-        waitForPersistToLandOnDisk()
         vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
-        waitForPersistToLandOnDisk()
         vm.applyPurchase(.rewardLadderRung, priceUSD: 2.99)
         waitForPersistToLandOnDisk()
 
         let relaunched = MergeBoardViewModel()
         relaunched.loadGame()
 
-        XCTAssertEqual(relaunched.progressTrack.progress(trackID: rewardLadderTrackID), 3)
+        XCTAssertEqual(relaunched.progressTrack.progress(trackID: rewardLadderTrackID), 3,
+                       "all three purchases must survive even fired back-to-back with no gap — "
+                       + "see GameStore's write-ordering guarantee")
     }
 }

@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 
 // ============================================================
 // MARK: - GAME STATE SNAPSHOT
@@ -358,12 +359,42 @@ enum GameStore {
         FileManager.default.ubiquityIdentityToken != nil
     }
 
+    /// Guards write ordering: `save()`/`saveAndSync()` each capture state
+    /// synchronously but write it inside a fire-and-forget `Task.detached`,
+    /// so two overlapping calls aren't guaranteed to finish writing in the
+    /// order they were made — a later call's write can complete before an
+    /// earlier one's, and the earlier (now-stale) write can then land last
+    /// and silently clobber the newer state (TODO.md, "Back-to-back
+    /// persist() calls can race each other's disk write", found 18 Aug 2026
+    /// writing the Reward Ladder's persistence tests). `capturedAt` is a
+    /// real wall-clock timestamp taken synchronously by the caller (always
+    /// `@MainActor` today) at the moment state was captured, not an
+    /// incrementing counter — a counter would need per-instance state that
+    /// doesn't survive across the many short-lived `MergeBoardViewModel`
+    /// instances a single test process creates, silently rejecting a later
+    /// instance's legitimate first write as "stale". A locked, monotonic
+    /// high-water mark works from both the detached tasks below and
+    /// `saveNow`'s synchronous call, which must stay synchronous — see its
+    /// own doc comment for why it can't hop onto an actor to do this instead.
+    private static let lastWrittenTimestamp = OSAllocatedUnfairLock(initialState: Date.distantPast)
+
+    /// Returns `true` (and records `timestamp` as the new high-water mark)
+    /// only if this write is newer than the most recently accepted one.
+    private static func shouldWrite(capturedAt timestamp: Date) -> Bool {
+        lastWrittenTimestamp.withLock { last in
+            guard timestamp > last else { return false }
+            last = timestamp
+            return true
+        }
+    }
+
     // MARK: Public API
 
     /// Fast local save — used by the per-second autosave. Writes the main file only.
     /// State is captured on the caller's actor; encoding and disk I/O run on a utility thread.
-    static func save(_ state: GameState) {
+    static func save(_ state: GameState, capturedAt timestamp: Date) {
         Task.detached(priority: .utility) {
+            guard shouldWrite(capturedAt: timestamp) else { return }
             guard let data = encode(state) else { return }
             writeLocal(data)
         }
@@ -372,8 +403,9 @@ enum GameStore {
     /// Local save **plus** an iCloud push. Call at meaningful moments (e.g. when the
     /// app backgrounds) so another device gets the latest state, without paying for
     /// cloud writes every single second.
-    static func saveAndSync(_ state: GameState) {
+    static func saveAndSync(_ state: GameState, capturedAt timestamp: Date) {
         Task.detached(priority: .utility) {
+            guard shouldWrite(capturedAt: timestamp) else { return }
             guard let data = encode(state) else { return }
             writeLocal(data)
             writeCloud(data)
@@ -384,7 +416,8 @@ enum GameStore {
     /// app backgrounding, where a detached task may never be scheduled before
     /// iOS suspends the process. Routine periodic saves should keep using
     /// `save()` / `saveAndSync()`, which stay off the main thread (PERF-01).
-    static func saveNow(_ state: GameState) {
+    static func saveNow(_ state: GameState, capturedAt timestamp: Date) {
+        guard shouldWrite(capturedAt: timestamp) else { return }
         guard let data = encode(state) else { return }
         writeLocal(data)
         writeBackup(data)
@@ -431,6 +464,12 @@ enum GameStore {
             NSUbiquitousKeyValueStore.default.removeObject(forKey: cloudKey)
             NSUbiquitousKeyValueStore.default.synchronize()
         }
+        // Not strictly required for correctness (lastWrittenTimestamp only
+        // ever compares against real, always-increasing Date() values, so a
+        // later write is never spuriously rejected just because it's from a
+        // fresh MergeBoardViewModel instance) — reset anyway since this is
+        // conceptually part of "every persisted copy" for test isolation.
+        lastWrittenTimestamp.withLock { $0 = .distantPast }
     }
 
     // MARK: Encoding & version checking
