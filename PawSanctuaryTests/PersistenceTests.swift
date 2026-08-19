@@ -494,7 +494,7 @@ final class PersistenceTests: XCTestCase {
         // is the real synchronous path production uses for moments (app backgrounding)
         // that can't tolerate deferral — exercise that instead of a hand-rolled write.
         let original = makeSampleState()
-        GameStore.saveNow(original, capturedAt: Date())
+        GameStore.saveNow(original, sequence: 1)
 
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.version, GameStore.currentVersion)   // save stamps the version
@@ -505,19 +505,22 @@ final class PersistenceTests: XCTestCase {
     }
 
     // MARK: Write-ordering guarantee (TODO.md, "Back-to-back persist() calls
-    // can race each other's disk write", found 18 Aug 2026, fixed same day)
+    // can race each other's disk write", found 18 Aug 2026, fixed same day;
+    // the fix itself was buggy and re-fixed 18 Aug 2026 — see GameStore's
+    // lastWrittenSequence doc comment for why)
     //
     // save()/saveAndSync() capture state synchronously but write it inside a
     // fire-and-forget Task.detached, so two overlapping calls aren't
     // guaranteed to finish writing in the order they were made. The fix
-    // stamps every write with the real Date() it was captured at and has
-    // GameStore reject any write older than the most recent one it's
-    // already accepted, so "most recent capture wins" holds regardless of
-    // which detached task happens to finish first. These tests invert call
-    // order directly (call the older-timestamped write *after* the
-    // newer-timestamped one) rather than trying to race real concurrency,
-    // which is exactly the scenario the ordering guarantee has to hold
-    // against and is fully deterministic to test this way.
+    // stamps every write with a monotonic sequence number generated at
+    // capture time and has GameStore reject any write whose sequence isn't
+    // greater than the most recent one it's already accepted, so "most
+    // recent capture wins" holds regardless of which detached task happens
+    // to finish first. These tests invert call order directly (call the
+    // lower-sequence write *after* the higher-sequence one) rather than
+    // trying to race real concurrency, which is exactly the scenario the
+    // ordering guarantee has to hold against and is fully deterministic to
+    // test this way.
 
     private func waitForAsyncWriteToLand() {
         let exp = expectation(description: "async save completes")
@@ -525,36 +528,32 @@ final class PersistenceTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
     }
 
-    func testAnOlderTimestampedSaveAndSyncNeverClobbersANewerOneRegardlessOfCallOrder() throws {
+    func testAnOlderSequencedSaveAndSyncNeverClobbersANewerOneRegardlessOfCallOrder() throws {
         var newerState = makeSampleState(); newerState.kibble = 999
         var olderState = makeSampleState(); olderState.kibble = 111
-        let earlier = Date()
-        let later = earlier.addingTimeInterval(10)
 
-        // Newer-timestamped write called FIRST, older-timestamped write
-        // called SECOND — inverted from real call order, simulating exactly
-        // the race: a stale write's detached task finishing after a fresh
-        // one's has already landed.
-        GameStore.saveAndSync(newerState, capturedAt: later)
+        // Higher-sequence write called FIRST, lower-sequence write called
+        // SECOND — inverted from real call order, simulating exactly the
+        // race: a stale write's detached task finishing after a fresh one's
+        // has already landed.
+        GameStore.saveAndSync(newerState, sequence: 10)
         waitForAsyncWriteToLand()
-        GameStore.saveAndSync(olderState, capturedAt: earlier)
+        GameStore.saveAndSync(olderState, sequence: 5)
         waitForAsyncWriteToLand()
 
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.kibble, 999,
-                       "a write timestamped earlier must never clobber one timestamped later, regardless of call order")
+                       "a write with a lower sequence must never clobber one with a higher sequence, regardless of call order")
     }
 
-    func testAnOlderTimestampedSaveNeverClobbersANewerOneRegardlessOfCallOrder() throws {
+    func testAnOlderSequencedSaveNeverClobbersANewerOneRegardlessOfCallOrder() throws {
         // Same guarantee, the plain save() path (no iCloud push).
         var newerState = makeSampleState(); newerState.kibble = 999
         var olderState = makeSampleState(); olderState.kibble = 111
-        let earlier = Date()
-        let later = earlier.addingTimeInterval(10)
 
-        GameStore.save(newerState, capturedAt: later)
+        GameStore.save(newerState, sequence: 10)
         waitForAsyncWriteToLand()
-        GameStore.save(olderState, capturedAt: earlier)
+        GameStore.save(olderState, sequence: 5)
         waitForAsyncWriteToLand()
 
         let loaded = try XCTUnwrap(GameStore.load())
@@ -569,14 +568,32 @@ final class PersistenceTests: XCTestCase {
         // backgrounds).
         var newerState = makeSampleState(); newerState.kibble = 999
         var olderState = makeSampleState(); olderState.kibble = 111
-        let earlier = Date()
-        let later = earlier.addingTimeInterval(10)
 
-        GameStore.saveNow(newerState, capturedAt: later)
-        GameStore.saveNow(olderState, capturedAt: earlier)
+        GameStore.saveNow(newerState, sequence: 10)
+        GameStore.saveNow(olderState, sequence: 5)
 
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.kibble, 999)
+    }
+
+    func testTiedSequenceWritesAreImpossibleByConstruction() throws {
+        // Guards against the exact bug this design replaced: a wall-clock
+        // Date()-based guard let two rapid-fire captures land the identical
+        // timestamp, and a strict "newer than" comparison then silently
+        // dropped the second, legitimate write. A plain incrementing Int
+        // can't tie the way Date() can — each of three back-to-back calls
+        // gets a distinct, strictly-increasing sequence number, so all three
+        // writes are accepted in the order captured.
+        var first = makeSampleState(); first.kibble = 1
+        var second = makeSampleState(); second.kibble = 2
+        var third = makeSampleState(); third.kibble = 3
+
+        GameStore.saveNow(first, sequence: 1)
+        GameStore.saveNow(second, sequence: 2)
+        GameStore.saveNow(third, sequence: 3)
+
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.kibble, 3, "the last of three strictly-increasing sequenced writes must win")
     }
 
     // MARK: Version guard
@@ -1606,7 +1623,7 @@ final class PersistenceTests: XCTestCase {
         // instead of racing it or hand-rolling the write.
         var state = makeSampleState()
         state.completedAreaIDs = ["area.welcome", "area.grooming", "area.rescue"]
-        GameStore.saveNow(state, capturedAt: Date())
+        GameStore.saveNow(state, sequence: 1)
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.completedAreaIDs, ["area.welcome", "area.grooming", "area.rescue"])
     }
@@ -1862,7 +1879,7 @@ final class PersistenceTests: XCTestCase {
         // synchronous path, GameStore.saveNow(_:) — see testGameStoreSaveThenLoadIsFaithful —
         // rather than racing GameStore.save(_:)'s detached write task.
         let seed = makeSampleState()
-        GameStore.saveNow(seed, capturedAt: Date())
+        GameStore.saveNow(seed, sequence: 1)
         _ = GameStore.load()   // promotes main → backup
 
         // Now corrupt the main file; load() should fall back to the backup.

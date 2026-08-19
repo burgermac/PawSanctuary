@@ -333,14 +333,15 @@ final class RewardLadderPersistenceTests: XCTestCase {
         super.tearDown()
     }
 
-    /// `persist()` writes via `GameStore.saveAndSync`, which is fire-and-forget
-    /// (`Task.detached`) — the write hasn't necessarily landed on disk the
-    /// instant `applyPurchase` returns. Real force-quits have the same gap,
-    /// so a genuine relaunch simulation has to give the detached task a
-    /// moment to actually finish before reading it back.
+    /// `persist()` writes via `GameStore.saveAndSync`, which dispatches onto
+    /// GameStore's serial `writeQueue` rather than writing on the calling
+    /// thread — the write hasn't necessarily landed on disk the instant
+    /// `applyPurchase` returns. Real force-quits have the same gap, so a
+    /// genuine relaunch simulation has to give the queued write a moment to
+    /// actually finish before reading it back.
     private func waitForPersistToLandOnDisk() {
         let exp = expectation(description: "async save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
         wait(for: [exp], timeout: 2.0)
     }
 
@@ -364,12 +365,14 @@ final class RewardLadderPersistenceTests: XCTestCase {
 
     /// Three instant taps, no gap at all — this used to require artificial
     /// spacing between purchases to pass (see git history), because
-    /// persist()'s fire-and-forget writes could land out of order and lose
+    /// persist()'s deferred writes could land out of order and lose
     /// progress. Fixed at the root in GameStore (TODO.md, "Back-to-back
-    /// persist() calls can race each other's disk write" — every write is
-    /// now timestamped at capture and a stale one can never clobber a
-    /// fresher one, regardless of which detached task finishes first), so
-    /// this is now a real regression test for that fix, not a workaround.
+    /// persist() calls can race each other's disk write") by serializing
+    /// every write through one queue, so writes always land in call order
+    /// regardless of individual write latency — see `writeQueue`'s doc
+    /// comment in GameStore.swift for why a monotonic sequence number alone
+    /// wasn't enough. This is now a real regression test for that fix, not
+    /// a workaround.
     func testMultipleRungsAllSurviveForceQuitAndRelaunchEvenFiredBackToBack() {
         let vm = MergeBoardViewModel()
         vm.loadGame()

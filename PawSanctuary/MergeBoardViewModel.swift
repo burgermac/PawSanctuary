@@ -1231,10 +1231,20 @@ class MergeBoardViewModel {
         ensureStartingProducer()
     }
 
-    private func save() { GameStore.save(captureState(), capturedAt: Date()) }
-    func persist() { GameStore.saveAndSync(captureState(), capturedAt: Date()) }
+    /// Monotonic tie-breaker for GameStore's write-ordering guard — see
+    /// `GameStore.lastWrittenSequence`'s doc comment for why this replaced
+    /// an earlier `Date()`-based design.
+    private var saveSequence = 0
+
+    private func nextSaveSequence() -> Int {
+        saveSequence += 1
+        return saveSequence
+    }
+
+    private func save() { GameStore.save(captureState(), sequence: nextSaveSequence()) }
+    func persist() { GameStore.saveAndSync(captureState(), sequence: nextSaveSequence()) }
     /// Synchronous counterpart to `persist()`, for app-suspension moments.
-    func persistNow() { GameStore.saveNow(captureState(), capturedAt: Date()) }
+    func persistNow() { GameStore.saveNow(captureState(), sequence: nextSaveSequence()) }
 
     // MARK: Background/foreground catch-up
     //

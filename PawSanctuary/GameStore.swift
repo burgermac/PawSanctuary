@@ -360,41 +360,69 @@ enum GameStore {
     }
 
     /// Guards write ordering: `save()`/`saveAndSync()` each capture state
-    /// synchronously but write it inside a fire-and-forget `Task.detached`,
-    /// so two overlapping calls aren't guaranteed to finish writing in the
-    /// order they were made — a later call's write can complete before an
-    /// earlier one's, and the earlier (now-stale) write can then land last
-    /// and silently clobber the newer state (TODO.md, "Back-to-back
-    /// persist() calls can race each other's disk write", found 18 Aug 2026
-    /// writing the Reward Ladder's persistence tests). `capturedAt` is a
-    /// real wall-clock timestamp taken synchronously by the caller (always
-    /// `@MainActor` today) at the moment state was captured, not an
-    /// incrementing counter — a counter would need per-instance state that
-    /// doesn't survive across the many short-lived `MergeBoardViewModel`
-    /// instances a single test process creates, silently rejecting a later
-    /// instance's legitimate first write as "stale". A locked, monotonic
-    /// high-water mark works from both the detached tasks below and
-    /// `saveNow`'s synchronous call, which must stay synchronous — see its
-    /// own doc comment for why it can't hop onto an actor to do this instead.
-    private static let lastWrittenTimestamp = OSAllocatedUnfairLock(initialState: Date.distantPast)
+    /// synchronously but write it off the calling thread, so two overlapping
+    /// calls need active protection against finishing out of order (TODO.md,
+    /// "Back-to-back persist() calls can race each other's disk write",
+    /// found 18 Aug 2026 writing the Reward Ladder's persistence tests).
+    ///
+    /// Two earlier designs here were each individually insufficient:
+    ///
+    /// 1. A wall-clock `Date()` timestamp, rejecting any write whose
+    ///    timestamp wasn't strictly greater than the last accepted one.
+    ///    Broke because three purchases fired back-to-back with no gap can
+    ///    call `Date()` fast enough to get the *identical* value (clock
+    ///    resolution coarser than the call spacing), and the strict `>`
+    ///    comparison then silently rejected the second write as "not newer"
+    ///    even though it legitimately was.
+    ///
+    /// 2. Swapping the timestamp for a monotonic `Int` sequence (never
+    ///    ties) but keeping `Task.detached` for the actual write. This
+    ///    fixed the tie but missed the deeper issue: three back-to-back
+    ///    calls generate three *ascending* sequence numbers, and every
+    ///    ascending write passes the "newer than the last accepted" check —
+    ///    the guard only ever rejects a write that arrives *after* a
+    ///    numerically higher one was already accepted. It does nothing to
+    ///    stop three independently-scheduled `Task.detached` closures that
+    ///    *all* passed the guard from racing each other to `writeLocal`
+    ///    concurrently, so whichever one's disk write physically finishes
+    ///    last wins — not necessarily the one with the highest sequence.
+    ///    Reproduced as a deterministic (not flaky) failure: three
+    ///    back-to-back purchases lost the third one's write on every run,
+    ///    even with a multi-second wait for the writes to land.
+    ///
+    /// The real fix needs two parts together: `writeQueue` below is a
+    /// *serial* queue, so writes physically execute one at a time in the
+    /// order they were enqueued — no two writes are ever in flight at once,
+    /// so "which one finishes last" isn't a race anymore. `shouldWrite`
+    /// stays as defense-in-depth for the case this serial ordering doesn't
+    /// cover on its own: an explicitly inverted call order (an
+    /// older-sequence write issued after a newer one, e.g. a stale write
+    /// queued before a newer one already landed — see the "regardless of
+    /// call order" tests in PersistenceTests.swift).
+    private static let writeQueue = DispatchQueue(label: "com.pawsanctuary.gamestore.write", qos: .utility)
 
-    /// Returns `true` (and records `timestamp` as the new high-water mark)
+    /// Returns `true` (and records `sequence` as the new high-water mark)
     /// only if this write is newer than the most recently accepted one.
-    private static func shouldWrite(capturedAt timestamp: Date) -> Bool {
-        lastWrittenTimestamp.withLock { last in
-            guard timestamp > last else { return false }
-            last = timestamp
+    /// Must only be called from a block already running on `writeQueue`.
+    private static func shouldWrite(sequence: Int) -> Bool {
+        lastWrittenSequence.withLock { last in
+            guard sequence > last else { return false }
+            last = sequence
             return true
         }
     }
+    private static let lastWrittenSequence = OSAllocatedUnfairLock(initialState: 0)
 
     // MARK: Public API
 
     /// Fast local save — used by the per-second autosave. Writes the main file only.
-    /// State is captured on the caller's actor; encoding and disk I/O run on a utility thread.
-    static func save(_ state: GameState, capturedAt timestamp: Date) {
-        Task.detached(priority: .utility) {
-            guard shouldWrite(capturedAt: timestamp) else { return }
+    /// State is captured on the caller's actor; encoding and disk I/O run on
+    /// `writeQueue`, off the main thread but strictly serialized against
+    /// every other save/saveAndSync/saveNow call (see `writeQueue`'s doc
+    /// comment for why serialization, not just the sequence guard, is required).
+    static func save(_ state: GameState, sequence: Int) {
+        writeQueue.async {
+            guard shouldWrite(sequence: sequence) else { return }
             guard let data = encode(state) else { return }
             writeLocal(data)
         }
@@ -403,9 +431,9 @@ enum GameStore {
     /// Local save **plus** an iCloud push. Call at meaningful moments (e.g. when the
     /// app backgrounds) so another device gets the latest state, without paying for
     /// cloud writes every single second.
-    static func saveAndSync(_ state: GameState, capturedAt timestamp: Date) {
-        Task.detached(priority: .utility) {
-            guard shouldWrite(capturedAt: timestamp) else { return }
+    static func saveAndSync(_ state: GameState, sequence: Int) {
+        writeQueue.async {
+            guard shouldWrite(sequence: sequence) else { return }
             guard let data = encode(state) else { return }
             writeLocal(data)
             writeCloud(data)
@@ -413,15 +441,22 @@ enum GameStore {
     }
 
     /// Synchronous save for moments that cannot tolerate deferral — principally
-    /// app backgrounding, where a detached task may never be scheduled before
-    /// iOS suspends the process. Routine periodic saves should keep using
-    /// `save()` / `saveAndSync()`, which stay off the main thread (PERF-01).
-    static func saveNow(_ state: GameState, capturedAt timestamp: Date) {
-        guard shouldWrite(capturedAt: timestamp) else { return }
-        guard let data = encode(state) else { return }
-        writeLocal(data)
-        writeBackup(data)
-        if isCloudAvailable { writeCloud(data) }
+    /// app backgrounding, where a deferred write may never run before iOS
+    /// suspends the process. Uses `writeQueue.sync` rather than writing
+    /// directly on the caller's thread: this still blocks the caller until
+    /// the write is durably on disk (satisfying the "can't wait" requirement),
+    /// while queuing behind — and staying correctly ordered against — any
+    /// save()/saveAndSync() calls already in flight on the same queue.
+    /// Routine periodic saves should keep using `save()` / `saveAndSync()`,
+    /// which return immediately (PERF-01).
+    static func saveNow(_ state: GameState, sequence: Int) {
+        writeQueue.sync {
+            guard shouldWrite(sequence: sequence) else { return }
+            guard let data = encode(state) else { return }
+            writeLocal(data)
+            writeBackup(data)
+            if isCloudAvailable { writeCloud(data) }
+        }
     }
 
     /// Loads the best available state: reconciles the local file and the iCloud copy
@@ -464,12 +499,12 @@ enum GameStore {
             NSUbiquitousKeyValueStore.default.removeObject(forKey: cloudKey)
             NSUbiquitousKeyValueStore.default.synchronize()
         }
-        // Not strictly required for correctness (lastWrittenTimestamp only
-        // ever compares against real, always-increasing Date() values, so a
-        // later write is never spuriously rejected just because it's from a
-        // fresh MergeBoardViewModel instance) — reset anyway since this is
-        // conceptually part of "every persisted copy" for test isolation.
-        lastWrittenTimestamp.withLock { $0 = .distantPast }
+        // Required for correctness, not just symmetry: each fresh
+        // MergeBoardViewModel instance's own sequence counter restarts at 0
+        // (see lastWrittenSequence's doc comment), so without this reset a
+        // new test's first legitimate write would be rejected as stale
+        // against whatever high-water mark the previous test left behind.
+        lastWrittenSequence.withLock { $0 = 0 }
     }
 
     // MARK: Encoding & version checking
