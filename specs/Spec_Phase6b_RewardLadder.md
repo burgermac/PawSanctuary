@@ -154,7 +154,7 @@ Still open, deliberately not touched in this pass: whether 6 rungs and $2.99 fla
 
 ---
 
-## 5. Task — one screen-verifiable test instance — Shop section confirmed on screen
+## 5. Task — one screen-verifiable test instance — both UI surfaces confirmed on screen
 
 `rewardLadderTrackID = "reward_ladder"` (`AnimalSpecies.swift`, a fixed constant, not date-stamped — unlike every other event type's IDs, this isn't a calendar instance that gets superseded, per §0/§2) and its `ProgressTrackRegistry.tracks` entry (the 6 rungs from §4) both landed in Task 3.5. Since this isn't calendar-scheduled, there's no date window to wait for the way Parallel Board's real test event had — but this section's original claim that reaching `isMonetizationUnlocked` was **"already achievable today via existing debug/reset tooling, per `resetToFreshGame()`'s existing dev-only paths"** turned out to be wrong, caught while actually trying to verify Task 3.4/3.5 on screen rather than assumed: `resetToFreshGame()` (`MergeBoardViewModel.swift`) resets `progression.playerLevel` to 1 and doesn't touch `commerce.hasReachedFirstWall` — it resets *away* from monetization-unlocked, not toward it.
 
@@ -162,7 +162,9 @@ Still open, deliberately not touched in this pass: whether 6 rungs and $2.99 fla
 
 **Confirmed on screen, 18 Aug 2026** (the earlier Simulator tap-registration issue was fixed by a full `simctl shutdown`/`boot` cycle — see `TODO.md`): tapped "Unlock" → level jumped to 5, the real Shop button appeared in its place → opened the Shop → `RewardLadderSection` rendered exactly per design — "Reward Ladder" header with a live "Rung 1/6" badge, Rung 1's purple "1" badge with Direct +36 / Unlocks +35/+4, Rungs 2–6 correctly locked with dimmed-but-visible numbers, every value matching §4's table exactly.
 
-- [ ] **Two smaller gaps remain, both tracked in `TODO.md`:** (1) no live StoreKit product was attached to this `simctl`-launched build, so Rung 1's buy button correctly rendered nothing rather than crashing (`if isNext, let product { ... }`) — confirming the real purchase-and-grant flow on screen needs an Xcode Run with `.storekit` testing enabled, not `simctl launch`. (2) the task-strip `RewardLadderTaskCard` was never scrolled into view — the strip's `ScrollView` didn't respond to swipe gestures this session, for reasons unclear since every other gesture worked after the reboot fix.
+**The task-strip card confirmed too, on retry.** The first attempt's "`ScrollView` didn't respond to swipe" note was a coordinate-targeting mistake, not a real bug — the swipe's Y landed below the actual card row. Retried at the right Y: the strip scrolled correctly, and `RewardLadderTaskCard` rendered exactly as designed — "Reward" header, a live "1/6" progress badge in place of the countdown every other task-strip card shows (this section's own flagged untimed-treatment design point), title, progress bar, "0/6 rungs" text. Both UI entry points are now confirmed matching design exactly.
+
+- [ ] **One small gap remains, deliberately not chased further (see `TODO.md`):** no live StoreKit product was attached to either `simctl`-launched verification pass, so Rung 1's buy button correctly rendered nothing rather than crashing (`if isNext, let product { ... }`). Confirming the real purchase-and-grant flow on screen needs an Xcode Run with `.storekit` testing enabled, not `simctl launch` — already covered by passing unit tests (`RewardLadderPurchaseTests`) either way.
 
 ---
 
