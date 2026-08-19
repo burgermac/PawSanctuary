@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder/D6 itself. Partially reviewed by the design authority (18 Aug 2026): the §2/§6 reward-rebate question is resolved (no special case); §4's numbers are deliberately deferred to playtesting rather than locked in (implementation can still proceed using them as a starting point); the currency-symmetry question remains open.** This spec exists because `specs/Spec_SpendQuotaDailies.md` (D6) §2/§6/§7 confirmed extending its `QuestGoal.spendCurrency` goal type to standing quests (the `Quest` struct, distinct from `DailyChallenge`) as **real, separate follow-up work — not the cheap extension its own first draft assumed** — and flagged it as worth its own spec if ever revisited. It was revisited the same day. See §6 for what's left.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder/D6 itself. Design-authority review complete (18 Aug 2026): the reward-rebate question is resolved (no special case), currency symmetry is resolved (both currencies at all four difficulties), and §4's numbers are deliberately deferred to playtesting rather than locked in — implementation can proceed using them as a starting point. Ready to implement.** This spec exists because `specs/Spec_SpendQuotaDailies.md` (D6) §2/§6/§7 confirmed extending its `QuestGoal.spendCurrency` goal type to standing quests (the `Quest` struct, distinct from `DailyChallenge`) as **real, separate follow-up work — not the cheap extension its own first draft assumed** — and flagged it as worth its own spec if ever revisited. It was revisited the same day. See §6 for what's left.
 
 ---
 
@@ -126,11 +126,13 @@ No calendar window, no monetization gate, no debug lever needed (§3.4) — live
 
 ## 6. Open questions for design-authority review
 
-Review in progress — resolved and still-open items below:
+Design-authority review complete as of 18 Aug 2026 — every fork below was addressed:
 
 - **RESOLVED — the reward-rebate question in §2.** Confirmed: no special case. `claimQuest`'s existing uniform per-difficulty reward applies to spend-quota quests exactly like every other goal type, not suppressed or reduced.
 - **DEFERRED — §4's numbers.** Explicitly *not* locked in as final, unlike D6's own daily numbers — reviewed and deliberately left open pending real playtesting data, especially for legendary (the shakiest derivation and the single biggest ask in the table). Implementation can still proceed using the table as a starting point (§3 doesn't depend on the exact values); the numbers themselves just aren't confirmed tuning yet. Revisit once real play data exists.
-- **Whether all four difficulties should get both currencies**, or whether e.g. legendary should skip dog tags (or vice versa) the way some existing pools already omit certain goal types at certain difficulties (`reachTier` isn't in every pool either) — this draft assumes symmetric inclusion across all four difficulties for both currencies, not selectively pruned.
+- **RESOLVED — currency symmetry.** Confirmed: both kibble and dog-tag spend goals are eligible at all four difficulties, symmetrically, matching the draft's default. Kibble and dog tags are both available from the start of a save, unlike `reachTier`'s conditional pruning (driven by actual unlock progression — a stage genuinely isn't reachable yet) — no equivalent state-driven reason exists to exclude either currency from any difficulty.
+
+Nothing left blocking implementation — §4's numbers are deferred by design, not unresolved.
 
 ---
 
