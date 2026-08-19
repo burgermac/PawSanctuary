@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**DRAFT — written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder/D6 itself. Not yet reviewed by the design authority.** This spec exists because `specs/Spec_SpendQuotaDailies.md` (D6) §2/§6/§7 confirmed extending its `QuestGoal.spendCurrency` goal type to standing quests (the `Quest` struct, distinct from `DailyChallenge`) as **real, separate follow-up work — not the cheap extension its own first draft assumed** — and flagged it as worth its own spec if ever revisited. It was revisited the same day. See §6 for what's proposed rather than assumed.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder/D6 itself. Partially reviewed by the design authority (18 Aug 2026): the §2/§6 reward-rebate question is resolved (no special case). §4's numbers and the currency-symmetry question remain open.** This spec exists because `specs/Spec_SpendQuotaDailies.md` (D6) §2/§6/§7 confirmed extending its `QuestGoal.spendCurrency` goal type to standing quests (the `Quest` struct, distinct from `DailyChallenge`) as **real, separate follow-up work — not the cheap extension its own first draft assumed** — and flagged it as worth its own spec if ever revisited. It was revisited the same day. See §6 for what's left.
 
 ---
 
@@ -36,9 +36,9 @@ D6 built `QuestGoal.spendCurrency(RewardKind, count: Int)` for daily challenges 
 | Reward | `claimQuest` (`MergeBoardViewModel.swift:2966-2993`, existing, **unchanged**) | None new — see below |
 | UI | `QuestTaskCard`/quest panel views (existing, generic over `QuestGoal`) | None — already fully generic, same reuse D6 found for `DailyChallengeTaskCard` |
 
-### The reward-rebate question: resolved by consistency, not special-cased
+### The reward-rebate question: resolved by consistency, not special-cased — confirmed by the design authority, 18 Aug 2026
 
-**Proposal: no special case.** `claimQuest`'s reward is already uniform across every existing goal type — a `.reachTier` quest, a `.mergeAny` quest, and a `.spawnBase` quest all pay exactly the same `kibbleReward`/`dogTagReward`/`coinReward`/`xpReward` for a given difficulty, because the reward was never meant to be a 1:1 trade for the goal's cost; it's a structured completion bonus layered on top of activity the player would mostly do anyway. A spend-quota quest paying back a small fraction of what was spent (e.g. legendary: spend 220 kibble, receive 20 kibble + 10–15 dog tags + 1,000 coins + 150 XP back) is the same shape every other quest already has — the "rebate" framing undersells it exactly the way it would for any other goal type if described the same way ("merge quest gives you kibble back for doing something free"). Treating this as a problem worth engineering around (e.g. suppressing the kibble/dog-tag component specifically for spend-type quests) would make this goal type the *only* inconsistent one in the reward system, for a texture concern that doesn't hold up once framed the same way the existing system already works. Flagged for review in §6 in case the design authority reads it differently, but proposed as resolved, not left blank.
+**No special case.** `claimQuest`'s reward stays exactly as it already is — uniform across every goal type. A `.reachTier` quest, a `.mergeAny` quest, and a `.spawnBase` quest all pay exactly the same `kibbleReward`/`dogTagReward`/`coinReward`/`xpReward` for a given difficulty, because the reward was never meant to be a 1:1 trade for the goal's cost; it's a structured completion bonus layered on top of activity the player would mostly do anyway. A spend-quota quest paying back a small fraction of what was spent (e.g. legendary: spend 220 kibble, receive 20 kibble + 10–15 dog tags + 1,000 coins + 150 XP back) is the same shape every other quest already has — the "rebate" framing undersells it exactly the way it would for any other goal type if described the same way ("merge quest gives you kibble back for doing something free"). Reviewed and kept as proposed: singling out spend-type quests for suppressed rewards would make this goal type the *only* inconsistent one in the reward system, and zero code changes are needed beyond what §3 already scopes.
 
 ---
 
@@ -126,9 +126,9 @@ No calendar window, no monetization gate, no debug lever needed (§3.4) — live
 
 ## 6. Open questions for design-authority review
 
-This draft has **not** had a design-authority pass yet:
+Review in progress — resolved and still-open items below:
 
-- **The reward-rebate resolution in §2** — proposed as "no special case, consistent with every other goal type," not left open, but genuinely worth a second look since it's the one real judgment call in this spec.
+- **RESOLVED — the reward-rebate question in §2.** Confirmed: no special case. `claimQuest`'s existing uniform per-difficulty reward applies to spend-quota quests exactly like every other goal type, not suppressed or reduced.
 - **§4's numbers** — both the reuse of D6's easy baseline and the growth-rate-matching approach for medium/hard/legendary, especially whether legendary's kibble target (220, ~30–36% of a full day's modelled income) reads as appropriately "big and slow" or as excessive for one quest slot among several concurrent asks.
 - **Whether all four difficulties should get both currencies**, or whether e.g. legendary should skip dog tags (or vice versa) the way some existing pools already omit certain goal types at certain difficulties (`reachTier` isn't in every pool either) — this draft assumes symmetric inclusion across all four difficulties for both currencies, not selectively pruned.
 
