@@ -26,6 +26,7 @@ The game is functionally near-complete but was built ad hoc from informal observ
 | `PawSanctuary_GDD.md` | Game design doc v3.0. Section 5 (Sub-Object Spawning & Power-Ups) was rewritten from source on 27 July 2026 — it had described a rarity-weighted power-up table the code never implemented. That section is now accurate; the rest of the document was written from source but has drifted before, so verify before relying on any specific claim. |
 | `TODO.md` | Launch blockers and code-health debt |
 | `docs/CODE_HEALTH.md` | Known structural debt |
+| `docs/PawSanctuary_Graphical_Element_Inventory.xlsx` | Every merge-chain visual element (species x tier, plus every other `ChainCategory`), transcribed from `ItemChain.swift`/`AnimalSpecies.swift`/`SuperpowerSystem.swift` 19 Aug 2026 — the UI/art-style planning reference. All current icons are SF Symbol placeholders (no illustrated art yet); regenerate from source rather than hand-editing if chain content changes. Supersedes the root-level `Animal Species and Stages.xlsx`, which predates the Phase 2b 12-tier reduction and is now stale. |
 
 Specs are written to be self-contained. If a spec seems to conflict with the code, **check the code and say so** — the spec was written from a read of the codebase and may have missed something.
 
