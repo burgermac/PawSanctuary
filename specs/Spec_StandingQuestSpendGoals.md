@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder/D6 itself. Partially reviewed by the design authority (18 Aug 2026): the §2/§6 reward-rebate question is resolved (no special case). §4's numbers and the currency-symmetry question remain open.** This spec exists because `specs/Spec_SpendQuotaDailies.md` (D6) §2/§6/§7 confirmed extending its `QuestGoal.spendCurrency` goal type to standing quests (the `Quest` struct, distinct from `DailyChallenge`) as **real, separate follow-up work — not the cheap extension its own first draft assumed** — and flagged it as worth its own spec if ever revisited. It was revisited the same day. See §6 for what's left.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder/D6 itself. Partially reviewed by the design authority (18 Aug 2026): the §2/§6 reward-rebate question is resolved (no special case); §4's numbers are deliberately deferred to playtesting rather than locked in (implementation can still proceed using them as a starting point); the currency-symmetry question remains open.** This spec exists because `specs/Spec_SpendQuotaDailies.md` (D6) §2/§6/§7 confirmed extending its `QuestGoal.spendCurrency` goal type to standing quests (the `Quest` struct, distinct from `DailyChallenge`) as **real, separate follow-up work — not the cheap extension its own first draft assumed** — and flagged it as worth its own spec if ever revisited. It was revisited the same day. See §6 for what's left.
 
 ---
 
@@ -103,9 +103,9 @@ Same as D6 §3.5's own finding — nothing to seed. `generateQuest`/`setupQuests
 
 ---
 
-## 4. Numbers — first cut, flag before trusting
+## 4. Numbers — first cut, explicitly deferred to playtesting, not adopted as final
 
-Same posture as every first-cut table in this project. Unlike D6's dailies (sized against a real per-day supply model), standing quests persist until claimed rather than resetting on a fixed cadence, so there's no equivalent "fraction of daily income" anchor to size against directly. Instead: **reuse D6's own vetted easy-tier numbers as the easy baseline** (40 kibble / 8 dog tags — already checked against the real kibble economy model, not re-derived from scratch), then scale medium/hard/legendary using the same *rate* of growth the existing standing-quest goal types already use between their own difficulty steps (`.mergeAny`: 3→6→10, roughly ×2.0 then ×1.67; `.spawnBase`: 5→8→12, roughly ×1.6 then ×1.5) — so the new goal type's difficulty curve reads consistently with every other quest a player sees, not on its own unrelated scale.
+Same posture as every first-cut table in this project, and — per design-authority review, 18 Aug 2026 — deliberately **not** locked in the way D6's own daily numbers were. Unlike D6's dailies (sized against a real per-day supply model), standing quests persist until claimed rather than resetting on a fixed cadence, so there's no equivalent "fraction of daily income" anchor to size against directly. The table below is a considered starting point for implementation and playtesting, not a confirmed final table: **reuse D6's own vetted easy-tier numbers as the easy baseline** (40 kibble / 8 dog tags — already checked against the real kibble economy model, not re-derived from scratch), then scale medium/hard/legendary using the same *rate* of growth the existing standing-quest goal types already use between their own difficulty steps (`.mergeAny`: 3→6→10, roughly ×2.0 then ×1.67; `.spawnBase`: 5→8→12, roughly ×1.6 then ×1.5) — so the new goal type's difficulty curve reads consistently with every other quest a player sees, not on its own unrelated scale.
 
 | Difficulty | Kibble target | Dog Tags target |
 |---|---|---|
@@ -114,7 +114,7 @@ Same posture as every first-cut table in this project. Unlike D6's dailies (size
 | Hard | 110 | 22 |
 | Legendary | 220 | 44 |
 
-Legendary reaching ~30–36% of a single day's *entire* modelled kibble supply (~615–745/day, D6 §2) is deliberate, not an oversight — legendary is already the tier where other goal types ask for the most (e.g. `reachTier` targeting the deepest, slowest-to-reach chain tiers) and realistically spans multiple days of play before completion, the same way a legendary `reachTier` goal already does. Flagged in §6 for confirmation rather than assumed acceptable.
+Legendary reaching ~30–36% of a single day's *entire* modelled kibble supply (~615–745/day, D6 §2) is deliberate, not an oversight — legendary is already the tier where other goal types ask for the most (e.g. `reachTier` targeting the deepest, slowest-to-reach chain tiers) and realistically spans multiple days of play before completion, the same way a legendary `reachTier` goal already does. It's also the row with the shakiest derivation (no direct `.mergeAny`/`.spawnBase` legendary precedent to scale from — see §4's own methodology note above) and the single biggest ask in the table, which is exactly why it isn't being treated as settled here. **Implementation can proceed with this table as the starting point (§3 doesn't depend on the exact values), but treat all four rows — legendary especially — as subject to revision once real play data exists, not as confirmed tuning.**
 
 ---
 
@@ -129,7 +129,7 @@ No calendar window, no monetization gate, no debug lever needed (§3.4) — live
 Review in progress — resolved and still-open items below:
 
 - **RESOLVED — the reward-rebate question in §2.** Confirmed: no special case. `claimQuest`'s existing uniform per-difficulty reward applies to spend-quota quests exactly like every other goal type, not suppressed or reduced.
-- **§4's numbers** — both the reuse of D6's easy baseline and the growth-rate-matching approach for medium/hard/legendary, especially whether legendary's kibble target (220, ~30–36% of a full day's modelled income) reads as appropriately "big and slow" or as excessive for one quest slot among several concurrent asks.
+- **DEFERRED — §4's numbers.** Explicitly *not* locked in as final, unlike D6's own daily numbers — reviewed and deliberately left open pending real playtesting data, especially for legendary (the shakiest derivation and the single biggest ask in the table). Implementation can still proceed using the table as a starting point (§3 doesn't depend on the exact values); the numbers themselves just aren't confirmed tuning yet. Revisit once real play data exists.
 - **Whether all four difficulties should get both currencies**, or whether e.g. legendary should skip dog tags (or vice versa) the way some existing pools already omit certain goal types at certain difficulties (`reachTier` isn't in every pool either) — this draft assumes symmetric inclusion across all four difficulties for both currencies, not selectively pruned.
 
 ---
