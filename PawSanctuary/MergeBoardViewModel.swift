@@ -851,7 +851,18 @@ class MergeBoardViewModel {
     /// quest / order state. Must be called exactly once, after the view has
     /// actually appeared — see the doc comment on `init()` for why this can't
     /// live there.
-    func loadGame() {
+    ///
+    /// `date` is injectable for the same reason `checkEventLifecycle(at:)`
+    /// itself is (found reviewing Parallel Board, 18 Aug 2026): its own
+    /// production call below always used real `Date()`, so no test could
+    /// exercise the parallel-board relaunch-restore path (`apply(_:)` →
+    /// `pendingParallelBoardRestore` → `checkEventLifecycle` picking it up)
+    /// without waiting for a real active event's actual calendar window —
+    /// see `ParallelBoardLifecycleTests.swift`. Only threaded to
+    /// `checkEventLifecycle` below; every other date-sensitive call this
+    /// function makes (`checkDailyLogin`, weekly/monthly resets, etc.) is
+    /// unrelated to this gap and deliberately left on real `Date()`.
+    func loadGame(at date: Date = Date()) {
         guard !didLoadGame else { return }
         didLoadGame = true
         if let saved = GameStore.load() {
@@ -875,7 +886,7 @@ class MergeBoardViewModel {
                                                    playerLevel: progression.playerLevel)
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
-        checkEventLifecycle()
+        checkEventLifecycle(at: date)
         startTimer()
         isLoaded = true
         // Game Center auth is opt-in, triggered only from the Card Album (see
@@ -1331,6 +1342,17 @@ class MergeBoardViewModel {
         loyaltyClubDayIndex = 0; loyaltyClubLastClaimDate = nil; loyaltyClubStreak = 0
         eventProgress = EventProgress(); inviteProgress = InviteProgress()
         progressTrack.reset()
+        // Found reviewing Parallel Board (18 Aug 2026): every other piece of
+        // live-ops state above gets wiped, but activeParallelBoardEvent
+        // didn't — a debug reset while a parallel-board event happened to be
+        // active left the old coordinator's board/energy in memory, and the
+        // save() at the end of this function would then persist that stale
+        // state into the otherwise-fresh save. Discarding it here matches
+        // this function's own "every other subsystem" precedent; a fresh
+        // coordinator is recreated the same launch-only way every other
+        // event type already is, next time checkEventLifecycle() runs.
+        activeParallelBoardEvent = nil
+        pendingParallelBoardRestore = nil
         unlockedSuperpowerSpecies = []; superpowerCooldownEnds = [:]
         lagomorphMergeCount = 0; lastMergeTimestamp = 0; lastMergedSpeciesRaw = nil
         equineSprintRemaining = 0; pouchItems = [nil, nil]; pouchExpiryTimestamp = 0
@@ -3582,6 +3604,17 @@ class MergeBoardViewModel {
         } else {
             activeParallelBoardEvent = nil
         }
+        // Unconditional, not just on the branch that used it: this is a
+        // one-shot seed for whichever coordinator gets created on THIS call,
+        // not state kept valid across calls. Safe today because production
+        // only ever calls this function once per launch (loadGame()'s own
+        // `didLoadGame` guard) — but a second call at an earlier/different
+        // date before the real one (e.g. from a future test or debug tool)
+        // would silently discard a still-unconsumed restore before it ever
+        // reaches the call that should use it. Found reviewing Parallel
+        // Board, 18 Aug 2026 — see ParallelBoardLifecycleTests.swift, which
+        // works around exactly this by calling loadGame(at:) once with the
+        // right date rather than calling this function twice.
         pendingParallelBoardRestore = nil
     }
 

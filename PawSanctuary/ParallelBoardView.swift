@@ -145,6 +145,12 @@ struct ParallelBoardView: View {
     private func handleTap(at pos: GridPosition) {
         HapticManager.shared.lightTap()
         if pos == coordinator.generatorPosition, coordinator.boardState.item(at: pos) == nil {
+            // Collecting is unrelated to any in-progress selection — clear it
+            // rather than leaving a stale cell visually "selected" so the
+            // player's *next* tap doesn't silently attempt a merge with a
+            // selection they no longer have in mind (found reviewing
+            // Parallel Board, 18 Aug 2026).
+            selectedCell = nil
             coordinator.collectFromGenerator()
             return
         }
