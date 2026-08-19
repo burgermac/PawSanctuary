@@ -49,7 +49,7 @@ Deliberately did *not* take the cheaper "add another Foster-Weekend-style event"
 See the Alignment Plan's §4 for the full per-item citations.
 
 ### Content gaps
-- [ ] **Seasonal Events — add future events to registry:** the infrastructure in `EventSystem.swift` is complete, but the only event ever defined (`rescue_rush_jun2026`, June 1–15 2026) has expired. Add new `EventDefinition` entries to `EventRegistry.allEvents` — nothing seasonal is currently active.
+- [x] **Seasonal Events — RESOLVED, stale entry — fixed 19 Aug 2026.** ~~the only event ever defined (`rescue_rush_jun2026`, June 1–15 2026) has expired... nothing seasonal is currently active~~ — no longer true. `Spec_Phase6c_Calendar.md`'s 90-day rolling calendar (16 Aug 2026) added 13 weekly events (`rescue_relay`/`playtime_rush`, alternating) plus 3 sequential `sanctuary_circle` Passes to `EventRegistry.allEvents`, and `founders_circle_aug2026` (2026-08-05→09-04) already covers the gap this entry was written to flag. `EventRegistry.allEvents` now has 20 entries running nearly continuously through **2026-12-03**; `ParallelBoardEventRegistry` separately covers 3 "Second Chances" seasonal instances through 2026-11-13 (§9's Parallel Board line). **Next real content-gap deadline: shortly before 2026-12-03**, when the calendar's tail needs extending — not urgent today.
 - [ ] **Card artwork:** all 54 cards in `CardSystem.swift` use SF Symbols as stand-ins. Illustrated art is a content/asset-production task, not a code change.
 
 ### Parallel Board — "Second Chances" on-screen verification still open (added 16 Aug 2026)
