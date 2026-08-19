@@ -118,6 +118,13 @@ class QuestCoordinator {
                 .mergeInChain(mergeableID, count: 2),
                 .spawnBase(count: 5),
                 .reachTier(.animal, tier: RescueStage.rescued.tierIndex, count: 3),
+                // D6 follow-up (Spec_StandingQuestSpendGoals.md §3.1/§4) — both
+                // currencies, unconditional, at every difficulty: kibble and
+                // dog tags both exist from the start of a save, unlike the
+                // reachTier goals above which are conditional on real
+                // unlock progression.
+                .spendCurrency(.kibble, count: 40),
+                .spendCurrency(.dogTags, count: 8),
             ]
             if hasSupply { pool.append(.reachTier(.supply, tier: 1, count: 2)) }
             pool = pool.filter { !excluding.contains($0.dedupeKey) }
@@ -128,6 +135,8 @@ class QuestCoordinator {
                 .mergeAny(count: 6),
                 .mergeInChain(animalID, count: 4),
                 .spawnBase(count: 8),
+                .spendCurrency(.kibble, count: 70),
+                .spendCurrency(.dogTags, count: 14),
             ]
             if RescueStage.groomed.tierIndex     <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.groomed.tierIndex,     count: 2)) }
             if RescueStage.vaccinated.tierIndex  <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.vaccinated.tierIndex,  count: 2)) }
@@ -143,6 +152,8 @@ class QuestCoordinator {
             var pool: [QuestGoal] = [
                 .mergeAny(count: 10),
                 .spawnBase(count: 12),
+                .spendCurrency(.kibble, count: 110),
+                .spendCurrency(.dogTags, count: 22),
             ]
             if RescueStage.foster.tierIndex       <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.foster.tierIndex,       count: 2)) }
             if RescueStage.adopted.tierIndex      <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.adopted.tierIndex,      count: 1)) }
@@ -155,6 +166,8 @@ class QuestCoordinator {
         case .legendary:
             var pool: [QuestGoal] = [
                 .mergeInChain(animalID, count: 8),
+                .spendCurrency(.kibble, count: 220),
+                .spendCurrency(.dogTags, count: 44),
             ]
             if RescueStage.bondedPair.tierIndex   <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.bondedPair.tierIndex,   count: 3)) }
             if RescueStage.communityFav.tierIndex  <= maxTier { pool.append(.reachTier(.animal, tier: RescueStage.communityFav.tierIndex, count: 2)) }
