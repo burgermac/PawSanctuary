@@ -319,3 +319,59 @@ final class SpendQuotaDailiesWiringTests: XCTestCase {
         XCTAssertGreaterThan(progress(vm), 0, "activating a producer must spend kibble and advance the kibble goal")
     }
 }
+
+/// Task 3.4 — the two new DailyChallengeAnchor.spendCurrency pool entries in
+/// pickDailyChallengeAnchor/generateDailyChallenges. Mirrors the existing
+/// statistical style QuestCoordinatorTests.swift already uses for anchor
+/// reachability (e.g. testDailyChallengeReachTierAnchorCanTargetTopThreeTiers)
+/// rather than trying to force a specific anchor deterministically — the
+/// picker is private and genuinely random by design.
+@MainActor
+final class SpendQuotaDailiesAnchorTests: XCTestCase {
+
+    private func anySpendCurrency(_ goal: QuestGoal) -> RewardKind? {
+        if case .spendCurrency(let kind, _) = goal { return kind }
+        return nil
+    }
+
+    func testBothCurrenciesAreReachableAsAnchors() {
+        let coordinator = QuestCoordinator()
+        let dogID = ContentRegistry.animalChainID(.dog)
+        var seenKinds: Set<RewardKind> = []
+        for _ in 0..<500 {
+            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
+            if let kind = anySpendCurrency(coordinator.dailyChallenges[0].goal) {
+                seenKinds.insert(kind)
+            }
+        }
+        XCTAssertEqual(seenKinds, [.kibble, .dogTags],
+                       "both currencies must be independently pickable, per spec §3.4's two-separate-pool-entries design")
+    }
+
+    func testWhenASpendAnchorIsPickedAllThreeSlotsShareTheSameCurrency() {
+        let coordinator = QuestCoordinator()
+        let dogID = ContentRegistry.animalChainID(.dog)
+        var checkedAtLeastOneSpendDay = false
+        for _ in 0..<500 {
+            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
+            guard let easyKind = anySpendCurrency(coordinator.dailyChallenges[0].goal) else { continue }
+            checkedAtLeastOneSpendDay = true
+            XCTAssertEqual(anySpendCurrency(coordinator.dailyChallenges[1].goal), easyKind,
+                           "confirmed §3.4: all three slots share one spend anchor, not a mix")
+            XCTAssertEqual(anySpendCurrency(coordinator.dailyChallenges[2].goal), easyKind)
+        }
+        XCTAssertTrue(checkedAtLeastOneSpendDay, "test is meaningless if a spend anchor was never picked in 500 tries")
+    }
+
+    func testEasySlotUsesTheConfirmedSection4SeedForEachCurrency() {
+        let coordinator = QuestCoordinator()
+        let dogID = ContentRegistry.animalChainID(.dog)
+        for _ in 0..<500 {
+            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
+            guard let kind = anySpendCurrency(coordinator.dailyChallenges[0].goal) else { continue }
+            let expected = kind == .kibble ? 40 : 8
+            XCTAssertEqual(coordinator.dailyChallenges[0].goal.targetCount, expected,
+                           "easy-slot seed must match spec §4 exactly (40 kibble / 8 dog tags)")
+        }
+    }
+}

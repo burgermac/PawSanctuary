@@ -258,6 +258,10 @@ class QuestCoordinator {
         case spawnBase
         case mergeInChain(ChainID)
         case reachTier(ChainCategory, tier: Int)
+        /// D6 (Spec_SpendQuotaDailies.md, Task 3.4) — kibble and dog tags are
+        /// two separate pool entries below, not one entry that then rolls a
+        /// currency, so each gets an equal, independent shot at being picked.
+        case spendCurrency(RewardKind)
 
         func goal(count: Int) -> QuestGoal {
             switch self {
@@ -265,6 +269,7 @@ class QuestCoordinator {
             case .spawnBase:                    return .spawnBase(count: count)
             case .mergeInChain(let id):         return .mergeInChain(id, count: count)
             case .reachTier(let cat, let tier): return .reachTier(cat, tier: tier, count: count)
+            case .spendCurrency(let kind):      return .spendCurrency(kind, count: count)
             }
         }
         /// Easy-slot target -- small enough that "complete" arrives quickly
@@ -273,6 +278,7 @@ class QuestCoordinator {
             switch self {
             case .mergeAny:  return 3
             case .spawnBase: return 4
+            case .spendCurrency(let kind): return kind == .kibble ? 40 : 8
             default:         return 2
             }
         }
@@ -300,6 +306,7 @@ class QuestCoordinator {
         var pool: [DailyChallengeAnchor] = [
             .mergeAny, .spawnBase,
             .reachTier(.animal, tier: Self.dailyChallengeReachTierPool.randomElement()!),
+            .spendCurrency(.kibble), .spendCurrency(.dogTags),
         ]
         if let chainID = mergeable.randomElement() { pool.append(.mergeInChain(chainID)) }
         if hasSupply { pool.append(.reachTier(.supply, tier: [1, 3].randomElement()!)) }

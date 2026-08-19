@@ -4,7 +4,7 @@
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
 
-**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Design-authority reviewed and fully confirmed 18 Aug 2026 — every fork resolved (anchor-sharing, currency scope, §4's numbers, the standing-quest extension). Ready to implement.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. No implementation task existed for this yet; this draft is that task, proposing the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for the full review record.
+**Written cold by Claude Code at the user's request, same exception made for Pass/Parallel Board/the 6c calendar/the Reward Ladder. Design-authority reviewed and fully confirmed 18 Aug 2026 — every fork resolved (anchor-sharing, currency scope, §4's numbers, the standing-quest extension). Implemented the same day — Tasks 3.1–3.5 all complete, live in production generation, 421/421 tests passing.** This spec exists because D6 was decided 18 Aug 2026 (`specs/PawSanctuary_Alignment_Plan.md` §"D6 — Spend-quota tasks in dailies?"): **adopt** — a "Spend N currency" daily-challenge task type, overriding that section's own "out, at least at launch" recommendation. This draft proposed the concrete shape the Alignment Plan's own entry left unresolved (it says only "size the spend quota against the existing daily-challenge reward curve... not guessed" — it doesn't say which currency, how the task fits the existing daily-challenge generator, or what happens to reward pacing). See §6 for the full review record, §3 for the implementation.
 
 ---
 
@@ -154,7 +154,7 @@ Additive only — no existing site's own balance math changes. Nine call sites t
 
 **All nine sites wired and individually integration-tested** (`SpendQuotaDailiesWiringTests`, `PawSanctuaryTests/SpendQuotaDailiesTests.swift`) — each test triggers the real public action (not the chokepoint directly, already covered by Task 3.2's tests) and confirms progress advances by the exact real amount spent, including a negative case (`claimOrSkipFreeChest`'s free — not skipped — path must not count as a spend). `finishSpawn` is private, so its coverage goes through `activateProducer(at:)`, its real public caller. Writing these surfaced a pre-existing gotcha the codebase's own `freshStart()` comment already documents but no other test file had hit before: setting `board` directly doesn't refresh `BoardStateManager`'s cached `emptyUnlockedCells`, so `buyProducer`/`activateProducer` silently no-op via their "nowhere to place it" guard without an explicit `boardState.recalc()` first — not a bug in this task's own code, but real friction worth documenting since none of these nine functions had any test coverage at all before this task.
 
-### 3.4 — Add the anchor to the daily-challenge generator
+### 3.4 — Add the anchor to the daily-challenge generator — implemented 18 Aug 2026
 
 `QuestCoordinator.swift`:
 
@@ -163,9 +163,13 @@ Additive only — no existing site's own balance math changes. Nine call sites t
 
 **Confirmed by the design authority, 18 Aug 2026: allow all three slots to share one spend anchor.** Days where a `.spendCurrency` anchor gets picked make **all three** daily challenges spend-that-currency that day, just at three staggered thresholds — not one spend slot mixed with two others. This was flagged rather than assumed (§6) because it's the exact shape the Warmth-pillar objection this decision already overrode (§0) was worried about; reviewed and kept as the simpler, consistent-with-every-other-anchor default rather than special-cased. No new logic beyond adding the two pool entries — neither gets its own generation path.
 
-### 3.5 — Test content: none needed
+**Implemented exactly as specced, both entries added to `pool`.** `SpendQuotaDailiesAnchorTests` (`PawSanctuaryTests/SpendQuotaDailiesTests.swift`) confirms statistically (500 generations, mirroring `QuestCoordinatorTests.swift`'s own existing style for anchor reachability): both currencies are independently reachable, all three slots always share the same currency when a spend anchor is picked, and the easy-slot seed matches §4 exactly (40 kibble / 8 dog tags) every time. The pre-existing `testDailyChallengeStaggerLandsInTargetBand` (`QuestCoordinatorTests.swift`) already covers every anchor generically via `goal.targetCount`, so it validates the new anchors' medium/hard stagger too without needing changes. Confirmed via Simulator: a fresh install generates and launches cleanly with the new anchors live in the pool.
 
-Unlike D8, this doesn't add new registry content — the daily-challenge generator already runs continuously in production. Once 3.1–3.4 land, `.spendCurrency(.kibble)`/`.spendCurrency(.dogTags)` become real possible outcomes of the *existing* daily reset the next time it fires (or immediately, if reached via the existing `resetToFreshGame()` debug tooling — which, unlike the Reward Ladder's monetization gate, has no equivalent blocker here: daily challenges regenerate on every fresh install with no additional unlock condition).
+### 3.5 — Test content: none needed — satisfied automatically as of 3.4
+
+Unlike D8, this doesn't add new registry content — the daily-challenge generator already runs continuously in production. Now that 3.1–3.4 have landed, `.spendCurrency(.kibble)`/`.spendCurrency(.dogTags)` are real possible outcomes of the *existing* daily reset the next time it fires (or immediately, if reached via the existing `resetToFreshGame()` debug tooling — which, unlike the Reward Ladder's monetization gate, has no equivalent blocker here: daily challenges regenerate on every fresh install with no additional unlock condition). Nothing further to do here — confirmed via the same Simulator launch that verified 3.4.
+
+**All of Tasks 3.1–3.5 are now implemented.** D6 is complete.
 
 ---
 
