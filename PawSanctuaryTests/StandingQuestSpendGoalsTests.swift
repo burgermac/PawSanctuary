@@ -80,3 +80,105 @@ final class StandingQuestSpendGoalsTests: XCTestCase {
         XCTAssertTrue(sawDogTagsSpend, "excluding kibble's dedupeKey must not also suppress dog tags")
     }
 }
+
+/// Task 3.2 — QuestCoordinator.updateQuestsAfterSpend, mirroring
+/// updateQuestsAfterMerge's shape and D6's own updateDailyChallengesAfterSpend
+/// (SpendQuotaDailiesTests.swift's SpendQuotaDailiesProgressTests) exactly,
+/// but against activeQuests instead of dailyChallenges.
+@MainActor
+final class StandingQuestSpendGoalsProgressTests: XCTestCase {
+
+    private func makeQuest(goal: QuestGoal, progress: Int = 0) -> Quest {
+        Quest(goal: goal, difficulty: .medium, progress: progress, dogTagReward: 3, kibbleReward: 4)
+    }
+
+    func testAdvancesByTheFullAmountNotOne() {
+        let coordinator = QuestCoordinator()
+        coordinator.activeQuests = [makeQuest(goal: .spendCurrency(.kibble, count: 70))]
+
+        coordinator.updateQuestsAfterSpend(kind: .kibble, amount: 15)
+
+        XCTAssertEqual(coordinator.activeQuests[0].progress, 15,
+                       "must add the real spend amount, not +1 the way merge-based quest updates do")
+    }
+
+    func testOnlyAdvancesQuestsMatchingTheSpentCurrency() {
+        let coordinator = QuestCoordinator()
+        coordinator.activeQuests = [
+            makeQuest(goal: .spendCurrency(.kibble, count: 70)),
+            makeQuest(goal: .spendCurrency(.dogTags, count: 14)),
+        ]
+
+        coordinator.updateQuestsAfterSpend(kind: .dogTags, amount: 5)
+
+        XCTAssertEqual(coordinator.activeQuests[0].progress, 0, "a dog-tag spend must not advance a kibble quest")
+        XCTAssertEqual(coordinator.activeQuests[1].progress, 5)
+    }
+
+    func testIgnoresNonSpendGoals() {
+        let coordinator = QuestCoordinator()
+        coordinator.activeQuests = [makeQuest(goal: .mergeAny(count: 3))]
+
+        coordinator.updateQuestsAfterSpend(kind: .kibble, amount: 100)
+
+        XCTAssertEqual(coordinator.activeQuests[0].progress, 0)
+    }
+
+    func testSkipsAlreadyCompleteQuests() {
+        let coordinator = QuestCoordinator()
+        coordinator.activeQuests = [makeQuest(goal: .spendCurrency(.kibble, count: 70), progress: 70)]
+
+        coordinator.updateQuestsAfterSpend(kind: .kibble, amount: 10)
+
+        XCTAssertEqual(coordinator.activeQuests[0].progress, 70,
+                       "an already-complete quest must not keep accumulating")
+    }
+}
+
+/// Task 3.2 — the updateAllAfterSpend chokepoint (MergeBoardViewModel) now
+/// reaches activeQuests too, not just dailyChallenges. The dailyChallenges
+/// side of this chokepoint is already covered by
+/// SpendQuotaDailiesChokepointTests; this only needs to prove the new line
+/// fires and doesn't disturb that existing behavior.
+@MainActor
+final class StandingQuestSpendGoalsChokepointTests: XCTestCase {
+
+    private func makeViewModel() -> MergeBoardViewModel {
+        let vm = MergeBoardViewModel()
+        vm.board = (0..<boardRows).map { row in
+            (0..<7).map { col in
+                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+            }
+        }
+        return vm
+    }
+
+    func testAdvancesAMatchingActiveQuest() {
+        let vm = makeViewModel()
+        vm.quests.activeQuests = [
+            Quest(goal: .spendCurrency(.kibble, count: 70), difficulty: .medium,
+                  dogTagReward: 3, kibbleReward: 4),
+        ]
+
+        vm.updateAllAfterSpend(kind: .kibble, amount: 70)
+
+        XCTAssertTrue(vm.quests.activeQuests[0].isComplete)
+    }
+
+    func testStillAdvancesAMatchingDailyChallengeAlongsideTheQuest() {
+        let vm = makeViewModel()
+        vm.quests.activeQuests = [
+            Quest(goal: .spendCurrency(.kibble, count: 70), difficulty: .medium,
+                  dogTagReward: 3, kibbleReward: 4),
+        ]
+        vm.quests.dailyChallenges = [
+            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
+        ]
+
+        vm.updateAllAfterSpend(kind: .kibble, amount: 40)
+
+        XCTAssertEqual(vm.quests.activeQuests[0].progress, 40)
+        XCTAssertTrue(vm.quests.dailyChallenges[0].isComplete,
+                      "the pre-existing daily-challenge chokepoint line must be unaffected by the new quest line")
+    }
+}

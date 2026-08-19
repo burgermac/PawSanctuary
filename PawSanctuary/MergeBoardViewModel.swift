@@ -2668,6 +2668,7 @@ class MergeBoardViewModel {
     /// own balance math; this is purely additive on top of that, mirroring
     /// updateAllAfterMerge/Rescue above.
     func updateAllAfterSpend(kind: RewardKind, amount: Int) {
+        quests.updateQuestsAfterSpend(kind: kind, amount: amount)
         quests.updateDailyChallengesAfterSpend(kind: kind, amount: amount)
         if let rewards = quests.checkAllDailyChallengesComplete(
             coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {

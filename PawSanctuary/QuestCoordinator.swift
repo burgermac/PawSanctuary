@@ -215,6 +215,15 @@ class QuestCoordinator {
         }
     }
 
+    func updateQuestsAfterSpend(kind: RewardKind, amount: Int) {
+        for i in activeQuests.indices {
+            guard !activeQuests[i].isComplete else { continue }
+            if case .spendCurrency(let k, _) = activeQuests[i].goal, k == kind {
+                activeQuests[i].progress += amount
+            }
+        }
+    }
+
     func updateQuestsAfterRescue() {
         for i in activeQuests.indices {
             guard !activeQuests[i].isComplete else { continue }
