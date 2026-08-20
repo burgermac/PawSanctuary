@@ -17,6 +17,27 @@
 //       fetchIncoming query below filters on both and CloudKit rejects predicates
 //       on non-queryable fields.
 //    4. Deploy the schema from Development to Production before release.
+//    5. SECURITY — do this before release, not after:  `database` below is the
+//       **public** database, meaning by default any authenticated iCloud user
+//       (not just Game Center friends) can write a "CardTrade" record directly
+//       via the CloudKit API, naming any `toPlayerID` and any `cardID` from the
+//       (public, bundled) CardRegistry. There is no server here to validate that
+//       write, so CloudKit's own Security Roles are the only real enforcement
+//       point. In CloudKit Dashboard → your container → Schema → Security Roles,
+//       for the "CardTrade" record type:
+//         - "World" role: Read only if you rely on public querying, otherwise
+//           remove entirely. No Create/Write.
+//         - "Authenticated" (_icloud) role: Create allowed (needed for
+//           `upload`/`markClaimed`), but understand this still lets any signed-in
+//           iCloud user forge a record — Security Roles can't check "is this
+//           sender actually the recipient's Game Center friend." That check is
+//           done client-side in `MergeBoardViewModel.refreshIncomingTrades` /
+//           `claimIncomingTrade` as defense-in-depth, not a substitute for
+//           locking down write access here.
+//       Treat trades as a moderate-trust feature (like Skyrim save-editing, but
+//       able to touch another player's inventory) rather than a fully server-
+//       verified transaction — a determined attacker on the recipient's own
+//       friends list can still forge a trade from a real friend ID.
 //
 
 import CloudKit
@@ -248,15 +269,29 @@ enum CardTradeBackend {
 
     /// Updates the trade record to status = "claimed" so the sender's device (on its
     /// next fetch of its own outgoing trades) can reflect the claim.
+    ///
+    /// Retries a few times on failure: this call is fired-and-forgotten from
+    /// `claimIncomingTrade` right after granting the card locally, and the
+    /// local `claimedTradeIDs` guard against re-granting is itself capped and
+    /// evictable (`maxClaimedTradeIDs`) — a single silently-swallowed network
+    /// failure here would leave the CloudKit record "pending" indefinitely,
+    /// widening the window in which that eviction could let the same trade be
+    /// claimed a second time. A bounded retry doesn't eliminate that window,
+    /// but it closes the common case (one transient failure).
     static func markClaimed(tradeID: UUID) async {
         guard isCloudAvailable else { return }
         let recordID = CKRecord.ID(recordName: tradeID.uuidString)
-        do {
-            let record = try await database.record(for: recordID)
-            record["status"] = CardTradeStatus.claimed.rawValue as CKRecordValue
-            _ = try await database.save(record)
-        } catch {
-            print("[CardTradeBackend] markClaimed failed for \(tradeID): \(error.localizedDescription)")
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                let record = try await database.record(for: recordID)
+                record["status"] = CardTradeStatus.claimed.rawValue as CKRecordValue
+                _ = try await database.save(record)
+                return
+            } catch {
+                print("[CardTradeBackend] markClaimed failed for \(tradeID) (attempt \(attempt)/\(maxAttempts)): \(error.localizedDescription)")
+                if attempt < maxAttempts { try? await Task.sleep(nanoseconds: 500_000_000) }
+            }
         }
     }
 }

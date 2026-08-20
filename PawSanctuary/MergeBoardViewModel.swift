@@ -271,6 +271,12 @@ class MergeBoardViewModel {
     var gcLocalPlayerAlias = ""
     var gcFriends: [GameCenterFriend] = []
     var gcIsLoadingFriends = false
+    /// Re-entrancy guard for `refreshIncomingTrades()` — separate from
+    /// `gcIsLoadingFriends`, which only covers the friends-load half of that
+    /// function. Concurrent callers (view-appear `.task` racing a manual
+    /// Refresh tap) must not each independently fetch/filter/append, or the
+    /// same new trade lands in `pendingIncomingTrades` twice.
+    @ObservationIgnored private var isRefreshingIncomingTrades = false
 
     // Toast queue — single source of truth for all transient messages.
     // Each pending toast is identified by UUID so auto-dismiss Tasks can't
@@ -2585,6 +2591,20 @@ class MergeBoardViewModel {
             pendingIncomingTrades.remove(at: idx)
             return
         }
+        // `refreshIncomingTrades` already rejects unregistered cardIDs and
+        // untrusted senders before a trade ever reaches `pendingIncomingTrades`,
+        // but that check only ever ran once, at fetch time — it never re-runs
+        // against what's already sitting in the array. A record persisted from
+        // a save written before these checks existed (see CardTrading.swift
+        // SECURITY note), or one whose sender was unfriended after it was
+        // fetched, must not be granted just because it made it into the array
+        // once. Re-validate both here, at the point inventory actually changes.
+        guard trade.cardDefinition != nil,
+              gcFriends.contains(where: { $0.id == trade.fromPlayerID }) else {
+            pendingIncomingTrades.remove(at: idx)
+            persist()
+            return
+        }
         pendingIncomingTrades.remove(at: idx)
         claimedTradeIDs = appendCapped(trade.id, to: claimedTradeIDs, cap: maxClaimedTradeIDs)
         cardInventory[trade.cardID, default: 0] += 1
@@ -2609,12 +2629,37 @@ class MergeBoardViewModel {
     }
 
     func refreshIncomingTrades() async {
-        guard gcIsAuthenticated else { return }
+        guard gcIsAuthenticated, !isRefreshingIncomingTrades else { return }
+        isRefreshingIncomingTrades = true
+        defer { isRefreshingIncomingTrades = false }
+        // The public CloudKit database lets any authenticated iCloud user write a
+        // CardTrade record naming any toPlayerID — see the SECURITY note atop
+        // CardTrading.swift. Cross-checking the sender against the current Game
+        // Center friends list is a client-side backstop for that, not a complete
+        // one: fromPlayerID is a plain string on a record that may be publicly
+        // readable (see the SECURITY note's "World: Read" option), so a
+        // sufficiently motivated attacker could harvest a real friend's ID from
+        // another visible trade and forge a record around it. This mainly stops
+        // an opportunistic stranger who can't see that ID at all. Reload every
+        // call rather than only when empty — a friends list fetched once and
+        // reused for the rest of the session would go stale as a trust boundary
+        // the moment the player's real friend list changes; loadGCFriends() is
+        // itself a no-op if a load is already in flight.
+        await loadGCFriends()
+        let trustedSenderIDs = Set(gcFriends.map(\.id))
         let fetched = await CardTradeBackend.fetchIncoming(for: gcLocalPlayerID)
         let existingIDs = Set(pendingIncomingTrades.map(\.id))
         // Exclude already-claimed trades too — their CloudKit record can still
         // read "pending" if markClaimed never confirmed (see claimIncomingTrade).
-        let newTrades = fetched.filter { !existingIDs.contains($0.id) && !claimedTradeIDs.contains($0.id) }
+        // Also reject anything not from a current friend, or naming a cardID that
+        // isn't a real registered card — either means the record wasn't written by
+        // sendDuplicateCard and is treated as forged rather than a legitimate gift.
+        let newTrades = fetched.filter {
+            !existingIDs.contains($0.id)
+                && !claimedTradeIDs.contains($0.id)
+                && trustedSenderIDs.contains($0.fromPlayerID)
+                && $0.cardDefinition != nil
+        }
         if !newTrades.isEmpty {
             pendingIncomingTrades.append(contentsOf: newTrades)
             persist()
@@ -2642,6 +2687,11 @@ class MergeBoardViewModel {
     }
 
     func loadGCFriends() async {
+        // Re-entrancy guard: refreshIncomingTrades's view-appear .task, the
+        // manual Refresh button, and FriendPickerSheet's own .task can all
+        // call this concurrently — without this, two overlapping GKLocalPlayer
+        // friend-list fetches would race to overwrite gcFriends.
+        guard !gcIsLoadingFriends else { return }
         gcIsLoadingFriends = true
         gcFriends = await loadGameCenterFriends()
         gcIsLoadingFriends = false
