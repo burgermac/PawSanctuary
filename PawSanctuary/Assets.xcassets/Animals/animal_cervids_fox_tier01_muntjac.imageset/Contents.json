@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "animal_cervids_fox_tier01_muntjac.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

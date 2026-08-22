@@ -83,12 +83,23 @@ struct CellView: View {
             ? AnimalSpecies(rawValue: item.chainID.replacingOccurrences(of: "animal.", with: ""))
             : nil
         let hasUnlockedSuperpower = itemSpecies.map { unlockedSuperpowerSpecies.contains($0.rawValue) } ?? false
+        let art = item.artImage
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 2) {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: def?.symbol ?? "questionmark")
-                        .font(.system(size: 24))
-                        .foregroundColor(item.isTopTier ? .yellow : (def?.tint ?? def?.color ?? .gray))
+                    if let art {
+                        // Real art already distinguishes species/tier at a glance, so it
+                        // fills the cell instead of sharing space with a name label. 0.78
+                        // is sized against the board's smallest computed cell (32pt, see
+                        // boardSection) so the art plus this VStack's 3pt padding never
+                        // exceeds the cell bounds at any board size.
+                        art.resizable().scaledToFit()
+                            .frame(width: cellSize * 0.78, height: cellSize * 0.78)
+                    } else {
+                        Image(systemName: def?.symbol ?? "questionmark")
+                            .font(.system(size: 24))
+                            .foregroundColor(item.isTopTier ? .yellow : (def?.tint ?? def?.color ?? .gray))
+                    }
                     if let badge = def?.badge {
                         Image(systemName: badge)
                             .font(.system(size: 9))
@@ -99,23 +110,31 @@ struct CellView: View {
                 .scaleEffect(isAnimating ? 1.5 : 1.0)
                 .animation(.spring(response: 0.3, dampingFraction: 0.4), value: isAnimating)
 
-                Text(isAnimal ? (item.chain?.displayName ?? "") : (def?.shortLabel ?? ""))
-                    .font(.system(size: 7, weight: .bold)).foregroundColor(def?.color ?? .gray)
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                Text(isAnimal ? (def?.shortLabel ?? "") : (item.chain?.displayName ?? ""))
-                    .font(.system(size: 7)).foregroundColor(.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.5)
+                if art == nil {
+                    Text(isAnimal ? (item.chain?.displayName ?? "") : (def?.shortLabel ?? ""))
+                        .font(.system(size: 7, weight: .bold)).foregroundColor(def?.color ?? .gray)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                    Text(isAnimal ? (def?.shortLabel ?? "") : (item.chain?.displayName ?? ""))
+                        .font(.system(size: 7)).foregroundColor(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                }
             }
             .padding(3)
 
             // Superpower badge — shown when this family has unlocked its superpower.
             if hasUnlockedSuperpower, let sp = itemSpecies {
-                Image(systemName: sp.superpower.sfSymbol)
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(2)
-                    .background(Circle().fill(Color.purple.opacity(0.85)))
-                    .offset(x: 2, y: 2)
+                Group {
+                    if let badge = sp.superpower.badgeImage {
+                        badge.resizable().scaledToFit().frame(width: 9, height: 9)
+                    } else {
+                        Image(systemName: sp.superpower.sfSymbol)
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(2)
+                .background(Circle().fill(Color.purple.opacity(0.85)))
+                .offset(x: 2, y: 2)
             }
         }
     }
@@ -126,12 +145,21 @@ struct CellView: View {
     @ViewBuilder
     private func lockedContent(cachedItem: BoardItem?) -> some View {
         if let item = cachedItem, let def = item.def {
+            let art = item.artImage
             ZStack(alignment: .topTrailing) {
                 VStack(spacing: 2) {
-                    Image(systemName: def.symbol).font(.system(size: 22))
-                        .foregroundColor((def.tint ?? def.color).opacity(0.45))
-                    Text(def.shortLabel).font(.system(size: 7)).foregroundColor(.gray.opacity(0.55))
-                        .lineLimit(1).minimumScaleFactor(0.5)
+                    if let art {
+                        art.resizable().scaledToFit()
+                            .frame(width: cellSize * 0.78, height: cellSize * 0.78)
+                            .opacity(0.45)
+                    } else {
+                        Image(systemName: def.symbol).font(.system(size: 22))
+                            .foregroundColor((def.tint ?? def.color).opacity(0.45))
+                    }
+                    if art == nil {
+                        Text(def.shortLabel).font(.system(size: 7)).foregroundColor(.gray.opacity(0.55))
+                            .lineLimit(1).minimumScaleFactor(0.5)
+                    }
                 }
                 .padding(3)
                 Image(systemName: "lock.fill")
@@ -250,15 +278,23 @@ struct ProducerTileContent: View {
     /// actually matters for.
     private var familySpawnerContent: some View {
         let sp     = producer.species
+        let art    = sp?.spawnerArtImage
         let symbol = sp?.spawnerSFSymbol ?? producer.level.sfSymbol
         let label  = sp.map { $0.spawnerName } ?? producer.level.displayName
         let tint   = sp?.tintColor ?? producer.level.tintColor
         return ZStack(alignment: .topTrailing) {
             VStack(spacing: 1) {
-                Image(systemName: symbol)
-                    .font(.system(size: iconPts))
+                Group {
+                    if let art {
+                        art.resizable().scaledToFit()
+                    } else {
+                        Image(systemName: symbol)
+                            .font(.system(size: iconPts))
+                            .symbolEffect(.pulse, options: .repeating, isActive: true)
+                    }
+                }
+                    .frame(width: iconPts, height: iconPts)
                     .foregroundColor(tint)
-                    .symbolEffect(.pulse, options: .repeating, isActive: true)
                     // Golden glow ring when speed burst is active
                     .shadow(color: producer.speedBurstActive ? Color.yellow.opacity(0.9) : .clear,
                             radius: producer.speedBurstActive ? 6 : 0)
@@ -393,11 +429,17 @@ struct InventorySlotView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(borderColor, lineWidth: isSelected ? 2.5 : 1))
                 .shadow(color: .black.opacity(0.06), radius: 2)
             if let item, let def = item.def {
+                let isAnimal = item.chain?.category == .animal
+                let art = item.artImage
                 VStack(spacing: 1) {
                     ZStack(alignment: .topTrailing) {
-                        Image(systemName: def.symbol)
-                            .font(.system(size: 20))
-                            .foregroundColor(def.tint ?? def.color)
+                        if let art {
+                            art.resizable().scaledToFit().frame(width: 34, height: 34)
+                        } else {
+                            Image(systemName: def.symbol)
+                                .font(.system(size: 20))
+                                .foregroundColor(def.tint ?? def.color)
+                        }
                         if let badge = def.badge {
                             Image(systemName: badge)
                                 .font(.system(size: 8))
@@ -405,7 +447,6 @@ struct InventorySlotView: View {
                                 .offset(x: 3, y: -3)
                         }
                     }
-                    let isAnimal = item.chain?.category == .animal
                     Text(isAnimal ? (item.chain?.displayName ?? "") : def.shortLabel)
                         .font(.system(size: 6, weight: .bold)).foregroundColor(def.color)
                         .lineLimit(1).minimumScaleFactor(0.5)

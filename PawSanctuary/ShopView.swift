@@ -378,14 +378,21 @@ struct DogTagStoreRow: View {
 struct WildcardSection: View {
     var viewModel: MergeBoardViewModel
 
+    private var chain: MergeChain? { ContentRegistry.shared.chain(ContentRegistry.wildcardChainID) }
     private var def: ChainTier? { ContentRegistry.shared.tier(ContentRegistry.wildcardChainID, 0) }
     private var canAfford: Bool { viewModel.dogTags >= wildcardCostDogTags }
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: def?.symbol ?? "wand.and.stars")
-                .font(.title2)
-                .foregroundColor(def?.tint ?? .purple)
+            ZStack {
+                if let art = chain?.artImage(forTier: 0) {
+                    art.resizable().scaledToFit().frame(width: 34, height: 34)
+                } else {
+                    Image(systemName: def?.symbol ?? "wand.and.stars")
+                        .font(.title2)
+                        .foregroundColor(def?.tint ?? .purple)
+                }
+            }
                 .frame(width: 44, height: 44)
                 .background(RoundedRectangle(cornerRadius: 10)
                     .fill((def?.tint ?? .purple).opacity(0.12)))

@@ -54,6 +54,12 @@ struct Superpower {
     var isActive: Bool { kind.isActive }
     var cooldownSeconds: Double? { kind.cooldownSeconds }
     var cooldownLabel: String? { kind.cooldownLabel }
+
+    /// The real badge icon (Assets.xcassets/Superpowers), or `nil` if not
+    /// delivered — callers fall back to `sfSymbol` in that case. Active and
+    /// Passive powers both get a badge; only Actives additionally use this as
+    /// their board-piece art, via `MergeChain.artImage(forTier:)`.
+    var badgeImage: Image? { species.superpowerBadgeImage(itemName: name) }
 }
 
 // ============================================================

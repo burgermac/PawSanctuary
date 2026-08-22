@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // ============================================================
 // MARK: - ANIMAL SPECIES
@@ -192,6 +193,110 @@ enum AnimalSpecies: String, CaseIterable, Codable {
                                  "Bison", "Yak", "Muskox",
                                  "Buffalo", "Aurochs", "Titan"]
         }
+    }
+
+    // MARK: Illustrated art (Animals.xcassets)
+
+    /// The `Assets.xcassets/Animals` imageset name for this species' art at
+    /// `tier`: `animal_<family>_<species>_tier<NN>_<tiername>`, e.g.
+    /// `animal_canines_dog_tier06_retriever`. Derived, not stored — every
+    /// component (`name`, `rawValue`, `tierNames`) already lives on this enum,
+    /// so a parallel lookup table would just be a second place for the same
+    /// data to drift out of sync. Verified against all 180 delivered assets
+    /// (19 Aug 2026) with zero exceptions, including multi-word tier names
+    /// ("Dire Wolf" -> "dire_wolf", "Komodo Dragon" -> "komodo_dragon").
+    /// `nil` only if `tier` is out of range for this species.
+    func assetName(tier: Int) -> String? {
+        guard tierNames.indices.contains(tier) else { return nil }
+        let tierSlug = tierNames[tier].lowercased().replacingOccurrences(of: " ", with: "_")
+        return "animal_\(name.lowercased())_\(rawValue.lowercased())_tier\(String(format: "%02d", tier))_\(tierSlug)"
+    }
+
+    /// The real illustrated art for this species/tier, or `nil` if it hasn't
+    /// been delivered yet — callers must fall back to the SF Symbol
+    /// placeholder in that case. Checked at call time via `UIImage(named:)`
+    /// rather than against a hand-maintained "which assets exist" table:
+    /// today's delivery covers all 15 species x 12 tiers, but a table would
+    /// still need updating by hand every time art is revised or replaced,
+    /// and a forgotten update would silently keep showing stale/missing art
+    /// with no build-time signal. This way, dropping a new or replaced PNG
+    /// into Assets.xcassets under the same name is picked up automatically.
+    func artImage(tier: Int) -> Image? {
+        guard let name = assetName(tier: tier), UIImage(named: name) != nil else { return nil }
+        return Image(name)
+    }
+
+    // MARK: Illustrated art (Assets.xcassets/SubObjects)
+
+    /// The `Assets.xcassets/SubObjects` imageset name for this species' sub-object
+    /// art at `tier` (0-3): `subobject_<family>_<species>_t<NN>_<itemname>`, e.g.
+    /// `subobject_canines_dog_t01_bone`. `itemName` is the chain tier's display
+    /// name (`ChainTier.name`, e.g. "Bone") — sub-object item names live in
+    /// `ContentRegistry.makeSubObjectChain`, not on this enum, so the caller
+    /// passes it in rather than this method duplicating that list. Verified
+    /// against all 60 delivered assets (21 Aug 2026) with zero exceptions —
+    /// note the species segment is `rawValue` as delivered (not lowercased), so
+    /// `guineaPig` keeps its capital P here unlike the all-lowercase Animals form.
+    func subObjectAssetName(tier: Int, itemName: String) -> String {
+        let itemSlug = itemName.lowercased().replacingOccurrences(of: " ", with: "_")
+        return "subobject_\(name.lowercased())_\(rawValue)_t\(String(format: "%02d", tier))_\(itemSlug)"
+    }
+
+    /// The real illustrated art for this species' sub-object at `tier`, or `nil`
+    /// if it hasn't been delivered yet — callers fall back to the SF Symbol
+    /// placeholder in that case, same as `artImage(tier:)`.
+    func subObjectArtImage(tier: Int, itemName: String) -> Image? {
+        let name = subObjectAssetName(tier: tier, itemName: itemName)
+        guard UIImage(named: name) != nil else { return nil }
+        return Image(name)
+    }
+
+    // MARK: Illustrated art (Assets.xcassets/Superpowers)
+
+    /// The `Assets.xcassets/Superpowers` imageset name for this species' superpower
+    /// badge: `superpower_<family>_<species>_<item>`, e.g. `superpower_canines_dog_fetch`.
+    /// `itemName` is the ability's display name (`Superpower.name`, e.g. "Fetch!") —
+    /// `Superpower` lives in SuperpowerSystem.swift, not on this enum, so the
+    /// caller passes it in, same reasoning as `subObjectAssetName`. Punctuation is
+    /// stripped the same way the delivered asset names strip it (e.g. "Fetch!" ->
+    /// "fetch"). Verified against all 15 delivered assets (21 Aug 2026) with zero
+    /// exceptions; species segment is `rawValue` as delivered (not lowercased),
+    /// same as SubObjects — `guineaPig` keeps its capital P.
+    func superpowerAssetName(itemName: String) -> String {
+        let itemSlug = itemName.lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0 == " " }
+            .replacingOccurrences(of: " ", with: "_")
+        return "superpower_\(name.lowercased())_\(rawValue)_\(itemSlug)"
+    }
+
+    /// The real badge icon for this species' superpower, or `nil` if it hasn't
+    /// been delivered yet. Used both as a UI badge (unlock banner, board-tile
+    /// badge) and — for Active superpowers only, via `MergeChain.artImage(forTier:)`
+    /// on the single-tier `.superpower` chain — as the draggable board-piece art.
+    func superpowerBadgeImage(itemName: String) -> Image? {
+        let name = superpowerAssetName(itemName: itemName)
+        guard UIImage(named: name) != nil else { return nil }
+        return Image(name)
+    }
+
+    // MARK: Illustrated art (Assets.xcassets/SpecialSpawners)
+
+    /// The `Assets.xcassets/SpecialSpawners` imageset name for this species'
+    /// Family Spawner: `spawner_<family>_<species>`, e.g. `spawner_felines_cat`.
+    /// No tier or item-name component — one spawner image per species, not per
+    /// tier. Species segment is `rawValue` as delivered (not lowercased), same
+    /// as SubObjects/Superpowers — `guineaPig` keeps its capital P.
+    var spawnerAssetName: String { "spawner_\(name.lowercased())_\(rawValue)" }
+
+    /// The real spawner tile art for this species, or `nil` if not delivered —
+    /// callers fall back to `spawnerSFSymbol` in that case. As of this delivery
+    /// (22 Aug 2026) 14 of 15 are present; `dog`'s asset is missing despite the
+    /// delivery manifest claiming it was pre-existing (verified absent from the
+    /// asset catalog), so it resolves `nil` and falls back like any other
+    /// not-yet-delivered species until the real file shows up.
+    var spawnerArtImage: Image? {
+        guard UIImage(named: spawnerAssetName) != nil else { return nil }
+        return Image(spawnerAssetName)
     }
 }
 

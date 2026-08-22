@@ -269,8 +269,12 @@ struct InventoryScreenView: View {
         return HStack(spacing: 12) {
             ZStack {
                 Circle().fill(species.tintColor.opacity(0.15)).frame(width: 44, height: 44)
-                Image(systemName: species.spawnerSFSymbol)
-                    .font(.system(size: 20)).foregroundColor(species.tintColor)
+                if let art = species.spawnerArtImage {
+                    art.resizable().scaledToFit().frame(width: 34, height: 34)
+                } else {
+                    Image(systemName: species.spawnerSFSymbol)
+                        .font(.system(size: 20)).foregroundColor(species.tintColor)
+                }
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -401,10 +405,16 @@ struct InventoryScreenView: View {
                         .padding(.horizontal)
                     ForEach(inProgress, id: \.label) { row in
                         HStack {
-                            Image(systemName: row.icon)
-                                .font(.system(size: 12))
-                                .foregroundColor(row.color)
-                                .frame(width: 20)
+                            Group {
+                                if let art = row.art {
+                                    art.resizable().scaledToFit()
+                                } else {
+                                    Image(systemName: row.icon)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(row.color)
+                                }
+                            }
+                            .frame(width: 20, height: 20)
                             Text(row.label)
                                 .font(.system(size: 11))
                                 .foregroundColor(Color(red: 0.25, green: 0.22, blue: 0.18))
@@ -426,15 +436,21 @@ struct InventoryScreenView: View {
 
     private func materialCard(chainID: ChainID, icon: String, label: String, cardColor: Color) -> some View {
         let count = viewModel.completedMaterialCount(chainID: chainID)
+        let chain = ContentRegistry.shared.chain(chainID)
+        let art = chain?.artImage(forTier: chain?.maxTier ?? 0)
         return VStack(spacing: 6) {
             ZStack(alignment: .topTrailing) {
                 ZStack {
                     Circle()
                         .fill(cardColor.opacity(0.15))
                         .frame(width: 52, height: 52)
-                    Image(systemName: icon)
-                        .font(.system(size: 24))
-                        .foregroundColor(cardColor)
+                    if let art {
+                        art.resizable().scaledToFit().frame(width: 40, height: 40)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 24))
+                            .foregroundColor(cardColor)
+                    }
                 }
                 if count > 0 {
                     Text("\(count)")
@@ -546,7 +562,7 @@ struct InventoryScreenView: View {
         }
     }
 
-    private struct InProgressRow { let label: String; let icon: String; let color: Color; let count: Int }
+    private struct InProgressRow { let label: String; let icon: String; let art: Image?; let color: Color; let count: Int }
     private func inProgressRows() -> [InProgressRow] {
         // Chain definitions: (chainID, tier-name array, icon array, color array)
         typealias ChainInfo = (id: ChainID, names: [String], icons: [String], colors: [Color])
@@ -567,11 +583,13 @@ struct InventoryScreenView: View {
         var rows: [InProgressRow] = []
         for chain in chains {
             let counts = viewModel.materialTierCounts(chainID: chain.id)
+            let art = ContentRegistry.shared.chain(chain.id)
             for tier in 0..<5 {
                 let n = tier < counts.count ? counts[tier] : 0
                 if n > 0 {
                     rows.append(InProgressRow(label: chain.names[tier],
                                               icon: chain.icons[tier],
+                                              art: art?.artImage(forTier: tier),
                                               color: chain.colors[tier],
                                               count: n))
                 }

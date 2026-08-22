@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "animal_marsupials_ferret_tier01_quokka.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -198,9 +198,13 @@ struct MergeBoardView: View {
                 ) {
                     ZStack {
                         Circle().fill(Color.purple.opacity(0.25)).frame(width: 46, height: 46)
-                        Image(systemName: sp.superpower.sfSymbol)
-                            .font(.system(size: 22))
-                            .foregroundColor(.purple)
+                        if let badge = sp.superpower.badgeImage {
+                            badge.resizable().scaledToFit().frame(width: 36, height: 36)
+                        } else {
+                            Image(systemName: sp.superpower.sfSymbol)
+                                .font(.system(size: 22))
+                                .foregroundColor(.purple)
+                        }
                     }
                 }
                 .zIndex(97)
@@ -1547,9 +1551,13 @@ private struct MergeProgressionView: View {
                                 RoundedRectangle(cornerRadius: 12)
                                     .fill((tier.tint ?? tier.color).opacity(0.12))
                                     .frame(width: 52, height: 52)
-                                Image(systemName: tier.symbol)
-                                    .font(.system(size: 26))
-                                    .foregroundColor(tier.tint ?? tier.color)
+                                if let art = chain?.artImage(forTier: index) {
+                                    art.resizable().scaledToFit().frame(width: 44, height: 44)
+                                } else {
+                                    Image(systemName: tier.symbol)
+                                        .font(.system(size: 26))
+                                        .foregroundColor(tier.tint ?? tier.color)
+                                }
                             }
 
                             VStack(alignment: .leading, spacing: 3) {

@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // ============================================================
 // MARK: - CHAIN IDENTITY
@@ -56,6 +57,66 @@ struct MergeChain: Identifiable {
     let displayName: String
     let tiers: [ChainTier]    // index 0 = base item
     var maxTier: Int { tiers.count - 1 }
+
+    /// The real illustrated art for this chain's tier `index`, or `nil` if this
+    /// chain's category has no illustrated art yet (or `index` is out of range).
+    /// Animal and sub-object chains both resolve through `AnimalSpecies` — the
+    /// only difference is which of its two asset-name formulas applies — so
+    /// every render site (board tile, locked preview, inventory slot, tier
+    /// progression list) can call this one place instead of each duplicating
+    /// the category/species-parsing switch.
+    func artImage(forTier index: Int) -> Image? {
+        guard tiers.indices.contains(index) else { return nil }
+        switch category {
+        case .animal:
+            // Second Chances (the Parallel Board's own 5-tier chain) is
+            // registered under `.animal` but is explicitly generic — reused
+            // rescue-journey styling, not tied to any species — so it has its
+            // own delivered art (`special_second_chances_t0N`) rather than an
+            // `AnimalSpecies` lookup.
+            if id == ContentRegistry.parallelBoardSecondChancesChainID {
+                let name = String(format: "special_second_chances_t%02d", index)
+                guard UIImage(named: name) != nil else { return nil }
+                return Image(name)
+            }
+            guard let species = AnimalSpecies(rawValue: id.replacingOccurrences(of: "animal.", with: "")) else { return nil }
+            return species.artImage(tier: index)
+        case .subObject:
+            guard let species = AnimalSpecies(rawValue: id.replacingOccurrences(of: "subobject.", with: "")) else { return nil }
+            return species.subObjectArtImage(tier: index, itemName: tiers[index].name)
+        case .superpower:
+            guard let species = AnimalSpecies(rawValue: id.replacingOccurrences(of: "superpower.", with: "")) else { return nil }
+            return species.superpower.badgeImage
+        case .supply, .material, .currency, .tool:
+            guard let name = economyAssetName(forTier: index), UIImage(named: name) != nil else { return nil }
+            return Image(name)
+        case .wildcard:
+            guard UIImage(named: "special_wildcard_t00") != nil else { return nil }
+            return Image("special_wildcard_t00")
+        default:
+            return nil
+        }
+    }
+
+    /// Asset name for a Supply/Material/Currency/Toolbox tier — these chains
+    /// aren't tied to an `AnimalSpecies`, so (unlike animal/sub-object/superpower)
+    /// the name is derived straight from the chain's own id and category, not a
+    /// species lookup: `id` is always `"<category>.<key>"` (e.g. "supply.grooming",
+    /// "material.wood", "currency.kibble"), which maps to `<category>_chain_<key>_t<NN>`.
+    /// Toolbox is the one exception — a single `.tool` chain with no per-key
+    /// segment in its delivered names, just `toolbox_t<NN>`. Verified against all
+    /// 51 delivered assets (22 Aug 2026) with zero exceptions.
+    private func economyAssetName(forTier index: Int) -> String? {
+        let key = id.split(separator: ".", maxSplits: 1).last.map(String.init) ?? id
+        let tierSuffix = String(format: "t%02d", index)
+        switch category {
+        case .supply:   return "supply_chain_\(key)_\(tierSuffix)"
+        case .material: return "material_chain_\(key)_\(tierSuffix)"
+        case .currency: return "currency_chain_\(key)_\(tierSuffix)"
+        case .tool:     return "toolbox_\(tierSuffix)"
+        default:        return nil
+        }
+    }
 }
 
 // ============================================================
@@ -86,6 +147,10 @@ struct BoardItem: Identifiable, Equatable, Codable {
     var def: ChainTier? { ContentRegistry.shared.tier(chainID, tier) }
     var chain: MergeChain? { ContentRegistry.shared.chain(chainID) }
     var isTopTier: Bool { chain.map { tier >= $0.maxTier } ?? false }
+
+    /// The real illustrated art for this item, or `nil` if its chain has none
+    /// yet — see `MergeChain.artImage(forTier:)`.
+    var artImage: Image? { chain?.artImage(forTier: tier) }
 
     /// True once a bubbled item has passed `bubbleDecaySeconds` without being
     /// popped — it can still be collected, just for less.

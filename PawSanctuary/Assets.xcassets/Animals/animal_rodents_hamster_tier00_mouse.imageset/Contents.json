@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "animal_rodents_hamster_tier00_mouse.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

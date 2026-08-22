@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "animal_amphibians_lizard_tier01_froglet.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
