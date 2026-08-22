@@ -291,27 +291,34 @@ struct ProducerTileContent: View {
             VStack(spacing: 1) {
                 Group {
                     if let art {
+                        // Real art already identifies the family at a glance, so
+                        // it fills the tile instead of sharing space with a name
+                        // label — same treatment as animal board-square art. 0.78
+                        // is sized against the board's smallest computed cell so
+                        // it never breaches the tile at any board size.
                         art.resizable().scaledToFit()
+                            .frame(width: cellSize * 0.78, height: cellSize * 0.78)
                     } else {
                         Image(systemName: symbol)
                             .font(.system(size: iconPts))
                             .symbolEffect(.pulse, options: .repeating, isActive: true)
                     }
                 }
-                    .frame(width: iconPts, height: iconPts)
                     .foregroundColor(tint)
                     // Golden glow ring when speed burst is active
                     .shadow(color: producer.speedBurstActive ? Color.yellow.opacity(0.9) : .clear,
                             radius: producer.speedBurstActive ? 6 : 0)
 
-                Text(label)
-                    .font(.system(size: labelPts, weight: .bold))
-                    .foregroundColor(tint)
-                    .lineLimit(1).minimumScaleFactor(0.5)
+                if art == nil {
+                    Text(label)
+                        .font(.system(size: labelPts, weight: .bold))
+                        .foregroundColor(tint)
+                        .lineLimit(1).minimumScaleFactor(0.5)
 
-                Text("Tap!")
-                    .font(.system(size: labelPts, weight: .heavy))
-                    .foregroundColor(.green)
+                    Text("Tap!")
+                        .font(.system(size: labelPts, weight: .heavy))
+                        .foregroundColor(.green)
+                }
             }
             .padding(pad)
 
