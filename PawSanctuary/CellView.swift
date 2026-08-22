@@ -233,10 +233,15 @@ struct ProducerTileContent: View {
     private var pad:      CGFloat { max(2,  cellSize * 0.05) }
 
     var body: some View {
-        if producer.level.targetCategory == .animal {
-            animalProducerContent
-        } else if producer.level == .familySpawner {
+        // .familySpawner must be checked first: its own targetCategory is
+        // .animal (it produces animals), so checking that generic condition
+        // first would always route it into animalProducerContent instead —
+        // silently discarding the species-specific symbol/name/art below and
+        // making familySpawnerContent dead code for every real spawner tile.
+        if producer.level == .familySpawner {
             familySpawnerContent
+        } else if producer.level.targetCategory == .animal {
+            animalProducerContent
         } else {
             supplyProducerContent
         }
