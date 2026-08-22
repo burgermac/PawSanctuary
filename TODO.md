@@ -123,6 +123,16 @@ Investigation of `SubObjectSystem` for the Phase 2 economy work found three dist
 
 - [x] **RESOLVED twice, drifted twice.** ~~GDD section 5 does not match the implementation.~~ Rewritten from source 27 July (tier-keyed), invalidated the same day by Phase 2 (rarity-keyed), rewritten again. **Fourth drift on this section** — treat any future claim in GDD section 5 as suspect until checked against source. It documents a 60/25/10/5 rarity table selecting the power-up effect. The code selects on merged tier and discards rarity. Third instance of that section being wrong about this system — treat it as unreliable until rewritten from source.
 
+### Completed sub-objects had no sink — fixed 22 Aug 2026, v2 exchange/collection-book deferred
+
+User raised: reaching a family chain's top tier (e.g. Canines' "Golden Ball") auto-rolls into a power-up and lands in the 6-slot Supplies inventory, but nothing in the game ever consumed it — no sell, no discard, no quest/shop/exchange demand (`MergeBoardViewModel.swift:38-41` already documented "no sell/discard action anywhere" as a deliberate choice elsewhere, but that left this one category with no exit at all). Worse, the completion path banked the item with `inventoryStore.addItem(_:)` without checking the return value (`MergeBoardViewModel.swift:2056`, and the superpower-piece grant at `:2042`) — if both Supplies and the animal inventory were full, the item was silently destroyed while the game still displayed "Power-up earned!".
+
+Checked against the three reference titles: all three self-liquidate a merge chain's top tier into currency rather than letting it sit as a dead-end held item (Gossip Harbor's "Golden Mountain" pays a coin lump sum on completion; Travel Town's tier-5 Coin does the same).
+
+- [x] **Fixed 22 Aug 2026.** Added `SubObjectRarity.coinValue` (`SubObjectSystem.swift`) and `MergeBoardViewModel.convertSelectedPowerUpToCoins()` — a "Convert to Coins" action on any Supplies slot (`InventoryScreen.swift`'s Supplies-tab action button), the sink this category never had. The full-storage silent-destroy bug is fixed by falling back to that same coin conversion instead of dropping the item (`MergeBoardViewModel.swift:2047-2068` for the rarity-rolled path, `:2040-2046` for the rare superpower-piece grant). Covered by `PowerUpSinkTests.swift` (6 tests, including the exact full-storage scenario).
+
+- [ ] **v2 — deferred to the version after initial release.** A dedicated exchange vendor or collection-book system — in the spirit of the card albums already in `CardSystem.swift`/`CardAlbumView.swift`, and closer to how the three reference titles treat their own top-tier tokens — would be a richer resolution than a flat coin conversion: e.g. a per-family collection page that a completed token feeds toward its own completion reward, or a limited-time trade-in vendor that converts a bundle of tokens into a themed prize. Flat coin conversion closes the dead-end and the data-loss bug now; this is a thematic upgrade layered on top later, not a launch blocker.
+
 ### The coin economy — RESOLVED (Phase 2c, commit `ff20b88`)
 
 Phases 2 and 2b modelled kibble supply against kibble demand and hit the target ratio curve. **Coins were never modelled** — yet they gate the Sanctuary Map (15 areas x 4 upgrade tiers), which is the game's forever goal.

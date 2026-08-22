@@ -1879,6 +1879,33 @@ class MergeBoardViewModel {
         enqueueToast(Toast(kind: .info(message)))
     }
 
+    /// Coin payout `convertSelectedPowerUpToCoins()` would grant right now, for
+    /// the Supplies tab to preview on its button. `nil` when nothing is selected.
+    var selectedPowerUpCoinValue: Int? {
+        guard let slot = selectedPowerUpSlot,
+              let item = inventoryStore.powerUpInventory[slot] else { return nil }
+        return item.rarity?.coinValue
+    }
+
+    /// Cashes in the selected power-up for coins instead of applying it to a
+    /// spawner. The only sink for a rolled effect the player doesn't want (or
+    /// has nowhere to apply) — previously there was none, so unwanted power-ups
+    /// could only ever pile up.
+    func convertSelectedPowerUpToCoins() {
+        guard let slot = selectedPowerUpSlot,
+              let item = inventoryStore.powerUpInventory[slot],
+              let rarity = item.rarity else {
+            selectedPowerUpSlot = nil
+            return
+        }
+        inventoryStore.powerUpInventory[slot] = nil
+        selectedPowerUpSlot = nil
+        earnCoins(rarity.coinValue)
+        SoundManager.shared.playButtonTap()
+        HapticManager.shared.lightTap()
+        enqueueToast(Toast(kind: .info("+\(rarity.coinValue) Coins")))
+    }
+
     func attemptMergeOrMove(from: GridPosition, to: GridPosition) {
         guard from != to,
               to.row >= 0, to.row < rows, to.col >= 0, to.col < cols,
@@ -2039,11 +2066,21 @@ class MergeBoardViewModel {
             && outcome.resultTier == mergedChain?.maxTier
         if isCompletedSubObject, let sp = maybeGrantSuperpowerPiece(fromCompletedSubObject: outcome.resultChainID) {
             boardState.clearItem(at: outcome.to)
-            inventoryStore.addItem(BoardItem(chainID: ContentRegistry.superpowerChainID(sp), tier: 0))
+            let piece = BoardItem(chainID: ContentRegistry.superpowerChainID(sp), tier: 0)
+            let banked = inventoryStore.addItem(piece)
             recalcBoardIsFull()
             SoundManager.shared.playQuestClaim()
             HapticManager.shared.successPattern()
-            enqueueToast(Toast(kind: .info("\(sp.superpower.name) found! Check your Supplies.")))
+            if banked {
+                enqueueToast(Toast(kind: .info("\(sp.superpower.name) found! Check your Supplies.")))
+            } else {
+                // Storage was full when this rare piece landed. It has no coin
+                // value of its own, so fall back to the same rare-tier payout as
+                // a completed sub-object below, rather than destroying it
+                // silently while telling the player it succeeded (found in review).
+                earnCoins(SubObjectRarity.highTierDrop.coinValue)
+                enqueueToast(Toast(kind: .info("Supplies full — converted to +\(SubObjectRarity.highTierDrop.coinValue) Coins")))
+            }
         } else if mergedChain?.category == .powerUp || isCompletedSubObject {
             if var powerUpItem = boardState.item(at: outcome.to) {
                 // Task 2.2: the effect is rolled here, once, consuming the
@@ -2053,14 +2090,22 @@ class MergeBoardViewModel {
                     powerUpItem.rarity = rollRarityForCompletedSubObject(chainID: outcome.resultChainID)
                 }
                 boardState.clearItem(at: outcome.to)
-                inventoryStore.addItem(powerUpItem)
+                let banked = inventoryStore.addItem(powerUpItem)
                 recalcBoardIsFull()
                 SoundManager.shared.playQuestClaim()
                 HapticManager.shared.successPattern()
                 let msg: String
-                if let rolled = powerUpItem.rarity {
+                switch (banked, powerUpItem.rarity) {
+                case (false, let rolled?):
+                    // Both the 6 Supplies slots and animal inventory were full.
+                    // Previously this destroyed the completed sub-object while
+                    // still reporting success (found in review) — now it always
+                    // has somewhere to go.
+                    earnCoins(rolled.coinValue)
+                    msg = "Supplies full — converted to +\(rolled.coinValue) Coins"
+                case (true, let rolled?):
                     msg = "\(rolled.displayName) ready! Check your Supplies."
-                } else {
+                default:
                     msg = "Power-up earned! Check your Supplies."
                 }
                 enqueueToast(Toast(kind: .info(msg)))

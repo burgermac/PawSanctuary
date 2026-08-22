@@ -69,12 +69,21 @@ struct InventoryScreenView: View {
                 // Applying a power-up needs a board position (a specific Family
                 // Spawner tile), which this screen doesn't have — the real flow is
                 // "select here, close, tap a spawner" (see suppliesTab's own
-                // instructional text). This button used to do nothing at all; the
-                // one useful thing it can do from in here is perform the "close"
-                // step for the player.
-                placeButton(label: "Choose Spawner on Board",
-                            color: Color(red: 0.50, green: 0.22, blue: 0.72)) {
-                    viewModel.showInventory = false
+                // instructional text). "Choose Spawner" performs the "close" step;
+                // "Convert to Coins" is the sink for a roll the player doesn't want
+                // (or has nowhere left to apply) — there used to be none at all.
+                HStack(spacing: 8) {
+                    placeButton(label: "Choose Spawner on Board",
+                                color: Color(red: 0.50, green: 0.22, blue: 0.72)) {
+                        viewModel.showInventory = false
+                    }
+                    if let value = viewModel.selectedPowerUpCoinValue {
+                        placeButton(label: "Convert to +\(value) Coins",
+                                    color: Color(red: 0.80, green: 0.62, blue: 0.10),
+                                    icon: "dollarsign.circle.fill") {
+                            viewModel.convertSelectedPowerUpToCoins()
+                        }
+                    }
                 }
             }
         default:
@@ -84,10 +93,11 @@ struct InventoryScreenView: View {
 
     private func placeButton(label: String,
                               color: Color = Color(red: 0.3, green: 0.6, blue: 0.4),
+                              icon: String = "pawprint.fill",
                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: "pawprint.fill")
+                Image(systemName: icon)
                 Text(label).fontWeight(.semibold)
             }
             .font(.subheadline).foregroundColor(.white)
@@ -481,7 +491,7 @@ struct InventoryScreenView: View {
 
     private var suppliesTab: some View {
         VStack(spacing: 16) {
-            Text("Consumables earned by merging sub-objects on the board. Select one here, then close this screen and tap a Family Spawner to apply it.")
+            Text("Consumables earned by merging sub-objects on the board. Select one here, then close this screen and tap a Family Spawner to apply it — or convert it to coins instead.")
                 .font(.system(size: 11)).foregroundColor(.secondary)
                 .multilineTextAlignment(.center).padding(.horizontal)
 
@@ -505,7 +515,7 @@ struct InventoryScreenView: View {
             .padding(.horizontal)
 
             if viewModel.selectedPowerUpSlot != nil {
-                Text("Consumable selected ✓  —  close this screen and tap a Family Spawner.")
+                Text("Consumable selected ✓  —  close this screen and tap a Family Spawner, or convert it to coins above.")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Color(red: 0.50, green: 0.22, blue: 0.72))
                     .multilineTextAlignment(.center)

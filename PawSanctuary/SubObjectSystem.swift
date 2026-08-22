@@ -43,6 +43,20 @@ enum SubObjectRarity: String, CaseIterable, Codable {
         case .highTierDrop:   return "High-Tier Drop"
         }
     }
+
+    /// Coins paid by `MergeBoardViewModel.convertSelectedPowerUpToCoins()` — the
+    /// sink for a power-up the player doesn't want to (or can't) apply to a
+    /// spawner. Scaled to roughly the same order of magnitude as a top-tier
+    /// Coin-chain collect (173, see `coinCurrencyValue`), rarer effects paying
+    /// more so cashing in a pity-guaranteed drop doesn't feel like a waste.
+    var coinValue: Int {
+        switch self {
+        case .speed:          return 15
+        case .mapSupplies:    return 30
+        case .boardItemGrant: return 75
+        case .highTierDrop:   return 200
+        }
+    }
 }
 
 enum PowerUpEffect: Codable {
