@@ -679,7 +679,11 @@ class MergeBoardViewModel {
             for c in 0..<cols {
                 let pos = GridPosition(row: r, col: c)
                 guard let producer = boardState.producer(at: pos) else { continue }
-                if !producerIsNeeded(producer, by: incompleteGoals) {
+                // Family spawners are deliberately excluded from this nudge (they're
+                // still retirable by dragging to the storage basket) — surfacing them
+                // here reads as pushing players to give up their producers too early
+                // in the game. May revisit with a dedicated spawner-retirement UX later.
+                if producer.level != .familySpawner, !producerIsNeeded(producer, by: incompleteGoals) {
                     result.append(RetirableProducer(position: pos, producer: producer))
                 }
             }
