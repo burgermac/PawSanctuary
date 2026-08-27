@@ -197,12 +197,9 @@ class AdoptionBoard {
         var completedIndices: [Int] = []
         for i in adoptionOrders.indices {
             guard !adoptionOrders[i].isClaimed, !adoptionOrders[i].isComplete else { continue }
-            if adoptionOrders[i].wantedChainID == chainID &&
-               adoptionOrders[i].wantedTier    == tier {
-                adoptionOrders[i].fulfilled += 1
-                if adoptionOrders[i].isComplete {
-                    completedIndices.append(i)
-                }
+            if creditLine(in: &adoptionOrders[i], chainID: chainID, tier: tier),
+               adoptionOrders[i].isComplete {
+                completedIndices.append(i)
             }
         }
         return completedIndices
@@ -213,10 +210,23 @@ class AdoptionBoard {
     func updateUrgentOrderAfterMerge(chainID: ChainID, tier: Int) -> Bool {
         guard var order = urgentOrder,
               !order.isComplete, urgentOrderTimeRemaining > 0,
-              order.wantedChainID == chainID, order.wantedTier == tier else { return false }
-        order.fulfilled += 1
+              creditLine(in: &order, chainID: chainID, tier: tier) else { return false }
         urgentOrder = order
         return order.isComplete
+    }
+
+    /// Credits one delivered item to the first unfilled line matching
+    /// `chainID`/`tier`, returning whether anything was credited.
+    ///
+    /// Only ever advances **one** line per delivered item: a basket that happens
+    /// to list the same item twice (two lines of one Pup rather than one line of
+    /// two) must still consume two Pups, not be filled by one.
+    private func creditLine(in order: inout AdoptionOrder, chainID: ChainID, tier: Int) -> Bool {
+        guard let lineIndex = order.lines.firstIndex(where: {
+            $0.chainID == chainID && $0.tier == tier && !$0.isComplete
+        }) else { return false }
+        order.lines[lineIndex].fulfilled += 1
+        return true
     }
 
     /// Marks an order as claimed. MergeBoardViewModel queues the replacement.

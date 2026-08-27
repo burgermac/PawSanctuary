@@ -317,7 +317,14 @@ enum GameStore {
     /// v35: freeChestReadyAt added (Gap_Analysis_Round2 3.6). Purely additive.
     /// v36: parallelBoardState added (Phase 6b, Task 3.7). Optional — purely
     ///      additive, no default needed.
-    static let currentVersion = 36
+    /// v37: adoption orders become baskets. The flat
+    ///      `wantedChainID`/`wantedTier`/`wantedCount`/`fulfilled` quartet on
+    ///      every `AdoptionOrder` collapses into `lines: [OrderLine]`.
+    ///      **Structural, not additive** — the old keys are removed rather than
+    ///      left to linger (same call as v28→v29's `timeRemaining` and v24→v25).
+    ///      The rewrite runs in `finishMigration` for every source version, not
+    ///      in one step function, because the dispatch table is flat.
+    static let currentVersion = 37
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -568,6 +575,7 @@ enum GameStore {
         if version == 33 { return migrateByInjecting(from: 33, defaults: [:], into: data) }   // piggyBankCoins covered by additiveDefaultsSinceV8
         if version == 34 { return migrateByInjecting(from: 34, defaults: [:], into: data) }   // freeChestReadyAt covered by additiveDefaultsSinceV8
         if version == 35 { return migrateByInjecting(from: 35, defaults: [:], into: data) }   // parallelBoardState is Optional — no default needed
+        if version == 36 { return migrateByInjecting(from: 36, defaults: [:], into: data) }   // order baskets: rewrite runs in finishMigration for every sourceVersion < 37
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -665,10 +673,65 @@ enum GameStore {
         for (key, value) in additiveDefaultsSinceV8 where json[key] == nil { json[key] = value }
         if sourceVersion < 28 { remapAnimalTiersForTwelveTierChains(&json) }
         if sourceVersion < 32 { recoverStrandedFamilySpawners(&json) }
+        // Must run AFTER the v28 tier remap: that rewrites `wantedTier` in place
+        // on the old flat shape, so collapsing to `lines` first would hide the
+        // key it looks for and strand pre-v28 saves on 15-tier indices.
+        if sourceVersion < 37 { collapseOrdersIntoBaskets(&json) }
         json["version"] = currentVersion
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migration decode failed — \(error)"); return nil }
+    }
+
+    // MARK: v37 — adoption orders become baskets
+
+    /// Rewrites every persisted `AdoptionOrder` from the pre-v37 flat shape
+    /// (`wantedChainID` / `wantedTier` / `wantedCount` / `fulfilled`) into the
+    /// basket shape (`lines: [OrderLine]`), producing exactly one line per
+    /// order so a migrated save plays identically to how it was left.
+    ///
+    /// Runs for every save predating v37 regardless of dispatch path — the
+    /// migration table is flat, so a v19 save arrives at `finishMigration`
+    /// without passing through a v36→v37 step. Same reasoning as
+    /// `recoverStrandedFamilySpawners`.
+    ///
+    /// Covers both the four persistent orders and the separate `urgentOrder`,
+    /// which reuses the same struct. The old keys are removed rather than left
+    /// in place: `AdoptionOrder` no longer declares them, so leaving them would
+    /// be dead JSON growing every save forever (the v28→v29 `timeRemaining`
+    /// precedent).
+    private static func collapseOrdersIntoBaskets(_ json: inout [String: Any]) {
+        func collapse(_ order: [String: Any]) -> [String: Any] {
+            var order = order
+            // Already migrated (or authored new) — leave untouched.
+            guard order["lines"] == nil else { return order }
+            let chainID = order.removeValue(forKey: "wantedChainID") as? String
+            let tier = order.removeValue(forKey: "wantedTier") as? Int
+            let count = order.removeValue(forKey: "wantedCount") as? Int
+            let fulfilled = order.removeValue(forKey: "fulfilled") as? Int
+            // A save missing the quartet entirely is corrupt in a way this
+            // migration can't invent a fix for. Give it an empty basket rather
+            // than a fabricated order: `isComplete` is false for an empty
+            // basket, so it sits unclaimable instead of paying out for free.
+            guard let chainID, let tier, let count else {
+                order["lines"] = [Any]()
+                return order
+            }
+            order["lines"] = [[
+                "chainID": chainID,
+                "tier": tier,
+                "count": count,
+                "fulfilled": fulfilled ?? 0,
+            ]]
+            return order
+        }
+
+        if let orders = json["adoptionOrders"] as? [[String: Any]] {
+            json["adoptionOrders"] = orders.map(collapse)
+        }
+        if let urgent = json["urgentOrder"] as? [String: Any] {
+            json["urgentOrder"] = collapse(urgent)
+        }
     }
 
     // MARK: v32 — family spawners get dedicated per-species storage

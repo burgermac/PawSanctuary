@@ -913,15 +913,52 @@ struct OrderReward: Codable, Equatable {
 /// still applies is the separate urgent order (`AdoptionBoard.urgentOrder`),
 /// which reuses this same struct for its descriptive/reward data and tracks
 /// `urgentOrderTimeRemaining` alongside it rather than on the struct itself.
+/// One requested item within an order's basket — a specific chain at a specific
+/// tier, and how many copies of it the order wants.
+///
+/// Schema v37 (Phase: order baskets). Before v37 an `AdoptionOrder` carried a
+/// single flattened `wantedChainID`/`wantedTier`/`wantedCount`/`fulfilled`
+/// quartet, so an order could only ever ask for N copies of one item. Lines
+/// exist so one order can ask for several *different* items, each at its own
+/// tier and potentially from a different chain — matching the reference titles,
+/// where a card might want a mid-chain item from two unrelated chains at once.
+///
+/// Deliberately not `Identifiable`: a line has no identity beyond its position
+/// in the basket, and adding a persisted UUID per line would grow every save
+/// for nothing. Views iterate `lines.indices`.
+struct OrderLine: Codable, Equatable, Hashable {
+    var chainID: ChainID
+    var tier: Int
+    /// Copies of this item wanted. 1 or 2 today.
+    var count: Int
+    var fulfilled: Int = 0
+
+    var isComplete: Bool { fulfilled >= count }
+
+    // Registry-backed display helpers, same pattern as the order's own.
+    var symbol: String { ContentRegistry.shared.tier(chainID, tier)?.symbol ?? "pawprint.fill" }
+    var tint: Color    { ContentRegistry.shared.tier(chainID, tier)?.tint ?? .brown }
+    var color: Color   { ContentRegistry.shared.tier(chainID, tier)?.color ?? .gray }
+    var tierName: String { ContentRegistry.shared.tier(chainID, tier)?.name ?? "animal" }
+
+    /// e.g. "a Pup" or "2 Tabbies".
+    var lineDescription: String {
+        let prefix = count == 1 ? "a" : "\(count)"
+        let plural = count > 1 ? "s" : ""
+        return "\(prefix) \(tierName)\(plural)"
+    }
+}
+
+/// A specific adoption request from a named family — a basket of one or more
+/// `OrderLine`s, all of which must be filled before the order pays out.
 struct AdoptionOrder: Identifiable, Codable {
     var id = UUID()
     /// Index into the fixed `adoptionFamilies` roster (persisted instead of the
     /// struct itself, which carries a non-Codable `Color`).
     var familyIndex: Int
-    var wantedChainID: ChainID       // was wantedSpecies
-    var wantedTier: Int              // was wantedStage (0-based)
-    var wantedCount: Int             // 1 or 2
-    var fulfilled: Int = 0
+    /// The basket. Never empty in practice; the accessors below degrade safely
+    /// if it ever is rather than trapping on `lines[0]`.
+    var lines: [OrderLine]
     var rewards: [OrderReward] = []
     var isClaimed: Bool = false
 
@@ -930,22 +967,68 @@ struct AdoptionOrder: Identifiable, Codable {
         adoptionFamilies[max(0, min(familyIndex, adoptionFamilies.count - 1))]
     }
 
+    // ── Pre-v37 single-item accessors ───────────────────────────────
+    //
+    // Read-only shims over the first line, kept so the many call sites that
+    // predate baskets (economy tests, spotlight matching, the "is this item
+    // wanted" checks) compile and behave unchanged for single-line orders —
+    // the same compatibility approach `rewardDogTags` & co. took when Task 1.1
+    // replaced the flat reward fields with `rewards: [OrderReward]`.
+    //
+    // Deliberately NOT settable: incrementing "the" fulfilled count is
+    // ambiguous once a basket has several lines, so the two sites that used to
+    // do that (`AdoptionBoard.updateAfterMerge` / `updateUrgentOrderAfterMerge`)
+    // now credit the specific matching line instead.
+    var wantedChainID: ChainID { lines.first?.chainID ?? ContentRegistry.animalChainID(.dog) }
+    var wantedTier: Int        { lines.first?.tier ?? 0 }
+    var wantedCount: Int       { lines.reduce(0) { $0 + $1.count } }
+    var fulfilled: Int         { lines.reduce(0) { $0 + $1.fulfilled } }
+
     // Registry-backed display helpers (keep the views free of registry plumbing).
-    var iconSymbol: String { ContentRegistry.shared.tier(wantedChainID, wantedTier)?.symbol ?? "pawprint.fill" }
-    var iconTint: Color    { ContentRegistry.shared.tier(wantedChainID, wantedTier)?.tint ?? .brown }
-    var stageColor: Color  { ContentRegistry.shared.tier(wantedChainID, wantedTier)?.color ?? .gray }
+    var iconSymbol: String { lines.first?.symbol ?? "pawprint.fill" }
+    var iconTint: Color    { lines.first?.tint ?? .brown }
+    var stageColor: Color  { lines.first?.color ?? .gray }
     var stageBadgeSymbol: String { QuestGoal.animalTierSymbol(wantedTier) }
 
-    var isComplete: Bool         { fulfilled >= wantedCount }
-    var progressFraction: Double { min(Double(fulfilled) / Double(wantedCount), 1.0) }
+    /// Every line filled. An empty basket is *not* complete — it would otherwise
+    /// read as instantly claimable if one ever slipped through.
+    var isComplete: Bool { !lines.isEmpty && lines.allSatisfy(\.isComplete) }
 
-    /// Human-readable request line shown on the card, e.g. "a Tabby" or "a Pup".
+    var progressFraction: Double {
+        let wanted = wantedCount
+        guard wanted > 0 else { return 0 }
+        return min(Double(fulfilled) / Double(wanted), 1.0)
+    }
+
+    /// Whether `chainID`/`tier` satisfies any still-unfilled line.
+    func wants(chainID: ChainID, tier: Int) -> Bool {
+        lines.contains { $0.chainID == chainID && $0.tier == tier && !$0.isComplete }
+    }
+
+    /// Human-readable request shown on the card — "a Tabby", or "a Pup + 2 Kits"
+    /// once a basket carries more than one line.
     var orderDescription: String {
-        let prefix = wantedCount == 1 ? "a" : "\(wantedCount)"
-        let plural  = wantedCount > 1 ? "s" : ""
-        // ChainTier.name is now the family-specific tier name (e.g. "Pup", "Tabby", "Rex").
-        let tierName = ContentRegistry.shared.tier(wantedChainID, wantedTier)?.name ?? "animal"
-        return "\(prefix) \(tierName)\(plural)"
+        lines.map(\.lineDescription).joined(separator: " + ")
+    }
+}
+
+extension AdoptionOrder {
+    /// Single-line convenience init preserving the pre-v37 call shape.
+    /// Used by tests and by any caller that only ever wanted one item type.
+    init(id: UUID = UUID(),
+         familyIndex: Int,
+         wantedChainID: ChainID,
+         wantedTier: Int,
+         wantedCount: Int,
+         fulfilled: Int = 0,
+         rewards: [OrderReward] = [],
+         isClaimed: Bool = false) {
+        self.init(id: id,
+                  familyIndex: familyIndex,
+                  lines: [OrderLine(chainID: wantedChainID, tier: wantedTier,
+                                    count: wantedCount, fulfilled: fulfilled)],
+                  rewards: rewards,
+                  isClaimed: isClaimed)
     }
 }
 

@@ -963,6 +963,36 @@ final class PersistenceTests: XCTestCase {
                        "the rolled effect must survive a save/load round trip")
     }
 
+    /// Rewrites encoded adoption orders back into the pre-v37 **flat** shape —
+    /// `wantedChainID` / `wantedTier` / `wantedCount` / `fulfilled` at the top
+    /// level, and no `lines` key at all.
+    ///
+    /// Fixtures for old versions are built by encoding *today's* `GameState` and
+    /// stamping an old version number, which is a convenient fiction that holds
+    /// only while the shape is stable. Order baskets (v37) broke it: today's
+    /// encoder emits `lines`, but no genuine pre-v37 save can contain that key.
+    /// Without this, migrations keyed on the old field names — the v28 tier
+    /// remap looks for `wantedTier`, and `collapseOrdersIntoBaskets` looks for
+    /// the whole quartet — find nothing and silently no-op.
+    private func flattenOrdersToPreV37Shape(_ obj: inout [String: Any]) {
+        func flatten(_ order: [String: Any]) -> [String: Any] {
+            var order = order
+            guard let lines = order.removeValue(forKey: "lines") as? [[String: Any]],
+                  let first = lines.first else { return order }
+            order["wantedChainID"] = first["chainID"]
+            order["wantedTier"]    = first["tier"]
+            order["wantedCount"]   = first["count"]
+            order["fulfilled"]     = first["fulfilled"] ?? 0
+            return order
+        }
+        if let orders = obj["adoptionOrders"] as? [[String: Any]] {
+            obj["adoptionOrders"] = orders.map(flatten)
+        }
+        if let urgent = obj["urgentOrder"] as? [String: Any] {
+            obj["urgentOrder"] = flatten(urgent)
+        }
+    }
+
     /// The migration table is flat: every version dispatches straight to the current
     /// schema without passing through the intervening steps. A save several versions
     /// back must still pick up every field added since, or it decodes to nil and is
@@ -971,6 +1001,7 @@ final class PersistenceTests: XCTestCase {
         for version in [12, 19, 20, 21, 23, 24, 25, 26] {
             let data = try JSONEncoder().encode(makeSampleState())
             var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            flattenOrdersToPreV37Shape(&obj)
             // Strip everything added after v8 — the worst case for a flat chain.
             for key in ["commerce", "pityStates", "unlockedSuperpowerSpecies",
                         "superpowerCooldownEnds", "lagomorphMergeCount", "lastMergeTimestamp",
@@ -1031,6 +1062,10 @@ final class PersistenceTests: XCTestCase {
 
         let data = try JSONEncoder().encode(state)
         var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        // A real v27 save predates order baskets, so its order carries a
+        // top-level `wantedTier` — which is exactly the key the remap under
+        // test looks for.
+        flattenOrdersToPreV37Shape(&obj)
         obj["version"] = 27
         return obj
     }
@@ -1317,6 +1352,100 @@ final class PersistenceTests: XCTestCase {
         let loaded = try XCTUnwrap(GameStore.load(), "v35 save should migrate to v36")
         XCTAssertEqual(loaded.version, GameStore.currentVersion)
         XCTAssertNil(loaded.parallelBoardState, "no parallel-board event existed pre-v36 — the field must migrate to nil, not a default board")
+    }
+
+    // MARK: v36 → v37 (order baskets)
+
+    /// Builds a genuine pre-v37 save: orders carry the flat quartet and no
+    /// `lines` key, exactly as one written by a shipped build would.
+    private func makeV36BlobWithFlatOrders(urgent: Bool = true) throws -> [String: Any] {
+        let dog = ContentRegistry.animalChainID(.dog)
+        var state = makeSampleState()
+        state.adoptionOrders = [
+            AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 4,
+                          wantedCount: 2, fulfilled: 1,
+                          rewards: [OrderReward(kind: .coins, amount: 300)]),
+        ]
+        state.urgentOrder = urgent
+            ? AdoptionOrder(familyIndex: 1, wantedChainID: dog, wantedTier: 6, wantedCount: 1)
+            : nil
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        flattenOrdersToPreV37Shape(&obj)
+        obj["version"] = 36
+        return obj
+    }
+
+    func testV36toV37CollapsesFlatOrdersIntoSingleLineBaskets() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV36BlobWithFlatOrders()))
+        let loaded = try XCTUnwrap(GameStore.load(), "v36 save should migrate to v37")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+
+        let order = try XCTUnwrap(loaded.adoptionOrders.first)
+        XCTAssertEqual(order.lines.count, 1, "a pre-basket order becomes exactly one line")
+        XCTAssertEqual(order.lines[0].chainID, ContentRegistry.animalChainID(.dog))
+        XCTAssertEqual(order.lines[0].tier, 4)
+        XCTAssertEqual(order.lines[0].count, 2)
+        XCTAssertEqual(order.lines[0].fulfilled, 1, "partial progress must survive the migration")
+        XCTAssertFalse(order.isComplete, "1 of 2 delivered is not complete")
+
+        // The compatibility accessors must read the same values the old flat
+        // fields did, so pre-basket call sites behave identically.
+        XCTAssertEqual(order.wantedTier, 4)
+        XCTAssertEqual(order.wantedCount, 2)
+        XCTAssertEqual(order.fulfilled, 1)
+        XCTAssertEqual(order.rewards.first?.amount, 300, "rewards are untouched by the reshape")
+
+        let urgent = try XCTUnwrap(loaded.urgentOrder, "the urgent order migrates too")
+        XCTAssertEqual(urgent.lines.count, 1)
+        XCTAssertEqual(urgent.lines[0].tier, 6)
+    }
+
+    func testV36toV37HandlesANilUrgentOrder() throws {
+        try writeMainFile(try JSONSerialization.data(
+            withJSONObject: try makeV36BlobWithFlatOrders(urgent: false)))
+        let loaded = try XCTUnwrap(GameStore.load(), "a save with no urgent order still migrates")
+        XCTAssertNil(loaded.urgentOrder)
+        XCTAssertEqual(loaded.adoptionOrders.first?.lines.count, 1)
+    }
+
+    /// An order whose quartet is missing entirely is corrupt in a way the
+    /// migration cannot invent a fix for. It must not decode into something
+    /// that reads as instantly claimable and pays out for free.
+    func testV36toV37GivesACorruptOrderAnEmptyUnclaimableBasket() throws {
+        var obj = try makeV36BlobWithFlatOrders()
+        var orders = try XCTUnwrap(obj["adoptionOrders"] as? [[String: Any]])
+        for key in ["wantedChainID", "wantedTier", "wantedCount", "fulfilled"] {
+            orders[0].removeValue(forKey: key)
+        }
+        obj["adoptionOrders"] = orders
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "a corrupt order must not discard the whole save")
+        let order = try XCTUnwrap(loaded.adoptionOrders.first)
+        XCTAssertTrue(order.lines.isEmpty)
+        XCTAssertFalse(order.isComplete, "an empty basket must never read as complete")
+    }
+
+    func testOrderBasketRoundTripsOnAFreshSave() throws {
+        let dog = ContentRegistry.animalChainID(.dog)
+        let cat = ContentRegistry.animalChainID(.cat)
+        var state = makeSampleState()
+        state.adoptionOrders = [AdoptionOrder(
+            familyIndex: 0,
+            lines: [OrderLine(chainID: dog, tier: 3, count: 1, fulfilled: 1),
+                    OrderLine(chainID: cat, tier: 5, count: 2)],
+            rewards: [OrderReward(kind: .coins, amount: 500)])]
+
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        let order = try XCTUnwrap(decoded.adoptionOrders.first)
+        XCTAssertEqual(order.lines.count, 2, "a multi-line basket survives a round trip")
+        XCTAssertEqual(order.lines[0].chainID, dog)
+        XCTAssertEqual(order.lines[1].chainID, cat, "lines may span chains")
+        XCTAssertEqual(order.lines[1].count, 2)
+        XCTAssertEqual(order.fulfilled, 1, "aggregate progress sums across lines")
+        XCTAssertEqual(order.wantedCount, 3, "aggregate demand sums across lines")
+        XCTAssertFalse(order.isComplete)
     }
 
     func testParallelBoardStateRoundTripsOnAFreshSave() throws {
