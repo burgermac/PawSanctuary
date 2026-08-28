@@ -1,6 +1,16 @@
 # PawSanctuary — Order baskets, Smile points, and the Tasty Tasks gap (draft)
 
-**Status: draft, open design questions unresolved, no code written yet.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Third in the reference-review series, after `Spec_PartyBoard_Draft.md` and `Spec_BoardAnimation_Draft.md`. Accumulating for the next design phase.
+**Status: §1 IMPLEMENTED; §2 and §4 remain draft with open questions.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Third in the reference-review series, after `Spec_PartyBoard_Draft.md` and `Spec_BoardAnimation_Draft.md`.
+
+**§1 (order baskets) shipped 27 Aug 2026** in three commits, each verified on the simulator and left playable:
+
+| | Commit | What landed |
+|---|---|---|
+| Step 1 | `9c225e8` | Schema v37 — `AdoptionOrder` reshaped to `lines: [OrderLine]`, migration, `OrderBasketTests`. Generation still emitted one line, so behaviour and economy were unchanged. |
+| Step 2 | `1e4e6c9` | Multi-line generation tied to slot difficulty; payout summed across lines. |
+| Step 3 | `d543fbc` | Per-line slots on the order card with the actionability tint. |
+
+Four design calls were taken before implementation and are recorded in §1a below. §5's open questions 1 and 2 are answered by them; the rest still stand.
 
 ## 0. Source material
 
@@ -48,6 +58,29 @@ Moving to baskets means replacing those four fields with a list of order lines, 
 - The order card UI — one icon becomes a row of one-to-three slots, ideally with the green/grey satisfiability tint, which is a genuinely good affordance worth copying.
 
 **This is not a small change, and it is not additive.** Recommend it be sized as its own task rather than folded into anything else.
+
+## 1a. How §1 was actually built (27 Aug 2026)
+
+**Decisions taken:** baskets may span chains; size is tied to the existing slot difficulty (easy 1 line, medium 1–2, hard 2–3); payout is the summed build cost of every line, so the coins-per-kibble rate is untouched; and it landed as a behaviour-neutral reshape first, then generation, then UI.
+
+**Two things worth carrying forward:**
+
+**Filler lines draw an easier band.** Line 0 takes the slot's own difficulty; further lines take `basketFillerDifficulty` (one step easier). Rolling every line from the slot's own band would roughly triple hard-slot demand — expected cost is ~111 kibble per hard line against ~6 for medium. The filler lines still bite, just not in kibble: a basket forces the player to hold several different items on a crowded board across more than one chain. That is one constant to change if baskets should cost more.
+
+**Measured economy effect**, against the same model immediately before the change:
+
+| | before → after | | before → after |
+|---|---|---|---|
+| L1 | 0.25 → 0.30 | L35 | 0.97 → **0.99** |
+| L5 | 0.40 → 0.46 | L40 | 0.97 → **0.99** |
+| L10 | 0.60 → 0.60 | L45 | 1.12 → 1.14 |
+| L25 | 0.65 → 0.67 | L55 | 1.28 → 1.30 |
+
+Every band still satisfies the Task 2.5 assertions. **Flagged: L35–40 now sits at 0.99 against a "must not have walled yet" bound of 1.00 — headroom fell from 0.03 to 0.01.** The next thing that adds demand at that band will breach it. L15/L20 dip slightly because 2-line medium orders no longer roll the count-2 multiplier.
+
+**The tint means something different here than in the reference, deliberately.** Those games fulfil an order by dragging the item onto it, so a slot lights up when the player *holds* the item. PawSanctuary advances orders only as a side effect of a merge producing the wanted item, so a held item does nothing for an order asking for it. The slot therefore tints on "you could make this next merge" (`MergeBoardViewModel.mergeReadyKeys`: at least two of the tier below, across board and inventory). A literal port would have promised something the game never delivers.
+
+**Left open by this work:** an order asking for tier 0 can never tint ready, because tier 0 comes from a spawner rather than a merge. That is correct under the current rule but may read oddly to a player. Worth a look if easy-slot orders feel inert.
 
 ---
 
