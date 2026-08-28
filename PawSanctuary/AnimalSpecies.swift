@@ -1521,6 +1521,62 @@ let orderDifficultyBands: [OrderDifficulty: [(probability: Double, tiers: [Int])
     .hard:   [(0.750, [4, 5]), (0.130, [6, 7]), (0.090, [8, 9]), (0.030, [10, 11])],
 ]
 
+// ── Order baskets (schema v37) ────────────────────────────────
+//
+// How many distinct items a slot's order asks for. Tied to the existing
+// per-slot difficulty rather than a new axis, so the easy/medium/medium/hard
+// spread already guaranteed by `orderSlotDifficultyPattern` also controls
+// basket size: the easy slot stays a single ask, the hard slot is always a
+// real basket.
+let orderBasketLineCounts: [OrderDifficulty: ClosedRange<Int>] = [
+    .easy:   1...1,
+    .medium: 1...2,
+    .hard:   2...3,
+]
+
+extension OrderDifficulty {
+    /// The band an order's *additional* basket lines draw from — one step
+    /// easier than the order's headline difficulty.
+    ///
+    /// Deliberately not the same band. Rolling every line from `.hard` would
+    /// roughly triple a hard order's kibble cost (expected cost per hard line
+    /// is ~111 kibble against ~6 for medium), swinging the demand/supply ratio
+    /// the Phase 2 model is tuned around — see `EconomySimulation` and the
+    /// ratio-curve assertions in `EconomyTests`.
+    ///
+    /// The extra lines still earn their place: a basket forces the player to
+    /// hold several *different* items on a crowded board at once, across more
+    /// than one chain. Board space and attention are the real cost of a basket,
+    /// not kibble. If baskets should bite harder economically too, this is the
+    /// one place to change.
+    var basketFillerDifficulty: OrderDifficulty {
+        switch self {
+        case .easy, .medium: return .easy
+        case .hard:          return .medium
+        }
+    }
+}
+
+/// Total kibble cost of building everything an order asks for.
+func orderBuildCost(lines: [OrderLine]) -> Int {
+    lines.reduce(0) { $0 + buildCost(tier: $1.tier, count: $1.count) }
+}
+
+/// Coins an order pays for a whole basket — the same coins-per-kibble rate the
+/// single-item formula uses, applied to the summed cost of every line. A
+/// three-line basket therefore pays roughly three times a one-line order, and
+/// the Phase 2 rate is preserved exactly rather than re-tuned.
+func orderCoinPayout(lines: [OrderLine], spreadFactor: Double = 1.0) -> Int {
+    max(1, Int((Double(orderBuildCost(lines: lines))
+                * coinsPerKibbleOfOrder * spreadFactor).rounded()))
+}
+
+/// What the whole basket would fetch if its items were sold outright instead.
+/// The payout must always beat this, or filling orders is a trap.
+func orderSellValue(lines: [OrderLine]) -> Int {
+    lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
+}
+
 // ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
 //
 // The multiplier selects a TIER; the tier sets the price. Cost is `2^tier`,

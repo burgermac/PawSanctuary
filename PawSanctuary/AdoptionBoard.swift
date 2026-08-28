@@ -63,29 +63,60 @@ class AdoptionBoard {
         return bands.last?.tiers.last ?? 0
     }
 
+    /// How many lines this order's basket carries (schema v37).
+    static func rollLineCount(difficulty: OrderDifficulty) -> Int {
+        let range = orderBasketLineCounts[difficulty] ?? 1...1
+        return Int.random(in: range)
+    }
+
     func generateOrder(unlockedChainIDs: [ChainID], playerLevel: Int, forSlot index: Int) -> AdoptionOrder {
         let animalChainIDs = unlockedChainIDs.filter {
             ContentRegistry.shared.chain($0)?.category == .animal
         }
         let familyIndex = Int.random(in: 0..<adoptionFamilies.count)
-        let chainID     = animalChainIDs.randomElement() ?? ContentRegistry.animalChainID(.dog)
+        let fallbackChainID = ContentRegistry.animalChainID(.dog)
 
         // Tier weighting comes from the shared `orderDifficultyBands` table so the
         // economy model in EconomySimulation can never drift from what is
         // actually generated here. All tiers are capped by maxAchievableOrderTier.
         let difficulty = Self.difficulty(forSlot: index)
-        let rawTier = Self.rollTier(difficulty: difficulty)
-        let maxTier = maxAchievableOrderTier(forPlayerLevel: playerLevel)
-        let tier    = min(rawTier, maxTier)
-        let count   = (tier <= 5 && Int.random(in: 1...3) == 1) ? 2 : 1
+        let maxTier    = maxAchievableOrderTier(forPlayerLevel: playerLevel)
+        let lineCount  = Self.rollLineCount(difficulty: difficulty)
+
+        // Line 0 carries the order's headline difficulty; any further lines draw
+        // from an easier band (see `basketFillerDifficulty`). Each line picks its
+        // own chain, so a basket may span chains — that is the point of it.
+        var lines: [OrderLine] = (0..<lineCount).map { lineIndex in
+            let band = lineIndex == 0 ? difficulty : difficulty.basketFillerDifficulty
+            let tier = min(Self.rollTier(difficulty: band), maxTier)
+            return OrderLine(chainID: animalChainIDs.randomElement() ?? fallbackChainID,
+                             tier: tier,
+                             count: 1)
+        }
+
+        // The "bring me two of these" roll survives only for single-line orders,
+        // exactly as it behaved pre-v37. A basket asks for one of each instead —
+        // stacking counts on top of multiple lines would compound two demand
+        // multipliers at once, and the reference titles show distinct items
+        // rather than quantities.
+        if lines.count == 1, lines[0].tier <= 5, Int.random(in: 1...3) == 1 {
+            lines[0].count = 2
+        }
+
+        // Rewards are priced off the whole basket, but difficulty-flavoured
+        // rewards (dog tags, the recirculated board item) key off the deepest
+        // line — the order's real headline ask.
+        let tier  = lines.map(\.tier).max() ?? 0
+        let count = lines.reduce(0) { $0 + $1.count }
 
         let tags = max(1, (tier + 1) / 2) + Int.random(in: 0...2)
         // Task 2c: coins scale with what the order actually costs to fulfil, so a
         // deep order is worth the days of kibble it takes to build. The previous
         // `(tier + 1) * 2` paid 9–25 coins against a map costing 291,900.
+        // v37: summed across every line, so the coins-per-kibble rate is
+        // unchanged and a basket simply pays for all of what it asks.
         let orderCoins = orderCoinPayout(
-            tier: tier,
-            count: count,
+            lines: lines,
             spreadFactor: Double.random(in: (1 - orderCoinSpread)...(1 + orderCoinSpread))
         )
         let packReward: CardPackType? = tags >= 7 ? .star3
@@ -107,7 +138,7 @@ class AdoptionBoard {
         // but it is what makes the deepest tiers reachable at all, since building a
         // Stage-15 from taps alone costs ~22 days of total income.
         if Int.random(in: 0..<orderBoardItemFrequency) == 0 {
-            let rewardChainID = animalChainIDs.randomElement() ?? chainID
+            let rewardChainID = animalChainIDs.randomElement() ?? fallbackChainID
             let rewardMaxTier = ContentRegistry.shared.chain(rewardChainID)?.maxTier ?? 0
             let rewardTier = min(max(0, tier - orderRewardTierOffset), rewardMaxTier)
             rewards.append(OrderReward(kind: .boardItem, amount: 1,
@@ -129,9 +160,7 @@ class AdoptionBoard {
 
         return AdoptionOrder(
             familyIndex: familyIndex,
-            wantedChainID: chainID,
-            wantedTier: tier,
-            wantedCount: count,
+            lines: lines,
             rewards: rewards
         )
     }

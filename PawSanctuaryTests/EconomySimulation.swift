@@ -108,13 +108,57 @@ struct EconomySimulation {
         return weights.map { (tier: $0.key, p: $0.value) }.sorted { $0.tier < $1.tier }
     }
 
-    /// Expected kibble cost of one generated order, counting `wantedCount`.
-    static func expectedOrderCost(level: Int) -> Double {
-        tierDistribution(level: level).reduce(0) { total, entry in
-            // count = 2 one time in three, but only for tiers 0...5
-            let expectedCount = entry.tier <= 5 ? (1.0 + 1.0 / 3.0) : 1.0
-            return total + entry.p * Double(spawnCost(forTier: entry.tier)) * expectedCount
+    /// Expected kibble cost of one basket line drawn from `difficulty`'s band.
+    /// `applyCountRoll` models the single-line "bring me two of these" roll,
+    /// which `AdoptionBoard.generateOrder` applies only when the basket has
+    /// exactly one line, and only for tiers 0...5.
+    static func expectedLineCost(difficulty: OrderDifficulty,
+                                 level: Int,
+                                 applyCountRoll: Bool) -> Double {
+        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        var total = 0.0
+        for (bandProbability, tiers) in orderDifficultyBands[difficulty] ?? [] {
+            let each = bandProbability / Double(tiers.count)
+            for t in tiers {
+                let tier = min(t, maxTier)
+                // count = 2 one time in three, but only for tiers 0...5
+                let expectedCount = (applyCountRoll && tier <= 5) ? (1.0 + 1.0 / 3.0) : 1.0
+                total += each * Double(spawnCost(forTier: tier)) * expectedCount
+            }
         }
+        return total
+    }
+
+    /// Expected kibble cost of one order generated for a slot of `difficulty`,
+    /// across the basket sizes that slot can roll (schema v37).
+    ///
+    /// Mirrors `AdoptionBoard.generateOrder`: line 0 draws the slot's own band,
+    /// any further lines draw `basketFillerDifficulty`, and the count roll
+    /// applies only to single-line baskets. Keep in step with it.
+    static func expectedOrderCost(difficulty: OrderDifficulty, level: Int) -> Double {
+        let sizes = Array(orderBasketLineCounts[difficulty] ?? 1...1)
+        guard !sizes.isEmpty else { return 0 }
+        let pEach = 1.0 / Double(sizes.count)
+        let filler = expectedLineCost(difficulty: difficulty.basketFillerDifficulty,
+                                      level: level, applyCountRoll: false)
+        return sizes.reduce(0.0) { total, lineCount in
+            let headline = expectedLineCost(difficulty: difficulty, level: level,
+                                            applyCountRoll: lineCount == 1)
+            return total + pEach * (headline + Double(lineCount - 1) * filler)
+        }
+    }
+
+    /// Expected kibble cost of one generated order, averaged across every active
+    /// persistent slot's fixed difficulty plus the urgent order (always `.medium`).
+    static func expectedOrderCost(level: Int) -> Double {
+        let persistentSlots = slotCount(level: level)
+        var total = 0.0
+        for slotIndex in 0..<persistentSlots {
+            total += expectedOrderCost(difficulty: AdoptionBoard.difficulty(forSlot: slotIndex),
+                                       level: level)
+        }
+        total += expectedOrderCost(difficulty: .medium, level: level)   // the urgent order
+        return total / Double(persistentSlots + 1)
     }
 
     static func ordersPerDay(level: Int) -> Double {

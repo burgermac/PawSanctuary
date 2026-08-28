@@ -185,6 +185,87 @@ final class OrderBasketTests: XCTestCase {
         XCTAssertEqual(board.urgentOrder?.fulfilled, 0)
     }
 
+    // MARK: Generation (schema v37)
+
+    private func generate(slot: Int, level: Int = 45, samples: Int = 300) -> [AdoptionOrder] {
+        let board = AdoptionBoard()
+        let chains = AnimalSpecies.allCases.map { ContentRegistry.animalChainID($0) }
+        return (0..<samples).map { _ in
+            board.generateOrder(unlockedChainIDs: chains, playerLevel: level, forSlot: slot)
+        }
+    }
+
+    func testBasketSizeFollowsTheSlotDifficulty() {
+        // Slot pattern is easy / medium / medium / hard.
+        let easy = generate(slot: 0).map(\.lines.count)
+        XCTAssertTrue(easy.allSatisfy { $0 == 1 }, "the easy slot stays a single ask")
+
+        let medium = Set(generate(slot: 1).map(\.lines.count))
+        XCTAssertTrue(medium.isSubset(of: [1, 2]), "medium rolls 1-2 lines, saw \(medium)")
+        XCTAssertEqual(medium, [1, 2], "over 300 samples medium should show both sizes")
+
+        let hard = Set(generate(slot: 3).map(\.lines.count))
+        XCTAssertTrue(hard.isSubset(of: [2, 3]), "hard rolls 2-3 lines, saw \(hard)")
+        XCTAssertEqual(hard, [2, 3], "over 300 samples hard should show both sizes")
+    }
+
+    func testOnlySingleLineOrdersEverAskForTwoOfTheSameItem() {
+        for order in generate(slot: 3) + generate(slot: 1) where order.lines.count > 1 {
+            XCTAssertTrue(order.lines.allSatisfy { $0.count == 1 },
+                          "a basket asks for one of each; stacking would compound two multipliers")
+        }
+    }
+
+    func testFillerLinesDrawFromAnEasierBandThanTheHeadline() {
+        // Hard's own band starts at tier 4; its filler band (medium) is tiers 2-3.
+        for order in generate(slot: 3) where order.lines.count > 1 {
+            for line in order.lines.dropFirst() {
+                XCTAssertLessThanOrEqual(line.tier, 3,
+                                         "filler lines draw the medium band, saw tier \(line.tier)")
+            }
+        }
+    }
+
+    func testEveryGeneratedOrderHasAtLeastOneLine() {
+        for slot in 0..<4 {
+            for order in generate(slot: slot, samples: 100) {
+                XCTAssertFalse(order.lines.isEmpty)
+                XCTAssertFalse(order.isComplete, "a freshly generated order is never already complete")
+            }
+        }
+    }
+
+    func testGeneratedTiersRespectTheLevelCap() {
+        let cap = maxAchievableOrderTier(forPlayerLevel: 12)
+        for slot in 0..<4 {
+            for order in generate(slot: slot, level: 12, samples: 100) {
+                for line in order.lines {
+                    XCTAssertLessThanOrEqual(line.tier, cap,
+                                             "every line is capped, not just the headline")
+                }
+            }
+        }
+    }
+
+    func testBasketsDoSpanChains() {
+        // Not guaranteed per-order (each line picks independently, so a basket may
+        // land on one chain by chance), but across 300 hard orders it must happen.
+        let sawMixedChains = generate(slot: 3).contains { order in
+            Set(order.lines.map(\.chainID)).count > 1
+        }
+        XCTAssertTrue(sawMixedChains, "basket lines pick chains independently — a mix must occur")
+    }
+
+    func testBoardItemRewardKeysOffTheDeepestLine() {
+        for order in generate(slot: 3) {
+            guard let reward = order.rewards.first(where: { $0.kind == .boardItem }),
+                  let tier = reward.payloadTier else { continue }
+            let deepest = order.lines.map(\.tier).max() ?? 0
+            XCTAssertLessThanOrEqual(tier, max(0, deepest - orderRewardTierOffset),
+                                     "the recirculated item stays well below the order's headline ask")
+        }
+    }
+
     // MARK: Description
 
     func testOrderDescriptionListsEveryLine() {

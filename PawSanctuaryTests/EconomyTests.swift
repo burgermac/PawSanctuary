@@ -100,12 +100,13 @@ final class EconomyTests: XCTestCase {
             guard let coins = order.rewards.first(where: { $0.kind == .coins })?.amount else {
                 return XCTFail("every order should carry a coin reward")
             }
-            let nominal = orderCoinPayout(tier: order.wantedTier, count: order.wantedCount)
+            // v37: priced off the whole basket, not one tier — a two-line order
+            // asking a tier-9 and a tier-2 costs the sum of both to build.
+            let nominal = orderCoinPayout(lines: order.lines)
             XCTAssertGreaterThanOrEqual(Double(coins), Double(nominal) * (1 - orderCoinSpread) - 1)
             XCTAssertLessThanOrEqual(Double(coins), Double(nominal) * (1 + orderCoinSpread) + 1)
             // And it must still beat selling the same items outright.
-            let sellingInstead = animalSellValue(tier: order.wantedTier) * order.wantedCount
-            XCTAssertGreaterThan(coins, sellingInstead)
+            XCTAssertGreaterThan(coins, orderSellValue(lines: order.lines))
         }
     }
 
