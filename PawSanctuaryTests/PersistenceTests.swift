@@ -1354,6 +1354,34 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(loaded.parallelBoardState, "no parallel-board event existed pre-v36 — the field must migrate to nil, not a default board")
     }
 
+    // MARK: v37 → v38 (Care Points)
+
+    func testV37toV38DefaultsCarePointsToAFreshWeek() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "carePointsThisWeek")
+        obj.removeValue(forKey: "claimedCarePointTiers")
+        obj["version"] = 37
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v37 save should migrate to v38")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.carePointsThisWeek, 0,
+                       "a migrating save starts its first Care Point week at zero")
+        XCTAssertTrue(loaded.claimedCarePointTiers.isEmpty,
+                      "and with every tier still earnable")
+    }
+
+    func testCarePointsRoundTripOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.carePointsThisWeek = 137
+        state.claimedCarePointTiers = [CarePointTier.bronze.rawValue]
+
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.carePointsThisWeek, 137)
+        XCTAssertEqual(decoded.claimedCarePointTiers, [CarePointTier.bronze.rawValue])
+    }
+
     // MARK: v36 → v37 (order baskets)
 
     /// Builds a genuine pre-v37 save: orders carry the flat quartet and no

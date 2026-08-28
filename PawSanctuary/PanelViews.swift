@@ -1184,6 +1184,7 @@ struct LoyaltyClubPanelView: View {
 /// implicit "the" active event to fall back on.
 enum TaskSheet: Identifiable, Equatable {
     case adoptionOrders, dailyChallenges, quests, loyalty, invite, weeklyGoal, monthlyGoal
+    case carePoints
     case event(String)
 
     var id: String {
@@ -1195,6 +1196,7 @@ enum TaskSheet: Identifiable, Equatable {
         case .invite:          return "invite"
         case .weeklyGoal:      return "weeklyGoal"
         case .monthlyGoal:     return "monthlyGoal"
+        case .carePoints:      return "carePoints"
         case .event(let eventID): return "event-\(eventID)"
         }
     }
@@ -1208,6 +1210,7 @@ enum TaskSheet: Identifiable, Equatable {
         case .invite:          return "Invite Friends"
         case .weeklyGoal:      return "Weekly Goal"
         case .monthlyGoal:     return "Monthly Goal"
+        case .carePoints:      return "Care Points"
         case .event(let eventID):
             return EventRegistry.allEvents.first { $0.id == eventID }?.name ?? "Active Event"
         }
@@ -1696,6 +1699,141 @@ struct WeeklyGoalTaskCard: View {
     }
 }
 
+// MARK: Care Points card (specs/Spec_OrdersAndTasks_Draft.md §4)
+
+/// The task-completion bar. Every quest claimed, daily sweep finished and order
+/// fulfilled pays into one pool, so the separate task surfaces add up to a
+/// single weekly campaign instead of unrelated checkboxes.
+struct CarePointsTaskCard: View {
+    var viewModel: MergeBoardViewModel
+
+    private let ink = Color(red: 0.30, green: 0.20, blue: 0.42)
+
+    var body: some View {
+        let points     = viewModel.carePointsThisWeek
+        let claimable  = viewModel.claimableCarePointTiers
+        let next       = viewModel.nextCarePointTier
+        // Once every tier is claimed the bar is full, not empty.
+        let target     = next?.pointsNeeded ?? CarePointTier.gold.pointsNeeded
+        let fraction   = next == nil ? 1.0 : min(Double(points) / Double(max(1, target)), 1.0)
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "pawprint.circle.fill").font(.system(size: 11))
+                    .foregroundColor(ink)
+                Text("Care Points").font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(ink)
+                Spacer()
+                if !claimable.isEmpty {
+                    Text("Claim!")
+                        .font(.system(size: 9, weight: .bold)).foregroundColor(.white)
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(ink))
+                } else if next == nil {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 13))
+                        .foregroundColor(ink)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 3) {
+                Image(systemName: "pawprint.fill").font(.system(size: 9)).foregroundColor(ink)
+                Text(next == nil ? "\(points)" : "\(points)/\(target)")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+            }
+            TaskProgressBar(fraction: fraction, color: ink)
+            Text(claimable.isEmpty
+                 ? (next.map { "\(max(0, $0.pointsNeeded - points)) to \($0.displayName)" }
+                    ?? "All claimed this week!")
+                 : "\(claimable.count) reward\(claimable.count == 1 ? "" : "s") ready")
+                .font(.system(size: 9))
+                .foregroundColor(claimable.isEmpty ? .secondary : ink)
+                .lineLimit(1)
+        }
+        .padding(10)
+        .frame(width: taskCardWidth, height: taskCardHeight)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 0.95, green: 0.93, blue: 1.0)))
+    }
+}
+
+/// The claim surface — one row per tier, mirroring the weekly goal's panel.
+struct CarePointsPanelView: View {
+    var viewModel: MergeBoardViewModel
+
+    private let ink = Color(red: 0.30, green: 0.20, blue: 0.42)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Care Points", systemImage: "pawprint.circle.fill")
+                    .font(.headline).foregroundColor(ink)
+                Spacer()
+                Text("\(viewModel.carePointsThisWeek) this week")
+                    .font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
+            }
+
+            Text("Earned by finishing quests, sweeping the daily challenges, and fulfilling adoption orders. Resets weekly.")
+                .font(.system(size: 10)).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(CarePointTier.allCases, id: \.rawValue) { tier in
+                let reached  = viewModel.carePointsThisWeek >= tier.pointsNeeded
+                let claimed  = viewModel.isCarePointTierClaimed(tier)
+                HStack(spacing: 10) {
+                    Image(systemName: tier.sfSymbol)
+                        .font(.system(size: 20)).foregroundColor(tier.color)
+                        .frame(width: 32)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tier.displayName)
+                            .font(.system(size: 12, weight: .bold))
+                        HStack(spacing: 6) {
+                            (Text(Image(systemName: "tag.fill")) + Text(" +\(tier.dogTagReward)"))
+                                .font(.system(size: 10)).foregroundColor(.blue)
+                            (Text(Image(systemName: "star.fill")) + Text(" +\(tier.xpReward) XP"))
+                                .font(.system(size: 10)).foregroundColor(.orange)
+                            if let pack = tier.cardPack {
+                                (Text(Image(systemName: "rectangle.stack.fill")) + Text(" \(pack.displayName)"))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(red: 0.45, green: 0.30, blue: 0.60))
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    if claimed {
+                        Text("Claimed").font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    } else if reached {
+                        Button(action: {
+                            SoundManager.shared.playButtonTap()
+                            HapticManager.shared.successPattern()
+                            viewModel.claimCarePointTier(tier)
+                        }) {
+                            Text("Claim").font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Capsule().fill(ink))
+                        }
+                    } else {
+                        Text("\(tier.pointsNeeded)")
+                            .font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(reached && !claimed ? ink.opacity(0.10) : Color.gray.opacity(0.06)))
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16)
+            .fill(Color(red: 0.97, green: 0.96, blue: 1.0).opacity(0.9))
+            .shadow(color: .black.opacity(0.07), radius: 4))
+    }
+}
+
 // MARK: Monthly goal card
 
 struct MonthlyGoalTaskCard: View {
@@ -1874,6 +2012,8 @@ struct TaskStripView: View {
                         viewModel.retireProducer(at: retirable.position)
                     }
                 }
+                CarePointsTaskCard(viewModel: viewModel)
+                    .onTapGesture { activeSheet = .carePoints }
                 WeeklyGoalTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .weeklyGoal }
                 MonthlyGoalTaskCard(viewModel: viewModel)

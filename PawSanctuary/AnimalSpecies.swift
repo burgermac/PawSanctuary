@@ -1254,6 +1254,108 @@ let weeklyGoalGoldCoins    = 12_000
 /// Foster Haven T2 can reduce this by 1.
 let monthlyGoalWeeksNeeded = 3
 
+// ── Care Points (specs/Spec_OrdersAndTasks_Draft.md §4) ───────
+//
+// The reference titles run a single points bar that *every* completed task
+// pays into — orders, logins, merges, spend — with tiered milestone rewards
+// over it. PawSanctuary already had every part of that except the conversion:
+// the weekly goal is a tiered bar, but it is driven by `coinsEarnedThisWeek`,
+// a currency accumulator, so finishing a quest or a daily challenge advanced
+// nothing above itself. Care Points are that missing conversion — one pool
+// fed by task *completion*, so the separate task surfaces read as one campaign.
+//
+// Deliberately kept to its own bar rather than re-pointing the weekly goal,
+// so the coin economy the weekly chest is tuned against is untouched.
+
+/// Points awarded for claiming a completed quest, by difficulty.
+///
+/// Large next to `carePointsPerOrder` on purpose. A quest spans many merges —
+/// the same reasoning `QuestDifficulty.coinReward` records — and orders are so
+/// much more frequent that weighting them comparably would make this bar an
+/// order counter with a quest rounding error on top. `CarePointsTests`
+/// asserts orders alone cannot clear Gold, which is what holds this in place.
+func carePoints(forQuest difficulty: QuestDifficulty) -> Int {
+    switch difficulty {
+    case .easy:      return 8
+    case .medium:    return 15
+    case .hard:      return 30
+    case .legendary: return 60
+    }
+}
+
+/// Points for sweeping all three of a day's challenges.
+let carePointsPerDailySweep = 25
+
+/// Points for claiming a fulfilled adoption order.
+///
+/// Flat rather than tier-scaled: orders are by far the most frequent thing a
+/// player completes (the economy model assumes ~40/day for an engaged player),
+/// so scaling this with tier would make the bar almost entirely an order
+/// counter and drown out the quest and daily-challenge contributions this
+/// mechanic exists to surface.
+let carePointsPerOrder = 1
+
+/// Weekly milestone tiers over the Care Points pool. Rewards are deliberately
+/// Dog Tags / XP / card packs only — **no kibble and no coins**.
+///
+/// That is a constraint, not an oversight. `EconomySimulation.dailySupply`
+/// models the kibble faucet as a fixed `miscKibblePerDay = 75` covering
+/// "login bonus, Loyalty Club, quests, daily challenges, weekly goals", and
+/// the coin faucet is tuned against the Sanctuary Map's total cost. Paying
+/// either currency here would understate supply in a model this project keeps
+/// deliberately in step with the code. If kibble or coins are ever wanted in
+/// this chest, `miscKibblePerDay` (or the coin model) must be re-derived first.
+enum CarePointTier: Int, CaseIterable, Codable {
+    case bronze = 0, silver, gold
+
+    var pointsNeeded: Int {
+        switch self {
+        case .bronze: return carePointsBronze
+        case .silver: return carePointsSilver
+        case .gold:   return carePointsGold
+        }
+    }
+    var displayName: String {
+        switch self { case .bronze: return "Bronze"; case .silver: return "Silver"; case .gold: return "Gold" }
+    }
+    var color: Color {
+        switch self {
+        case .bronze: return Color(red: 0.72, green: 0.45, blue: 0.18)
+        case .silver: return Color(red: 0.58, green: 0.60, blue: 0.65)
+        case .gold:   return Color(red: 0.85, green: 0.68, blue: 0.10)
+        }
+    }
+    var sfSymbol: String {
+        switch self { case .bronze: return "pawprint.circle.fill"
+                      case .silver: return "pawprint.circle.fill"
+                      case .gold:   return "crown.fill" }
+    }
+    var dogTagReward: Int {
+        switch self { case .bronze: return 5; case .silver: return 12; case .gold: return 25 }
+    }
+    var xpReward: Int {
+        switch self { case .bronze: return 40; case .silver: return 90; case .gold: return 200 }
+    }
+    /// `nil` for Bronze — the first rung is a small, quick win, not a pack.
+    var cardPack: CardPackType? {
+        switch self { case .bronze: return nil; case .silver: return .star1; case .gold: return .star2 }
+    }
+}
+
+// Anchored on a week of engaged play, using the economy model's own activity
+// assumptions rather than feel: ~48 orders/day at level 30
+// (`EconomySimulation.ordersPerDay`), a daily-challenge sweep on six days of
+// seven, and roughly six quest claims. That banks about 575 points a week —
+// orders contribute a little under two thirds, the task surfaces the rest.
+// Bronze lands on day one, Silver mid-week, Gold asks for the whole week.
+//
+// `CarePointsTests` asserts all three properties against that same model, so
+// these cannot drift into "unreachable" or "cleared by orders alone" unnoticed
+// — the first draft of these numbers failed exactly that way and was caught.
+let carePointsBronze = 120
+let carePointsSilver = 320
+let carePointsGold   = 520
+
 // ── Coin rewards ──────────────────────────────────────────────
 //
 // All rescaled in Phase 2c against the new anchor: an *average* order pays

@@ -111,6 +111,12 @@ struct GameState: Codable {
     var monthlyGoalClaimed: Bool
     var lastMonthlyGoalReset: Date?
 
+    // Care Points (v38) — the task-completion pool. Shares the weekly goal's
+    // reset boundary (`checkWeeklyGoalReset`) rather than carrying its own.
+    var carePointsThisWeek: Int = 0
+    /// Raw values of `CarePointTier` already claimed this week.
+    var claimedCarePointTiers: [Int] = []
+
     // Date-based bookkeeping (consolidated from the old scattered keys)
     var lastLoginDate: Date?
     var loginStreak: Int
@@ -324,7 +330,11 @@ enum GameStore {
     ///      left to linger (same call as v28→v29's `timeRemaining` and v24→v25).
     ///      The rewrite runs in `finishMigration` for every source version, not
     ///      in one step function, because the dispatch table is flat.
-    static let currentVersion = 37
+    /// v38: Care Points added (specs/Spec_OrdersAndTasks_Draft.md §4) —
+    ///      `carePointsThisWeek` / `claimedCarePointTiers`. Purely additive;
+    ///      both are non-Optional, so they need `additiveDefaultsSinceV8`
+    ///      entries or older saves fail to decode.
+    static let currentVersion = 38
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -576,6 +586,7 @@ enum GameStore {
         if version == 34 { return migrateByInjecting(from: 34, defaults: [:], into: data) }   // freeChestReadyAt covered by additiveDefaultsSinceV8
         if version == 35 { return migrateByInjecting(from: 35, defaults: [:], into: data) }   // parallelBoardState is Optional — no default needed
         if version == 36 { return migrateByInjecting(from: 36, defaults: [:], into: data) }   // order baskets: rewrite runs in finishMigration for every sourceVersion < 37
+        if version == 37 { return migrateByInjecting(from: 37, defaults: [:], into: data) }   // carePointsThisWeek/claimedCarePointTiers covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -657,6 +668,9 @@ enum GameStore {
         // Codable's default Date encoding (timeIntervalSinceReferenceDate) —
         // safely in the past, so a migrated save's first chest is ready now.
         "freeChestReadyAt": 0,
+        // v38 — Care Points. A migrating save starts the week at zero with
+        // nothing claimed, so its first Care Point bar begins cleanly.
+        "carePointsThisWeek": 0, "claimedCarePointTiers": [Int](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

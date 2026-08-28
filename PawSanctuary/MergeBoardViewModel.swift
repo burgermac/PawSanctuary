@@ -311,6 +311,10 @@ class MergeBoardViewModel {
     var weeklyGoldCompletions: Int = 0
     var monthlyGoalClaimed: Bool = false
     var lastMonthlyGoalReset: Date? = nil
+    /// Care Points banked this week — the task-completion pool (§4). Reset on
+    /// the same weekly boundary as the coin goal, in `checkWeeklyGoalReset`.
+    var carePointsThisWeek: Int = 0
+    var claimedCarePointTiers: [Int] = []
     var areaUpgradeLevels: [String: Int] = [:]
 
     // Card pack collection system
@@ -1167,6 +1171,8 @@ class MergeBoardViewModel {
             weeklyGoldCompletions: weeklyGoldCompletions,
             monthlyGoalClaimed: monthlyGoalClaimed,
             lastMonthlyGoalReset: lastMonthlyGoalReset,
+            carePointsThisWeek: carePointsThisWeek,
+            claimedCarePointTiers: claimedCarePointTiers,
             lastLoginDate: nil, loginStreak: 0, loginDayIndex: 0,
             lastDailyChallengeReset: nil, lastSpotlightWeek: 0,
             adsWatchedToday: 0, lastAdWatchDate: nil,
@@ -1255,6 +1261,8 @@ class MergeBoardViewModel {
         weeklyGoldCompletions    = s.weeklyGoldCompletions
         monthlyGoalClaimed       = s.monthlyGoalClaimed
         lastMonthlyGoalReset     = s.lastMonthlyGoalReset
+        carePointsThisWeek       = s.carePointsThisWeek
+        claimedCarePointTiers    = s.claimedCarePointTiers
         pityStates                = s.pityStates
         unlockedSuperpowerSpecies = s.unlockedSuperpowerSpecies
         superpowerCooldownEnds    = s.superpowerCooldownEnds
@@ -1374,6 +1382,7 @@ class MergeBoardViewModel {
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
+        carePointsThisWeek = 0; claimedCarePointTiers = []
         cachedActiveBonuses = UpgradeBonus()
         selectedCell = nil; draggingFrom = nil
         quests.dailyChallengeStreak = 0; quests.dailyChallengeBonusClaimed = false
@@ -3106,11 +3115,17 @@ class MergeBoardViewModel {
         return true
     }
 
+    /// Applies the daily-challenge sweep bundle. All three call sites reach
+    /// `checkAllDailyChallengesComplete` through here, and that function is the
+    /// only producer of a `QuestRewards`, so this is the single chokepoint for
+    /// the sweep — which is why the Care Points award sits here rather than
+    /// being repeated at each caller.
     private func applyQuestRewards(_ r: QuestRewards) {
         kibbleEngine.kibble  += withPassBonus(r.kibble)
         kibbleEngine.dogTags += r.dogTags
         grantXP(r.xp)
         earnCoins(r.coins)
+        awardCarePoints(carePointsPerDailySweep)
         if r.showBonus, !r.bannerText.isEmpty {
             SoundManager.shared.playDailyChallenge()
             HapticManager.shared.successPattern()
@@ -3139,6 +3154,7 @@ class MergeBoardViewModel {
         var coinEarned = quest.difficulty.coinReward
         if quest.difficulty == .legendary { coinEarned += cachedActiveBonuses.legendaryQuestCoinBonus }
         earnCoins(coinEarned)
+        awardCarePoints(carePoints(forQuest: quest.difficulty))
 
         // Rescue-tier producers replaced by family spawners (earned via map).
         // Award bonus Dog Tags instead for hard/legendary quests.
@@ -3371,6 +3387,7 @@ class MergeBoardViewModel {
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
+        awardCarePoints(carePointsPerOrder)
         // Persistent slots have no timer, so claiming one doesn't touch the
         // rescue-expiring notification — that's the urgent order's job now.
         adoptionBoardCoordinator.markClaimed(at: index)
@@ -3395,6 +3412,7 @@ class MergeBoardViewModel {
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
+        awardCarePoints(carePointsPerOrder)
         order.isClaimed = true
         adoptionBoardCoordinator.urgentOrder = order
         NotificationManager.shared.cancelRescueExpiring()
@@ -3783,6 +3801,11 @@ class MergeBoardViewModel {
         weeklyGoalBronzeClaimed = false
         weeklyGoalSilverClaimed = false
         weeklyGoalGoldClaimed   = false
+        // Care Points (§4) share this boundary rather than carrying their own
+        // reset — one weekly rhythm for the player, one place to get it wrong.
+        // Unclaimed tiers are forfeited with the points, same as the coin goal.
+        carePointsThisWeek      = 0
+        claimedCarePointTiers   = []
         lastWeeklyGoalReset     = thisWeekStart
     }
 
@@ -3795,6 +3818,57 @@ class MergeBoardViewModel {
         weeklyGoldCompletions = 0
         monthlyGoalClaimed    = false
         lastMonthlyGoalReset  = thisMonthStart
+    }
+
+    // MARK: Care Points (specs/Spec_OrdersAndTasks_Draft.md §4)
+
+    /// Banks Care Points for a completed task. The single chokepoint every
+    /// award site routes through, so there is exactly one place to audit what
+    /// feeds the bar.
+    ///
+    /// Does not `persist()` — every caller is already inside a flow that
+    /// persists once at the end (claiming a quest, sweeping the dailies,
+    /// claiming an order), and persisting here would double the disk write on
+    /// each of them.
+    func awardCarePoints(_ amount: Int) {
+        guard amount > 0 else { return }
+        carePointsThisWeek += amount
+    }
+
+    /// Highest tier reached, and whether each is claimable right now.
+    var carePointTiersReached: [CarePointTier: Bool] {
+        Dictionary(uniqueKeysWithValues: CarePointTier.allCases.map {
+            ($0, carePointsThisWeek >= $0.pointsNeeded)
+        })
+    }
+
+    func isCarePointTierClaimed(_ tier: CarePointTier) -> Bool {
+        claimedCarePointTiers.contains(tier.rawValue)
+    }
+
+    /// The next unclaimed tier, for the progress bar's target. `nil` once every
+    /// tier this week has been claimed.
+    var nextCarePointTier: CarePointTier? {
+        CarePointTier.allCases.first { !isCarePointTierClaimed($0) }
+    }
+
+    var claimableCarePointTiers: [CarePointTier] {
+        CarePointTier.allCases.filter {
+            carePointsThisWeek >= $0.pointsNeeded && !isCarePointTierClaimed($0)
+        }
+    }
+
+    /// Rewards are Dog Tags / XP / card packs only — deliberately no kibble and
+    /// no coins, so this chest sits outside the tuned kibble and coin faucets.
+    /// See `CarePointTier`'s doc comment for why.
+    func claimCarePointTier(_ tier: CarePointTier) {
+        guard carePointsThisWeek >= tier.pointsNeeded,
+              !isCarePointTierClaimed(tier) else { return }
+        claimedCarePointTiers.append(tier.rawValue)
+        kibbleEngine.dogTags += tier.dogTagReward
+        grantXP(tier.xpReward)
+        if let pack = tier.cardPack { pendingCardPacks.append(pack) }
+        persist()
     }
 
     func claimWeeklyGoal(tier: WeeklyGoalTier) {
