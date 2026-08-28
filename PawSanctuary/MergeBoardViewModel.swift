@@ -691,6 +691,38 @@ class MergeBoardViewModel {
         return result
     }
 
+    /// Chain/tier pairs the player could produce with **one merge, right now** —
+    /// they hold at least two of the tier directly below, across the unlocked
+    /// board and the animal inventory.
+    ///
+    /// This is what the order card's "you can fill this" tint keys off. Note the
+    /// deliberate difference from the reference titles the mechanic came from:
+    /// there, an order slot lights up when you *hold* the item, because those
+    /// games fulfil an order by dragging the item onto it. PawSanctuary fulfils
+    /// orders only as a side effect of a merge producing the wanted item
+    /// (`updateOrdersAfterMerge`), so an item already sitting on the board does
+    /// nothing for an order asking for that same item. Tinting on "you hold it"
+    /// would therefore promise something the game does not deliver; tinting on
+    /// "you could make it next merge" is the same affordance translated to the
+    /// rule this game actually runs.
+    ///
+    /// Not cached: it depends on board *and* inventory contents, and it is read
+    /// only while the adoption panel is open — the same reasoning
+    /// `retirableProducers` records for recomputing over caching.
+    var mergeReadyKeys: Set<ChainTierKey> {
+        var counts: [ChainTierKey: Int] = [:]
+        for cell in flatBoard where cell.isUnlocked {
+            guard let item = cell.item else { continue }
+            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
+        }
+        for case let item? in inventory {
+            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
+        }
+        // Two of tier N merge into one of tier N+1.
+        return Set(counts.filter { $0.value >= 2 }
+                         .map { ChainTierKey(chainID: $0.key.chainID, tier: $0.key.tier + 1) })
+    }
+
     /// One entry per species that has ≥ 3 Ambassador-tier tiles on the unlocked board.
     /// Each entry carries the first three matching cell positions (row-major order).
     /// Cached and recomputed only in `recalcBoardIsFull()` — safe because this depends

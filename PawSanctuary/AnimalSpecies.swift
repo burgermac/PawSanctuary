@@ -949,6 +949,12 @@ struct OrderLine: Codable, Equatable, Hashable {
     }
 }
 
+/// A chain/tier pair, for set membership and counting.
+struct ChainTierKey: Hashable {
+    let chainID: ChainID
+    let tier: Int
+}
+
 /// A specific adoption request from a named family — a basket of one or more
 /// `OrderLine`s, all of which must be filled before the order pays out.
 struct AdoptionOrder: Identifiable, Codable {

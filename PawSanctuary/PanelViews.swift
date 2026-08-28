@@ -145,6 +145,10 @@ struct SpotlightBannerView: View {
 struct AdoptionOrderPanelView: View {
     var viewModel: MergeBoardViewModel
 
+    /// Computed once per panel render and handed to every card, rather than
+    /// each card rescanning the board and inventory for itself.
+    private var mergeReadyKeys: Set<ChainTierKey> { viewModel.mergeReadyKeys }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Urgent order (Task 5.2) — the one slot with a real clock and real
@@ -159,7 +163,8 @@ struct AdoptionOrderPanelView: View {
                         canSkip: false,
                         onSkip: {},
                         showSkip: false,
-                        timer: (viewModel.urgentOrderTimeRemaining, urgentOrderDuration)
+                        timer: (viewModel.urgentOrderTimeRemaining, urgentOrderDuration),
+                        mergeReadyKeys: mergeReadyKeys
                     )
                 } else {
                     UrgentOrderCooldownCard(remaining: viewModel.urgentOrderCooldownRemaining)
@@ -182,7 +187,8 @@ struct AdoptionOrderPanelView: View {
                 AdoptionOrderCard(
                     order: order,
                     canSkip: viewModel.kibble >= adoptionSkipCost,
-                    onSkip: { viewModel.skipOrder(at: idx) }
+                    onSkip: { viewModel.skipOrder(at: idx) },
+                    mergeReadyKeys: mergeReadyKeys
                 )
             }
         }
@@ -222,6 +228,73 @@ struct UrgentOrderCooldownCard: View {
     }
 }
 
+/// One requested item in an order's basket: icon, tier badge, per-line progress,
+/// and the "you could make this next merge" tint.
+///
+/// The green tint is `MergeBoardViewModel.mergeReadyKeys` — see its doc comment
+/// for why this game tints on "you could produce it" rather than the reference
+/// titles' "you already hold it".
+private struct OrderLineSlot: View {
+    let line: OrderLine
+    let isMergeReady: Bool
+
+    private var isComplete: Bool { line.isComplete }
+
+    private var background: Color {
+        if isComplete    { return Color.green.opacity(0.20) }
+        if isMergeReady  { return Color.green.opacity(0.12) }
+        return Color.gray.opacity(0.10)
+    }
+
+    private var border: Color {
+        if isComplete   { return .green }
+        if isMergeReady { return Color.green.opacity(0.55) }
+        return Color.gray.opacity(0.25)
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Image(systemName: line.symbol)
+                .font(.system(size: 24))
+                // A line the player can't act on yet reads back, not broken.
+                .foregroundColor(isComplete || isMergeReady ? line.tint : line.tint.opacity(0.45))
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 10).fill(background))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(border, lineWidth: isComplete || isMergeReady ? 1.5 : 1))
+
+            if isComplete {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(3)
+                    .background(Circle().fill(Color.green))
+                    .offset(x: 4, y: 4)
+            } else {
+                Image(systemName: QuestGoal.animalTierSymbol(line.tier))
+                    .font(.system(size: 10))
+                    .foregroundColor(.white)
+                    .padding(3)
+                    .background(Circle().fill(line.color))
+                    .offset(x: 4, y: 4)
+            }
+
+            // Per-line count, only when this one line wants more than one.
+            if line.count > 1 {
+                Text("\(line.fulfilled)/\(line.count)")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .offset(x: -2, y: -30)
+            }
+        }
+        .accessibilityLabel(Text(line.lineDescription
+                                 + (isComplete ? ", delivered"
+                                    : isMergeReady ? ", ready to merge" : "")))
+    }
+}
+
 struct AdoptionOrderCard: View {
     let order: AdoptionOrder
     let canSkip: Bool
@@ -230,6 +303,10 @@ struct AdoptionOrderCard: View {
     /// urgent order with `(remaining, duration)` so the bar/countdown render.
     var showSkip: Bool = true
     var timer: (remaining: Double, duration: Double)? = nil
+    /// Chain/tier pairs the player could produce with one merge right now.
+    /// Defaults to empty so a caller that doesn't care (previews, tests) still
+    /// renders — every slot simply shows as not-yet-actionable.
+    var mergeReadyKeys: Set<ChainTierKey> = []
 
     private var timeFraction: Double {
         guard let timer else { return 1 }
@@ -298,23 +375,17 @@ struct AdoptionOrderCard: View {
                 }
             }
 
-            // ── Requested animal ──────────────────────────────────
+            // ── Requested animals ─────────────────────────────────
+            // One slot per basket line (schema v37). A single-line order renders
+            // exactly one slot, so this reads the same as it always did.
             HStack(spacing: 12) {
-                // Animal icon + stage badge
-                ZStack(alignment: .bottomTrailing) {
-                    Image(systemName: order.iconSymbol)
-                        .font(.system(size: 28))
-                        .foregroundColor(order.iconTint)
-                        .frame(width: 44, height: 44)
-                        .background(RoundedRectangle(cornerRadius: 10)
-                            .fill(order.iconTint.opacity(0.10)))
-
-                    Image(systemName: order.stageBadgeSymbol)
-                        .font(.system(size: 10))
-                        .foregroundColor(.white)
-                        .padding(3)
-                        .background(Circle().fill(order.stageColor))
-                        .offset(x: 4, y: 4)
+                HStack(spacing: 6) {
+                    ForEach(order.lines.indices, id: \.self) { i in
+                        OrderLineSlot(line: order.lines[i],
+                                      isMergeReady: mergeReadyKeys.contains(
+                                          ChainTierKey(chainID: order.lines[i].chainID,
+                                                       tier: order.lines[i].tier)))
+                    }
                 }
                 .padding(.bottom, 4)
 
@@ -322,8 +393,10 @@ struct AdoptionOrderCard: View {
                     // What they want
                     Text(order.orderDescription)
                         .font(.system(size: 13, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    // Progress dots when count > 1
+                    // Progress dots when more than one item is owed in total —
+                    // covers both "2 Pups" (one line, count 2) and a basket.
                     if order.wantedCount > 1 {
                         HStack(spacing: 4) {
                             ForEach(0..<order.wantedCount, id: \.self) { i in
