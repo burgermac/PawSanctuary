@@ -1,6 +1,6 @@
 # PawSanctuary — Order baskets, Smile points, and the Tasty Tasks gap (draft)
 
-**Status: §1 IMPLEMENTED; §2 and §4 remain draft with open questions.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Third in the reference-review series, after `Spec_PartyBoard_Draft.md` and `Spec_BoardAnimation_Draft.md`.
+**Status: §1 and §4 IMPLEMENTED; §2 (Smile points) remains draft with open questions.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Third in the reference-review series, after `Spec_PartyBoard_Draft.md` and `Spec_BoardAnimation_Draft.md`.
 
 **§1 (order baskets) shipped 27 Aug 2026** in three commits, each verified on the simulator and left playable:
 
@@ -200,6 +200,18 @@ In Tasty Travels, every task — login, orders, merges, energy spend, card colle
 **Recommendation:** the cheapest close is to award milestone points on quest/daily-challenge *completion*, into the existing `ProgressTrack`, and surface one tiered bar above the existing task surfaces — rather than building a new "Tasty Tasks" screen. That reuses `QuestCoordinator`, `ProgressTrack`, and the weekly-goal tier UI, and adds one chokepoint plus one bar.
 
 Secondary, cheaper still: the weekly goal's bronze/silver/gold could be re-pointed from `coinsEarnedThisWeek` to that same points pool, so there is one currency of progress rather than two.
+
+### 4a. Shipped as "Care Points" (27 Aug 2026, `2f28a18`)
+
+Built as its **own** bar rather than re-pointing the weekly goal — a deliberate call against this section's secondary suggestion, so the coin economy the weekly chest is tuned against stays untouched.
+
+**Sources and ladder.** Points bank at three chokepoints: `claimQuest` (8/15/30/60 by difficulty), the daily-challenge sweep (25, via `applyQuestRewards` — the sole producer of a `QuestRewards`, so one edit covers all three call sites), and order claims (1, persistent and urgent). Ladder is Bronze 120 / Silver 320 / Gold 520, sharing `checkWeeklyGoalReset`'s boundary rather than carrying its own.
+
+**Rewards are Dog Tags / XP / card packs only — no kibble, no coins.** `EconomySimulation.dailySupply` models the kibble faucet as a fixed `miscKibblePerDay` explicitly covering "login bonus, Loyalty Club, quests, daily challenges, weekly goals", and the coin faucet is tuned against the Sanctuary Map's total cost. Paying either here would understate supply in a model this project keeps deliberately in step with the code. **If kibble or coins are ever wanted in this chest, re-derive `miscKibblePerDay` (or the coin model) first.**
+
+**The reachability tests caught a bad first draft, which is the point of having them.** The initial numbers (120/260/450, orders at 1, quests at 2/4/8/15) failed two ways at once: Gold was *unreachable* — 450 against 420 banked in a full engaged week — and orders alone supplied ~80% of the bar, which would have made it an order counter with the very task surfaces it exists to unify reduced to a rounding error. The fix was to rebalance the **weights**, not just lower the threshold. `CarePointsTests` now asserts three properties against `EconomySimulation`'s own activity assumptions: Gold is reachable in a week but not in two days, Bronze lands early, and orders alone cannot clear Gold.
+
+**Still open from §4:** the reference's Day 1–7 tab structure and per-day task sets were not built — that was the "substantially bigger build" option and remains unaddressed. What shipped is the conversion this section identified as the actual gap, not the whole screen.
 
 ---
 
