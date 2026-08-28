@@ -1,6 +1,6 @@
 # PawSanctuary — Order baskets, Smile points, and the Tasty Tasks gap (draft)
 
-**Status: §1 and §4 IMPLEMENTED; §2 (Smile points) remains draft with open questions.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Third in the reference-review series, after `Spec_PartyBoard_Draft.md` and `Spec_BoardAnimation_Draft.md`.
+**Status: §1, §2 and §4 all IMPLEMENTED — this spec is fully closed out.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Third in the reference-review series, after `Spec_PartyBoard_Draft.md` and `Spec_BoardAnimation_Draft.md`.
 
 **§1 (order baskets) shipped 27 Aug 2026** in three commits, each verified on the simulator and left playable:
 
@@ -76,7 +76,9 @@ Moving to baskets means replacing those four fields with a list of order lines, 
 | L10 | 0.60 → 0.60 | L45 | 1.12 → 1.14 |
 | L25 | 0.65 → 0.67 | L55 | 1.28 → 1.30 |
 
-Every band still satisfies the Task 2.5 assertions. **Flagged: L35–40 now sits at 0.99 against a "must not have walled yet" bound of 1.00 — headroom fell from 0.03 to 0.01.** The next thing that adds demand at that band will breach it. L15/L20 dip slightly because 2-line medium orders no longer roll the count-2 multiplier.
+Every band still satisfies the Task 2.5 assertions. L15/L20 dip slightly because 2-line medium orders no longer roll the count-2 multiplier.
+
+**Flagged at the time: L35–40 sat at 0.99 against a "must not have walled yet" bound of 1.00, headroom down from 0.03 to 0.01** — with a warning that "the next thing that adds demand at that band will breach it." **That warning was wrong about the direction, and §2a resolved it**: Smile points added a board-item faucet, which is recirculation (supply), so it *lowered* the ratio to 0.93 and restored the headroom. See §2a.
 
 **The tint means something different here than in the reference, deliberately.** Those games fulfil an order by dragging the item onto it, so a slot lights up when the player *holds* the item. PawSanctuary advances orders only as a side effect of a merge producing the wanted item, so a held item does nothing for an order asking for it. The slot therefore tints on "you could make this next merge" (`MergeBoardViewModel.mergeReadyKeys`: at least two of the tier below, across board and inventory). A literal port would have promised something the game never delivers.
 
@@ -153,6 +155,28 @@ An earlier read of this called it *"a reskin of built machinery, not new constru
 **Board-full policy is a real open question, not an edge case.** The scatter needs somewhere to land. PawSanctuary already refuses and toasts (`.inventoryFull`) when `retireProducer` has nowhere to go (`MergeBoardViewModel.swift:2396`), and tracks `emptyUnlockedCells`. Options: hold the claim until space exists (safest, and the reference's own timer makes hoarding costly), scatter what fits and bank the rest, or shrink the bundle to available space. **Not decided** — see §5.
 
 **Persistence:** `smileValue` on `AdoptionOrder` and the counter both persist, so this needs a version bump from v36, a migration, and a `PersistenceTests.swift` case. §1's basket change is also a schema change — **if both are taken, land them in one migration rather than two.**
+
+---
+
+### 2a. Shipped as "Smile Points" (27 Aug 2026, `bd6d9d6`)
+
+Built to the S1–S7 behaviours above, with three departures worth recording:
+
+**`smileValue` is computed, not stored.** §2's proposal added a stored field plus a migration. Deriving it from the order's deepest line — which is already persisted — cannot drift from the order it describes and needs no migration at all. Only the banked counter is new state (v39).
+
+**Claiming carries the remainder.** The reference resets to 0/12; banking 59 and then completing a 3-point order would otherwise discard 2 points the player earned.
+
+**The board-full question answered itself.** §5's open question offered hold / partial-scatter / shrink. `grantRecirculatedBoardItem` already places to the board, falls back to inventory, and toasts only if both are full — the same degradation the weekly chests use. No new policy needed.
+
+**The economy model rejected two drafts, which is why it exists.** At the reference's goal of 12, bundles landed ~5×/day and the payout *erased the Phase 3 wall*: L45–L60 fell from 1.14/1.30 to 0.78/0.93. The root cause was not only frequency — `recirculationMaxItemTier` (6) clamps every offset in `[2, 3, 4]` to the same tier past mid-game, so the intended assortment collapsed into three identical 64-kibble items. Fixed with a dedicated lower ceiling (`smileBundleMaxItemTier = 4`) and a goal of 60 (~1 bundle/day). Final curve, all bands passing:
+
+| | before → after |
+|---|---|
+| L35 / L40 | 0.99 → **0.93** |
+| L45 / L50 | 1.14 → **1.08** |
+| L55 / L60 | 1.30 → **1.24** |
+
+**This also resolved §1a's flagged headroom problem, by correcting an error in it.** That note predicted Smile points would breach the 1.00 *ceiling* at L35–40. It had the direction backwards: a board-item payout is recirculation — supply, not demand — so it *lowers* the ratio. Headroom there went from 0.01 back to 0.07. The real exposure is the mirror image (a generous board-item faucet erasing the wall), and `TODO.md` now tracks that bound instead.
 
 ---
 
