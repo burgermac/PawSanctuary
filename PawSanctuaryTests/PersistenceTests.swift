@@ -1354,6 +1354,28 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(loaded.parallelBoardState, "no parallel-board event existed pre-v36 — the field must migrate to nil, not a default board")
     }
 
+    // MARK: v38 → v39 (Smile Points)
+
+    func testV38toV39DefaultsSmilePointsToAnEmptyBundle() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "smilePointsBanked")
+        obj["version"] = 38
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v38 save should migrate to v39")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.smilePointsBanked, 0,
+                       "a migrating save starts its first bundle empty")
+    }
+
+    func testSmilePointsRoundTripOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.smilePointsBanked = 23
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.smilePointsBanked, 23)
+    }
+
     // MARK: v37 → v38 (Care Points)
 
     func testV37toV38DefaultsCarePointsToAFreshWeek() throws {

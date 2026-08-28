@@ -315,6 +315,9 @@ class MergeBoardViewModel {
     /// the same weekly boundary as the coin goal, in `checkWeeklyGoalReset`.
     var carePointsThisWeek: Int = 0
     var claimedCarePointTiers: [Int] = []
+    /// Smile points banked toward the next bundle (§2). Cycles on claim rather
+    /// than resetting weekly, so it is untouched by `checkWeeklyGoalReset`.
+    var smilePointsBanked: Int = 0
     var areaUpgradeLevels: [String: Int] = [:]
 
     // Card pack collection system
@@ -1173,6 +1176,7 @@ class MergeBoardViewModel {
             lastMonthlyGoalReset: lastMonthlyGoalReset,
             carePointsThisWeek: carePointsThisWeek,
             claimedCarePointTiers: claimedCarePointTiers,
+            smilePointsBanked: smilePointsBanked,
             lastLoginDate: nil, loginStreak: 0, loginDayIndex: 0,
             lastDailyChallengeReset: nil, lastSpotlightWeek: 0,
             adsWatchedToday: 0, lastAdWatchDate: nil,
@@ -1263,6 +1267,7 @@ class MergeBoardViewModel {
         lastMonthlyGoalReset     = s.lastMonthlyGoalReset
         carePointsThisWeek       = s.carePointsThisWeek
         claimedCarePointTiers    = s.claimedCarePointTiers
+        smilePointsBanked        = s.smilePointsBanked
         pityStates                = s.pityStates
         unlockedSuperpowerSpecies = s.unlockedSuperpowerSpecies
         superpowerCooldownEnds    = s.superpowerCooldownEnds
@@ -1382,7 +1387,7 @@ class MergeBoardViewModel {
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
-        carePointsThisWeek = 0; claimedCarePointTiers = []
+        carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0
         cachedActiveBonuses = UpgradeBonus()
         selectedCell = nil; draggingFrom = nil
         quests.dailyChallengeStreak = 0; quests.dailyChallengeBonusClaimed = false
@@ -1870,14 +1875,17 @@ class MergeBoardViewModel {
     /// chest rewards (Task 2.3b) — deliberately *items*, not kibble, so the payout
     /// can't be farmed against the per-tap spawn price the way the old +20 kibble
     /// Spawner Refill could.
+    /// `cap` is the recirculation ceiling to apply. Smile bundles (§2) pass a
+    /// lower one than the chests — see `smileBundleMaxItemTier` for why.
     @discardableResult
-    func grantRecirculatedBoardItem(tierOffset: Int = recirculationTierOffset) -> BoardItem? {
+    func grantRecirculatedBoardItem(tierOffset: Int = recirculationTierOffset,
+                                    cap: Int = recirculationMaxItemTier) -> BoardItem? {
         let chainID = ContentRegistry.randomChainID(in: .animal, from: progression.unlockedChainIDs)
             ?? progression.unlockedAnimalChainIDs.first
             ?? ContentRegistry.animalChainID(.dog)
         let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
         let tier = min(max(0, deepestUnlockedTier - tierOffset),
-                       recirculationMaxItemTier,
+                       cap,
                        maxTier)
         let item = BoardItem(chainID: chainID, tier: tier)
         return placeOrBankItem(item) ? item : nil
@@ -3388,6 +3396,7 @@ class MergeBoardViewModel {
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
         awardCarePoints(carePointsPerOrder)
+        awardSmilePoints(order.smileValue)
         // Persistent slots have no timer, so claiming one doesn't touch the
         // rescue-expiring notification — that's the urgent order's job now.
         adoptionBoardCoordinator.markClaimed(at: index)
@@ -3413,6 +3422,7 @@ class MergeBoardViewModel {
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
         awardCarePoints(carePointsPerOrder)
+        awardSmilePoints(order.smileValue)
         order.isClaimed = true
         adoptionBoardCoordinator.urgentOrder = order
         NotificationManager.shared.cancelRescueExpiring()
@@ -3818,6 +3828,53 @@ class MergeBoardViewModel {
         weeklyGoldCompletions = 0
         monthlyGoalClaimed    = false
         lastMonthlyGoalReset  = thisMonthStart
+    }
+
+    // MARK: Smile Points (specs/Spec_OrdersAndTasks_Draft.md §2)
+
+    /// Banks an order's Smile value. Called from both order-claim paths.
+    ///
+    /// Does not `persist()` — both callers persist at the end of their own flow.
+    func awardSmilePoints(_ amount: Int) {
+        guard amount > 0 else { return }
+        smilePointsBanked += amount
+    }
+
+    var isSmileBundleReady: Bool { smilePointsBanked >= smilePointsGoal }
+
+    /// Progress toward the next bundle, clamped for the bar.
+    var smileProgressFraction: Double {
+        min(Double(smilePointsBanked) / Double(max(1, smilePointsGoal)), 1.0)
+    }
+
+    /// Claims the bundle: rolls a fresh assortment of board items, scatters
+    /// them, and starts the next cycle.
+    ///
+    /// **Carries the remainder** rather than zeroing. The reference resets to
+    /// 0/12, but banking 39 and then completing a 3-point order would otherwise
+    /// throw away 2 points the player earned. Carrying is strictly kinder and
+    /// costs nothing.
+    ///
+    /// Items route through `grantRecirculatedBoardItem`, which places to the
+    /// board, falls back to inventory, and toasts `.inventoryFull` only if both
+    /// are full — the same degradation the weekly chests already use, so a full
+    /// board behaves consistently rather than inventing a policy for this one
+    /// reward. Returns the items actually granted, for the UI to celebrate.
+    @discardableResult
+    func claimSmileBundle() -> [BoardItem] {
+        guard isSmileBundleReady else { return [] }
+        smilePointsBanked -= smilePointsGoal
+        var granted: [BoardItem] = []
+        for offset in smileBundleTierOffsets {
+            if let item = grantRecirculatedBoardItem(tierOffset: offset,
+                                                     cap: smileBundleMaxItemTier) {
+                granted.append(item)
+            }
+        }
+        SoundManager.shared.playRescueClaim()
+        HapticManager.shared.successPattern()
+        persist()
+        return granted
     }
 
     // MARK: Care Points (specs/Spec_OrdersAndTasks_Draft.md §4)

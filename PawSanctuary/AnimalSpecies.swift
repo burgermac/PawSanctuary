@@ -1011,6 +1011,15 @@ struct AdoptionOrder: Identifiable, Codable {
         lines.contains { $0.chainID == chainID && $0.tier == tier && !$0.isComplete }
     }
 
+    /// Smile points this order banks when claimed (§2), from its deepest line.
+    ///
+    /// Computed rather than stored: it is a pure function of `lines`, which are
+    /// already persisted, so storing it would add a schema field that can only
+    /// ever drift from the order it describes. The spec's first draft proposed
+    /// a stored `smileValue`; deriving it is strictly better and needs no
+    /// migration.
+    var smileValue: Int { smilePoints(forTier: lines.map(\.tier).max() ?? 0) }
+
     /// Human-readable request shown on the card — "a Tabby", or "a Pup + 2 Kits"
     /// once a basket carries more than one line.
     var orderDescription: String {
@@ -1253,6 +1262,59 @@ let weeklyGoalGoldCoins    = 12_000
 /// Default number of Gold weeks required to complete the monthly goal.
 /// Foster Haven T2 can reduce this by 1.
 let monthlyGoalWeeksNeeded = 3
+
+// ── Smile Points (specs/Spec_OrdersAndTasks_Draft.md §2) ──────
+//
+// A second, coarser reward loop on top of orders: every order carries a visible
+// Smile value, completing it banks that value, and filling the bar scatters a
+// bundle of board items across the board. Distinct from Care Points (§4) on
+// purpose — Care Points is a weekly ladder over *all* task surfaces paying
+// currency, this is a fast repeating cycle over *orders alone* paying board
+// material. One measures the week, the other keeps the order loop rewarding.
+
+/// Smile value of an order, from the deepest tier it asks for.
+///
+/// Visible on the order card before the player commits to chasing it, which is
+/// the property that makes the mechanic work — the reference shows the value on
+/// the card, not hidden behind a roll on some fraction of orders.
+func smilePoints(forTier tier: Int) -> Int {
+    switch tier {
+    case ..<4:  return 1
+    case 4...7: return 2
+    default:    return 3
+    }
+}
+
+/// Smile points needed to fill the bar.
+///
+/// **Not the reference's 12.** That number is sized for that game's order
+/// cadence; PawSanctuary's economy model assumes a far busier board (~48 order
+/// completions a day for an engaged player, `EconomySimulation.ordersPerDay`).
+/// At an average Smile value of ~1.4, a 12-point bar fills roughly five times a
+/// day, and a bundle that often is not a second reward loop — it is a firehose
+/// of board material that erases the Phase 3 wall outright. Measured: at 12,
+/// L45–L60 fell from 1.14/1.30 to 0.78/0.93, i.e. the game never walls.
+///
+/// 60 lands at about one bundle a day. `SmilePointsTests` asserts that cadence,
+/// and `EconomyTests`' ratio curve is what caught the first two attempts.
+let smilePointsGoal = 60
+
+/// Tier offsets below `deepestUnlockedTier` for the items in one bundle.
+///
+/// Three items at descending tiers rather than three of the same — "a random
+/// assortment at various merge states" is the point.
+let smileBundleTierOffsets = [2, 3, 4]
+
+/// Ceiling on a Smile-bundle item's tier — deliberately lower than
+/// `recirculationMaxItemTier` (6), which the chests and power-up grants use.
+///
+/// Without a separate, lower cap the offsets above are meaningless past
+/// mid-game: at `deepestUnlockedTier` 10 every one of [2, 3, 4] clamps to tier
+/// 6, so the "assortment" collapses into three identical top-cap items worth
+/// 64 kibble each. That is exactly how the first draft of this feature wiped
+/// out the wall. Capping at 4 keeps the spread meaningful *and* keeps this
+/// faucet a garnish on the order loop rather than a rival to the chests.
+let smileBundleMaxItemTier = 4
 
 // ── Care Points (specs/Spec_OrdersAndTasks_Draft.md §4) ───────
 //

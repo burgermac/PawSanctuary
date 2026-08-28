@@ -195,6 +195,21 @@ struct EconomySimulation {
         let fromGrants        = grantsPerDay * Double(spawnCost(forTier:
             min(max(0, deepestTier - recirculationTierOffset), recirculationMaxItemTier)))
 
+        // §2 — Smile point bundles. Every fulfilled order banks its Smile value
+        // (1/2/3 by the deepest tier it asks for); each full bar scatters one
+        // item per `smileBundleTierOffsets` entry. Modelled here because this is
+        // a real board-material faucet — leaving it out would understate
+        // recirculation and report a wall that is tighter than the game's.
+        let smilePerOrder = tierDistribution(level: level).reduce(0.0) { total, entry in
+            total + entry.p * Double(smilePoints(forTier: entry.tier))
+        }
+        let bundlesPerDay = orders * smilePerOrder / Double(smilePointsGoal)
+        let perBundle = smileBundleTierOffsets.reduce(0.0) { total, offset in
+            total + Double(spawnCost(forTier:
+                min(max(0, deepestTier - offset), smileBundleMaxItemTier)))
+        }
+        let fromSmiles = bundlesPerDay * perBundle
+
         // 3b — weekly and monthly chests, amortised per day.
         let weeklyChests = WeeklyGoalTier.allCases.reduce(0.0) { total, tier in
             total + Double(tier.boardItemCount) * Double(spawnCost(forTier:
@@ -203,7 +218,7 @@ struct EconomySimulation {
         let monthlyChest = 2.0 * Double(spawnCost(forTier:
             min(max(0, deepestTier - 1), recirculationMaxItemTier))) / 30.0
 
-        return fromOrders + fromGrants + weeklyChests + monthlyChest
+        return fromOrders + fromGrants + fromSmiles + weeklyChests + monthlyChest
     }
 
     // MARK: Report

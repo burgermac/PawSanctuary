@@ -411,6 +411,13 @@ struct AdoptionOrderCard: View {
 
                     // Reward row
                     HStack(spacing: 8) {
+                        // Smile value (§2) — shown on the card *before* the
+                        // player commits to chasing this order, which is the
+                        // property the whole mechanic depends on.
+                        (Text(Image(systemName: "face.smiling.inverse"))
+                         + Text(" +\(order.smileValue)"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.05))
                         (Text(Image(systemName: "tag.fill")) + Text(" +\(order.rewardDogTags)"))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.blue)
@@ -1699,6 +1706,54 @@ struct WeeklyGoalTaskCard: View {
     }
 }
 
+// MARK: Smile Points card (specs/Spec_OrdersAndTasks_Draft.md §2)
+
+/// The order-driven bundle bar. Every fulfilled order banks its Smile value;
+/// filling the bar scatters an assortment of board items across the board.
+struct SmilePointsTaskCard: View {
+    var viewModel: MergeBoardViewModel
+    /// Tapping a ready card claims in place — there is nothing to configure, so
+    /// a whole sheet for one button would be ceremony.
+    var onClaim: () -> Void
+
+    private let ink = Color(red: 0.85, green: 0.55, blue: 0.05)
+
+    var body: some View {
+        let banked = viewModel.smilePointsBanked
+        let ready  = viewModel.isSmileBundleReady
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "face.smiling.inverse").font(.system(size: 11))
+                    .foregroundColor(ink)
+                Text("Smiles").font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(ink)
+                Spacer()
+                if ready {
+                    Text("Claim!")
+                        .font(.system(size: 9, weight: .bold)).foregroundColor(.white)
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(ink))
+                }
+            }
+            Spacer(minLength: 0)
+            Text(ready ? "Bundle ready!" : "Fulfil orders to fill the bar")
+                .font(.system(size: 10))
+                .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
+                .lineLimit(2)
+            TaskProgressBar(fraction: viewModel.smileProgressFraction, color: ink)
+            Text("\(min(banked, smilePointsGoal))/\(smilePointsGoal)")
+                .font(.system(size: 9)).foregroundColor(.secondary)
+        }
+        .padding(10)
+        .frame(width: taskCardWidth, height: taskCardHeight)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 1.0, green: 0.96, blue: 0.85)))
+        .contentShape(Rectangle())
+        .onTapGesture { if ready { onClaim() } }
+    }
+}
+
 // MARK: Care Points card (specs/Spec_OrdersAndTasks_Draft.md §4)
 
 /// The task-completion bar. Every quest claimed, daily sweep finished and order
@@ -2012,6 +2067,7 @@ struct TaskStripView: View {
                         viewModel.retireProducer(at: retirable.position)
                     }
                 }
+                SmilePointsTaskCard(viewModel: viewModel) { viewModel.claimSmileBundle() }
                 CarePointsTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .carePoints }
                 WeeklyGoalTaskCard(viewModel: viewModel)
