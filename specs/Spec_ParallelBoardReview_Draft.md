@@ -36,6 +36,18 @@
 
 **No transition *back* to the main board is captured** — the recording ends inside a Greek Fest sub-panel, then Control Center. The red "X" in the Greek Fest HUD is the exit control and is never pressed on camera.
 
+### 0.1 Follow-up examination — cross-board reward flow (added after the first pass)
+
+A second question was raised after this spec's first commit: *do rewards earned through main-board play give the player resource to keep matching on the parallel board?* To answer it, three more captures from the same account were examined (all previously uncatalogued):
+
+| File | Dur | Game | What it shows |
+|---|---|---|---|
+| `ScreenRecording_08-23-2026 13-38-36_1.MP4` | 53.6 s | Travel Town | A **"200% MORE [evil-eye]"** timed boost over the main board; the "Refreshing Rewards" padlocked-node offer; the Greek Fest **hub card** ("PLAY" button, GRAND PRIZE); a **"PRIZE LANES"** claim that drops evil-eye tokens onto the Greek Fest board; a "STEVEN'S DISCO" gacha prize-grid; brief "DREAM QUEST" / "PINATA RUNWAY" event cards |
+| `ScreenRecording_08-23-2026 13-42-05_1.MP4` | 10.5 s | Travel Town | Main-board play — an order/merge completion firing a **"+40" callout on the Greek Fest task-strip panel** plus a reward-flight stream of event tokens; the Greek Fest panel's evil-eye count advancing |
+| `ScreenRecording_08-23-2026 13-51-45` / `13-57-47` | 23 s / 33 s | **Tasty Travels** (not Travel Town) | Order-token → milestone-bar ("Golden Smiley"); multiple concurrent "Play" event panels each with a "200%" badge; coins/energy as board merge-chains. Glanced only, not deep-dived. |
+
+Findings from these are in §2.6. The short version: **yes, confirmed** — the parallel board is not a closed economy.
+
 ---
 
 ## 1. The switch into the parallel board — the primary focus of this pass
@@ -90,7 +102,7 @@ Not captured. The Greek Fest HUD's red "X" (top-right, §2.6) is the exit afford
 | Generator placement | an ordinary in-grid cell at a fixed `GridPosition(row: 0, col: 0)`, rendered with generator chrome (§3.3, §3.6) | a **large tile centred *below* the grid**, in its own pedestal slot, **not occupying a board cell** | Structural — the generator is off-board |
 | Generator badge | — (energy lives only in `ParallelBoardEnergy`) | a **decrementing number on the generator tile** (seen 34 → 27 → 26 → 25 → 21 → 20 → 15 over the session), i.e. spendable energy is shown *on* the producer | Energy is surfaced at the point of spend |
 | Generator output | one fixed base-tier item of the event's single chain (§3.3) | items on an evil-eye / Greek-jewellery chain; the tile art changes to show the next item it will dispense, and at least one tap produced a **tier-2** item ("Eyed Earrings"), not tier-1 — output tier may not be fixed | Output identity/tier less fixed than spec'd |
-| **Energy model** | a **passive time-regen pool** — `ParallelBoardEnergy`, cap 30, +1 / 90 s, **no offline catch-up** (§3.2) | **energy is a board merge-chain.** "Broken Energy" → ⚡ → ⚡⚡ → ⚡⚡⚡ → max, merged up on the board like any other item; **tapping an energy item "collects" it** into the pool, value scaling with tier (**"Tap to collect 2⚡"** at low tier, **"Tap to collect 100⚡"** at max). No passive regen timer is visible anywhere in 2+ minutes on the board. | **Fundamentally different.** The reference makes energy an active cultivation loop on the board itself; the spec makes it a background timer. This is the largest single delta in this document. |
+| **Energy model** | a **passive time-regen pool** — `ParallelBoardEnergy`, cap 30, +1 / 90 s, **no offline catch-up** (§3.2) | **not a timer at all — a fuel pool with three inbound sources** (§2.1, §2.6): (a) an on-board **energy merge-chain** ("Broken Energy" → ⚡ → ⚡⚡ → … → max) where **tapping** a bolt collects it into the generator, value scaling with tier (2⚡ low … 100⚡ max), bolts visibly flying into the generator tile; (b) **evil-eye "Grecian" tokens earned on the *main* board** (order/milestone payouts, boostable ×3); (c) the event's own **"Prize Lanes"** reward track dropping evil-eye tokens onto the board. No passive regen observed. | **Fundamentally different, and the biggest delta.** The spec's energy is a self-contained background timer. The reference's is an actively-cultivated pool that is *also fed from the main board* — the parallel board has a real inbound economy dependency. |
 | Progress / reward track | one `ProgressTrack`, **free-lane only**, 8 linear milestones (steps of 20, 20…160), awarded a fixed amount per top-tier completion (§3.5, §5) | a **27-set "Event Collection" book** (see §2.3) — named sub-collections each requiring a specific item set, plus a linear per-item progress bar on the scroll with a marker, plus an on-board "0/3" card-pack meter. Sets pay **the main game's energy + gems** (110⚡+40💎, 75⚡, 100⚡, and a locked 200⚡+80💎 bonus tier observed). | The reference reward layer is a multi-set collection album that is a **net main-game resource source**, not a self-contained event track. Matches `Capture_Log.md` 23 Aug finding 4. |
 | Chain content | a single 5-tier chain ("Second Chances", `parallelboard.secondchances`, reusing `.animal`) | **many concurrent chains**: evil-eye jewellery, Hermes/winged-helmet, laurel wreath / toga / sandals, caduceus, lyre / mandolin / harp, amphora, Poseidon trident, Zeus, "Diamond Shard" magenta crystals, coloured orbs, pegasus, plus the energy-bolt chain — and a whole **"wrapped" layer**: items sealed on a draped marble slab that must be merged to unwrap, exactly like the main board's cardboard-box items. Plus a "1/4" marble block chipped with a chisel. | The reference board is a **complete second content set**, not one chain |
 | HUD | not specified | **stripped**: shared coins + shared gems only, **no energy, no level badge, no shop button, no "+" buttons on the currencies**, plus a red "X" to exit and the "1+1" offer button. Two independent timers — a header `hh:mm:ss` and a `1d 7h` on the scroll and task-list (roughly the same ~31.5 h window in two formats). | The parallel board deliberately hides most of the main HUD |
@@ -100,9 +112,15 @@ Not captured. The Greek Fest HUD's red "X" (top-right, §2.6) is the exit afford
 
 ### 2.1 The energy delta, expanded
 
-This is worth stating plainly because it changes the shape of the mini-game. In `Spec_Phase6b_ParallelBoard.md` the loop is: *wait for `ParallelBoardEnergy` to tick up → spend it at the generator → merge*. In Greek Fest the loop is: *merge energy-bolt items up the energy chain → tap the top one to bank a large chunk → spend it at the generator → merge*. The reference's energy is a **resource you produce on the board**, with its own chain, its own tier curve, and its own tap-to-collect step — closer to a second producer output than to a countdown. There is no observable passive regen at all.
+This is worth stating plainly because it changes the shape of the mini-game. In `Spec_Phase6b_ParallelBoard.md` the loop is: *wait for `ParallelBoardEnergy` to tick up → spend it at the generator → merge*. In Greek Fest the generator has a **fuel pool** (the decrementing number on its tile) that is **never observed regenerating on a timer** over 2+ minutes of footage. It is topped up three ways:
 
-Consequences if the reference model were ever adopted (not proposed here, just noting what it would touch): `ParallelBoardEnergy`'s `tick()` / `secondsUntilNext` / cap model would not fit; energy would need to be a registered chain in `ContentRegistry`; `attemptMerge` would need a "this item is a collectible" branch (tap-to-collect, not tap-to-select); and the "no offline catch-up" simplification (§7, deliberately deferred) becomes moot because there is nothing regenerating offline.
+1. **On-board energy chain.** The board spawns "Broken Energy" items on a 5-ish-tier bolt chain. You merge them up like any item; the higher the tier, the more it is worth. **Tapping** a bolt (not selecting it) *collects* it — the hint bar reads e.g. "Tap to collect 2⚡" / "Tap to collect 100⚡" — and gold bolt particles **fly into the generator tile** (recording 1, ~91 s, confirmed by a native crop). This is the in-board way to make more fuel.
+2. **Main-board earning** — see §2.6. The event's face currency (an **evil-eye "Grecian" token**) is paid out by main-board orders/milestones and banks toward the event.
+3. **"Prize Lanes"** — the event's own reward track drops evil-eye tokens directly onto the Greek Fest board as "Tap to Claim" pickups (recording 2, ~33 s).
+
+The exact plumbing between "evil-eye token", "generator fuel number", and the bolt chain is **not fully isolable from these captures** — they may be one pool with three faucets, or the evil-eye may gate something adjacent (the collection, the lanes) while the bolt chain alone tops the generator. What *is* clear: there is no idle timer, and one of the faucets is the main board.
+
+Consequences if the reference model were ever adopted (not proposed here, just noting what it would touch): `ParallelBoardEnergy`'s `tick()` / `secondsUntilNext` / cap model would not fit; energy would need to be a registered chain in `ContentRegistry`; `attemptMerge` would need a "this item is a collectible" branch (tap-to-collect, not tap-to-select); a cross-board faucet would need `EventTokenRiderProvider`-style wiring on main-board order/milestone payouts feeding the coordinator; and the "no offline catch-up" simplification (§7, deliberately deferred) becomes moot because there is nothing regenerating offline.
 
 ### 2.2 The generator, expanded
 
@@ -134,11 +152,29 @@ Opened from the book icon on the scroll (129–137 s). A parchment panel, blue "
 
 A small wooden stand at the board's right edge holds a card-pack icon reading **`0/3`** (later `1/3`), with a gold star. It fills as matching items are fed to it — a third progress surface, on the board itself, distinct from both the collection book and the scroll bar. Not analysed further.
 
+### 2.5 Concurrency — Travel Town runs this alongside other full event surfaces
+
+`13-38-36` shows Greek Fest running **at the same time** as: "STEVEN'S DISCO" (a gacha prize-grid, one "DANCE"/pull button, tiles pay gems / energy / chests / a rainbow orb — a Party-Board cousin, see `Spec_PartyBoard_Draft.md`), "DREAM QUEST" (a path/board event, "10d 15h"), and "PINATA RUNWAY" (a runway progress event, "0/900"). The main-board task strip carries all of them as stacked panels. This is a data point for `Spec_Phase6c_ConcurrentEvents.md` (which proved ≤2 simultaneously active in its own tests) and for `Spec_Phase6b_ParallelBoard.md`'s three-way-concurrency acceptance item — the reference casually runs four-plus.
+
+### 2.6 The parallel board is fed by the main board — the answer to the follow-up question
+
+Confirmed across all three Travel Town captures. The Greek Fest board's play resource is **earned partly on the main board**, so the mini-game cannot be sustained from inside itself:
+
+1. **The main-board task-strip Greek Fest panel previews `+11` evil-eye tokens as an earnable**, grouped in the same reward cluster as `+1` starfish (the main-board order token), `+150` milestone points, and `+7750` coins (native crop, recording 1, 2–12 s; recording 3, throughout). One main-board activity pays all four currencies at once.
+2. **A "200% MORE [evil-eye]" timed boost runs over the main board** (`13-38-36`, ~19–20 s) — a full-screen modal with a glowing evil-eye, "FOR A LIMITED TIME ONLY, GET MORE [evil-eye]!", a ~59-minute countdown, and its own persistent task-strip badge ("200%", "00:58:54"). A multiplier on an *earn rate* only makes sense for a currency accrued through ongoing play.
+3. **Main-board order/merge completion visibly pays the event.** In `13-42-05`, the player merges an "Origami Pinwheel" (with a "GO" order-ready button showing) at ~6 s; a **"+40" callout fires on the Greek Fest task-strip panel**, a reward-flight stream of event tokens arcs from the strip across the board, and the panel's evil-eye count advances (reads **12** by ~8 s). (The stream I could isolate frame-by-frame was the *milestone-points* currency landing in a bottom-right tracker; the evil-eye credit in the same event registered as a panel-count change rather than a separately traceable arc.)
+4. **The event opens starved.** Recording 1 enters Greek Fest directly into an **"Oh no, you're out of items!"** state — the generator fuel was spent and the board had no available merges. The player then had to replenish (Prize Lanes claim at ~33 s in recording 2; the on-board bolt chain throughout).
+5. **The generator is denominated in this resource** — its badge is a number on an evil-eye icon that decrements one per spawn (recording 1, 34 → 15 across the session).
+
+So `Spec_Phase6b_ParallelBoard.md`'s model — a wholly self-contained `ParallelBoardEnergy` pool with no external input — is missing the reference's defining economic hook: **main-board play is what keeps the parallel board playable**, and the game sells a booster on exactly that flow. If PawSanctuary's parallel board ever adopts this, it would need a main-board → coordinator faucet (an `EventTokenRiderProvider`-style rider on order/milestone payouts, per §2.1) and a boostable multiplier surface — neither exists in the shipped Phase 6b.
+
+Not proposed, not designed — recorded for the plan.
+
 ---
 
 ## 3. Animations — new vs. reconfirm
 
-Cross-referenced against `Spec_BoardAnimation_Draft.md` (§1 merge choreography, §3a shipped Tier A, §4 producer shimmer + spawn-flight) and `Spec_OrdersAndTasks_Draft.md` §3 (bubble delivery, per-merge currency callout). `Spec_TravelTownReview_Draft.md` §2 covers per-currency reward-flight arcs on the main board's order claims — not re-derived here (no order claim occurs in this recording).
+Cross-referenced against `Spec_BoardAnimation_Draft.md` (§1 merge choreography, §3a shipped Tier A, §4 producer shimmer + spawn-flight) and `Spec_OrdersAndTasks_Draft.md` §3 (bubble delivery, per-merge currency callout). §3.1–§3.8 are from recording 1 (no main-board order claim occurs in it); §3.9 is from the follow-up captures and does bear on `Spec_TravelTownReview_Draft.md` §2's per-currency reward-flight arcs.
 
 ### 3.1 Merge choreography — RECONFIRM
 
@@ -186,6 +222,10 @@ Covered in §1.3 — board elements rez in over ~120 ms in rough reading order, 
 
 In the Event Collection panel, a "?" slot (the pegasus in "Greek Grandeur") flips to a revealed icon between two 2 s samples. A per-item unlock pop exists; not sampled tightly enough to describe its choreography.
 
+### 3.9 Event-token reward-flight from the task strip — RECONFIRM (from the follow-up captures)
+
+`13-42-05`, ~6.7–7.8 s: after a main-board order/merge completion, a **cascade of ~8 event-token tiles** (green hexagons carrying the milestone-points ribbon) streams **out of the Greek Fest task-strip panel, arcs briefly across the board, and collects into a milestone tracker at the board's bottom-right corner** over ~0.5–0.8 s. A "+40" number-callout fires on the panel at the same moment. This is the same per-currency reward-flight `Spec_TravelTownReview_Draft.md` §2 recorded on Travel Town order *claims* ("five separate arcs to five counters") — here seen originating from an event panel rather than an order card, and confirming the arcs pass *over* the board as an overlay. Reinforces §2's "fold into `Spec_BoardAnimation_Draft.md` Tier-A scope" note; adds nothing new to it.
+
 ---
 
 ## 4. The "1+1 Greek Fest" offer — mostly reconfirm
@@ -215,19 +255,21 @@ Not asserting finding 5 is wrong — it may have read a screen this recording do
 
 ## 5. Open questions
 
-1. **Energy pooling semantics** (§3.4) — is the generator badge a running total that lags the collect animation, or is banked energy tracked elsewhere with the badge showing something else (charges? a cap-limited display)? Unresolved from this capture.
+1. **Energy pooling semantics** (§2.1, §3.4) — one fuel pool with three faucets (on-board bolt chain + main-board evil-eye + Prize Lanes), or does the evil-eye gate the collection/lanes while only the bolt chain tops the generator? The generator badge and the evil-eye panel count could not be watched changing in the same frame. Needs a capture that tracks both counters through a main-board order claim *and* a generator spend.
 2. **Generator output tier** (§2.2) — the generator produced a tier-2 item ("Eyed Earrings") on at least one tap. Does it always dispense tier-1, cycle its output, or upgrade what it dispenses as the event progresses? Needs a longer look at consecutive taps.
 3. **Board dimensions** (§2) — 7 wide is firm; 7 tall is a count, not a measurement. A frame with the whole grid empty would settle it.
 4. **Exit transition** (§1.5) — never captured. Does leaving the parallel board animate, and does it return to where the player was on the main board?
 5. **Collection-set-complete celebration** — sets completed during play (20/27 → 23/27) but no full-screen celebration was caught between samples. `Spec_TravelTownReview_Draft.md` §4 records that Travel Town's *main-board* milestone ladder uses a full-screen "NEW MILESTONE!" takeover; does the parallel board's collection do the same? Unknown.
 6. **Second-premium-currency question** (§4.1) — reconcile with `Capture_Log.md` 23 Aug finding 5.
 7. Spawn-flight trail colour (§3.3) — carried over from `Spec_BoardAnimation_Draft.md` §7 open question #4, still unresolved.
+8. **The Greek Fest "hub card"** (§0.1) — `13-38-36` shows a "PLAY"-button intro card (GRAND PRIZE preview) on entering the event, where recording 1 hard-cut straight to the board. Is the card shown on first entry per session / per day, and the board directly on re-entry? Or did recording 1 just skip it off-camera?
+9. **Main-board evil-eye rate and the "200%" mechanic** (§2.6) — what is the base evil-eye payout per order / per milestone, how is the 200% boost triggered (purchased? earned? free timed drop?), and does it stack with anything? Only its existence is captured, not its economics.
 
 ## 6. Suggested next step
 
 Accumulate for the design phase alongside the other reference-review drafts. Nothing here is implementation-ready and none of it is a decision.
 
-- **§2 (parallel-board deltas)** is for whoever decides whether the shipped `Spec_Phase6b_ParallelBoard.md` should be revised against measured reference data. The energy-model delta (§2.1) is the one that would change the mini-game's shape; the rest (board size, off-grid generator, collection-book reward layer) are contained.
+- **§2 (parallel-board deltas)** is for whoever decides whether the shipped `Spec_Phase6b_ParallelBoard.md` should be revised against measured reference data. Two deltas would change the mini-game's shape: the energy model (§2.1) and the **main-board → parallel-board resource faucet** (§2.6) — the reference's central hook, absent from Phase 6b, and the thing the game sells a "200%" booster on. The rest (board size, off-grid generator, collection-book reward layer) are contained.
 - **§3.2 (the "Legendary!" banner)** and **§3.4 (energy-collect particle stream)** are the genuinely new animation findings. Per `Spec_TravelTownReview_Draft.md`'s precedent for its §2, the per-currency flight belongs folded into `Spec_BoardAnimation_Draft.md`'s Tier-A-style scope if that spec is reopened, rather than standing alone — but that is a note for the design pass, not done here.
 - **§3.1 / §3.3 / §3.5** reconfirm existing findings and need no further action beyond the extra data point.
 - **§4.1** should be raised against `Capture_Log.md` before finding 5's two-currency claim is used.
