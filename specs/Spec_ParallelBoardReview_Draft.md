@@ -44,9 +44,9 @@ A second question was raised after this spec's first commit: *do rewards earned 
 |---|---|---|---|
 | `ScreenRecording_08-23-2026 13-38-36_1.MP4` | 53.6 s | Travel Town | A **"200% MORE [evil-eye]"** timed boost over the main board; the "Refreshing Rewards" padlocked-node offer; the Greek Fest **hub card** ("PLAY" button, GRAND PRIZE); a **"PRIZE LANES"** claim that drops evil-eye tokens onto the Greek Fest board; a "STEVEN'S DISCO" gacha prize-grid; brief "DREAM QUEST" / "PINATA RUNWAY" event cards |
 | `ScreenRecording_08-23-2026 13-42-05_1.MP4` | 10.5 s | Travel Town | Main-board play — an order/merge completion firing a **"+40" callout on the Greek Fest task-strip panel** plus a reward-flight stream of event tokens; the Greek Fest panel's evil-eye count advancing |
-| `ScreenRecording_08-23-2026 13-51-45` / `13-57-47` | 23 s / 33 s | **Tasty Travels** (not Travel Town) | Order-token → milestone-bar ("Golden Smiley"); multiple concurrent "Play" event panels each with a "200%" badge; coins/energy as board merge-chains. Glanced only, not deep-dived. |
+| `ScreenRecording_08-23-2026 13-51-45` / `13-57-47` | 23 s / 33 s | **Tasty Travels** (not Travel Town) | Main-board play. Orders pay a 4-currency bundle (pass-card points, coins, mascot-figure token, Golden Smiley points); a "200%" booster on the pass-card currency; "Golden Smiley" milestone bar + full-board "Smile" celebration; coins as a board merge-chain. Deep-dived — see §2.7. **No parallel board is entered in either clip.** |
 
-Findings from these are in §2.6. The short version: **yes, confirmed** — the parallel board is not a closed economy.
+Findings from these are in §2.6 (Travel Town, the parallel-board feed) and §2.7 (Tasty Travels, cross-title check). The short version: **the parallel board is not a closed economy**, and the earn-plus-booster shape behind that is a two-title norm — though only Travel Town's footage shows the currency going *into a second board*.
 
 ---
 
@@ -170,6 +170,19 @@ So `Spec_Phase6b_ParallelBoard.md`'s model — a wholly self-contained `Parallel
 
 Not proposed, not designed — recorded for the plan.
 
+### 2.7 Cross-title check — Tasty Travels (`08-23 13-51-45`, `13-57-47`, deep-dived)
+
+Both clips are Tasty Travels L104 main-board play. **The earning-and-booster half of §2.6 replicates; the parallel-board half is not shown.**
+
+**What replicates (now 2 of the 3 tracked titles):**
+
+- **Main-board orders pay a bundle of event currencies alongside coins.** A single order card (native crop, `13-57-47` ~9.5 s) reads `+200` gold pass-card points, `+21,500` coins, `+2` mascot-figure token, and — as a floating callout from the same claim — `+3` Golden Smiley points. Four currencies from one order.
+- **A "200%" booster runs on a main-board-earned event currency.** A persistent task-strip panel — gold ticket with a red star-trophy rosette — reads "200% / 15h 2m" (`13-57-47` ~3 s). The icon matches the `+80` / `+200` gold pass-card on the order cards, so it multiplies that pass-currency's earn rate. Structurally identical to Travel Town's "200% MORE evil-eye"; different currency, different art, same mechanic.
+- **"Golden Smiley"** — smiley-marked main-board orders fill a 12-count bar → "Claim" → a full-board **"Smile"** celebration takeover (dimmed board, centred glowing smiley, light rays) → bar resets to 0/12. A repeating milestone bar. Reconfirms `Spec_TravelTownReview_Draft.md` §4 / `Spec_OrdersAndTasks_Draft.md` §2 step 6 (the celebration grammar PawSanctuary's Care/Smile Points claims lack) and `Capture_Log.md`'s Golden Smiley entries.
+- **Coins are a board merge-and-collect chain** — "Coin (Lv.3). Tap to collect 7 [coin]. Merge to level up" (`13-51-45` ~13 s). Reconfirms the same on the Travel Town board.
+
+**What is *not* shown:** neither clip enters a parallel board. The event surfaces visible in the Tasty Travels task strip — Golden Smiley, a "Play" cake panel (unclicked; likely the "Tasty Tasks" 7-day ladder per `Capture_Log.md` 23 Aug finding 3), the "200%" booster, a daily-tasks node, a "?" mystery pack, board power-up tools (a drill with a charge count) — are milestone/ladder/utility surfaces, not second boards. So this footage confirms the segment runs **"main-board play earns event currency + sells a 200% booster on it"** as a norm, but does **not** give a second-title example of that currency specifically fuelling a parallel board. That link stays Travel-Town-only until a Tasty Travels (or Gossip Harbor) parallel-board event is captured.
+
 ---
 
 ## 3. Animations — new vs. reconfirm
@@ -263,7 +276,8 @@ Not asserting finding 5 is wrong — it may have read a screen this recording do
 6. **Second-premium-currency question** (§4.1) — reconcile with `Capture_Log.md` 23 Aug finding 5.
 7. Spawn-flight trail colour (§3.3) — carried over from `Spec_BoardAnimation_Draft.md` §7 open question #4, still unresolved.
 8. **The Greek Fest "hub card"** (§0.1) — `13-38-36` shows a "PLAY"-button intro card (GRAND PRIZE preview) on entering the event, where recording 1 hard-cut straight to the board. Is the card shown on first entry per session / per day, and the board directly on re-entry? Or did recording 1 just skip it off-camera?
-9. **Main-board evil-eye rate and the "200%" mechanic** (§2.6) — what is the base evil-eye payout per order / per milestone, how is the 200% boost triggered (purchased? earned? free timed drop?), and does it stack with anything? Only its existence is captured, not its economics.
+9. **Main-board evil-eye rate and the "200%" mechanic** (§2.6, §2.7) — what is the base event-currency payout per order / per milestone, how is the 200% boost triggered (purchased? earned? free timed drop?), and does it stack with anything? Only its existence is captured, not its economics — and it now needs answering for two titles.
+10. **A second-title parallel board** (§2.7) — no Tasty Travels or Gossip Harbor parallel-board event has been captured. Until one is, whether the main-board → *second-board* currency link (as opposed to the main-board → milestone-bar link, which is confirmed for both) is a segment norm or a Travel Town specific stays open.
 
 ## 6. Suggested next step
 
