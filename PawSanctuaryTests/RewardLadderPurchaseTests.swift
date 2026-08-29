@@ -337,12 +337,12 @@ final class RewardLadderPersistenceTests: XCTestCase {
     /// GameStore's serial `writeQueue` rather than writing on the calling
     /// thread — the write hasn't necessarily landed on disk the instant
     /// `applyPurchase` returns. Real force-quits have the same gap, so a
-    /// genuine relaunch simulation has to give the queued write a moment to
-    /// actually finish before reading it back.
+    /// genuine relaunch simulation has to let that queued write finish before
+    /// reading it back. `flushPendingWrites()` drains the queue and returns;
+    /// it replaces a fixed 0.5s sleep that wasn't reliably long enough under
+    /// CI load.
     private func waitForPersistToLandOnDisk() {
-        let exp = expectation(description: "async save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        GameStore.flushPendingWrites()
     }
 
     func testRewardLadderProgressSurvivesForceQuitAndRelaunchWithNoSchemaChange() {
