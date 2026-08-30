@@ -698,6 +698,11 @@ struct MergeBoardView: View {
                         let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
+                        // Producer affordance shimmer gate (Spec_BoardAnimation_Draft.md §5):
+                        // `species` is non-nil only for family-spawner tiles, so this is
+                        // naturally false for every other producer type.
+                        let isSpawnerAffordable = cell.producer?.species
+                            .map { viewModel.canAffordSpawnerTap(species: $0) } ?? false
 
                         ZStack {
                             CellView(
@@ -710,7 +715,8 @@ struct MergeBoardView: View {
                                 cellSize: cellSize,
                                 unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
                                 isLeapSource: viewModel.leapSourceCell == pos,
-                                mergeHintOffset: mergeHintOffset
+                                mergeHintOffset: mergeHintOffset,
+                                isFamilySpawnerAffordable: isSpawnerAffordable
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             // Drag ghost — animal or producer icon follows the finger

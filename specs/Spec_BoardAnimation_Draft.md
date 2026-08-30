@@ -1,6 +1,6 @@
 # PawSanctuary — Board Animation (draft)
 
-**Status: §3 Tier A IMPLEMENTED (29 Aug 2026). §5 (producer shimmer) still draft — open design questions unresolved.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
+**Status: §3 Tier A IMPLEMENTED (29 Aug 2026). §5 (producer shimmer) IMPLEMENTED (30 Aug 2026, see §5a) but UNVERIFIED — written in a remote Linux session with no Xcode/Simulator available, so the on-screen check §5's own guard-against-failure-mode note asks for has not happened. Needs a real device/Simulator confirmation before being treated as done.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
 
 ## 0. Source material
 
@@ -98,6 +98,27 @@ Proposed particle spec, matching the reference's timing but softened:
 
 **Guard against the failure mode:** fur can read as *shedding/dirty* rather than *cosy*. The difference is entirely in restraint — few particles, pale, translucent, slow, soft-edged, rising. If it ever looks like a clump or a cloud, it has gone wrong. This is worth an on-screen check early rather than tuning blind.
 
+### 5a. Shipped as §5 (30 Aug 2026) — implemented, unverified
+
+Built in `CellView.swift` (`SpawnerShimmerView`/`SpawnerPuffView`) and `MergeBoardViewModel.swift`, wired through `MergeBoardView.swift`. No schema change.
+
+**Open questions 1–3 resolved before writing code, not guessed:**
+
+1. **Affordability precision (Q1) — strict, including modifiers.** `MergeBoardViewModel` gained `spawnerTapCost(forTier:species:)`, folding in the Bask (Reptiles `.turtle`) half-price rule, and `canAffordSpawnerTap(species:)`, which picks the same clamped tier `activateProducer` uses and compares against `kibbleEngine.kibble`. `activateProducer`'s family-spawner branch was refactored to call `spawnerTapCost` too, instead of duplicating the Bask formula inline — the shimmer's gate and the real tap cost now share one implementation and cannot silently disagree.
+2. **Scope (Q2) — family spawners only.** Supply producers already carry their own affordance signal (`.symbolEffect(.pulse)`, a cooldown ring, "Tap!" text); a second signal there would be redundant. `ProducerTileContent.isAffordable` is read only on the `familySpawnerContent` path.
+3. **Non-mammal motif (Q3) — one universal tuft, tinted per species.** Matches this section's own recommended option and its own finding that shape is indistinguishable from feather/leaf/bubble at ~6–9pt render size — colour is the channel that reads. No per-family-category shape variants were built.
+
+**What actually got built, and why it deviates from §5's literal spec text:**
+
+- **Shape/asset:** SF Symbol `cloud.fill`, not a bespoke tuft/teardrop asset — cheapest thing that reads as a soft puff at small size, consistent with this project's SF-Symbol-placeholder convention for everything not yet illustrated (see `docs/PawSanctuary_Graphical_Element_Inventory.xlsx`).
+- **Colour: white core + tinted `.shadow` glow, not a tinted fill.** §5 says "species `tintColor` at low saturation, or white-blended toward it." A straight tinted/gradient fill at the translucency this calls for blends into real board art (a doghouse's own browns and oranges, a birdhouse's blues) and stops reading as a particle at all. `foregroundColor(.white)` plus `.shadow(color: tint.opacity(0.95), radius: 3)` keeps a bright, legible core with the family colour showing only in the glow — satisfies the "hint of family colour" brief without the contrast failure. This is carried in code as a documented gotcha on `SpawnerPuffView` for future particle work on this cell type.
+- **Positioning: `.offset` from the overlay's centre, never `.position(x:,y:)`.** Also documented on `SpawnerPuffView` — `.position` inside a `ZStack` with no other sized content collapses that stack's layout bounds toward zero, silently moving the particle off the tile it's meant to shimmer on. `.offset` doesn't participate in layout, so it can't do that. Every particle view in this file (`MergeSparkleView` included) now uses `.offset` for exactly this reason.
+- **Count/lifecycle/motion:** 3 puffs, each 0.5–0.8s, random origin within ±28%/±22% of tile size from centre, 8–14pt upward drift with ±4pt wander, opacity 0.9→0, scale 0.7→1.15 — matches §5's numbers. Driven by `withAnimation(...).repeatForever(autoreverses: false).delay(...)` per puff, per §6's constraint (no `TimelineView`, no per-frame timer on this cell type) — the same `Bool`-driven idiom `MergeSparkleView` (§3a) and the existing `isLeapSource` ring already use in this file.
+
+**Not verified — the honest gap.** This was implemented in a remote Linux session with no Xcode or iOS Simulator available: no build, no test run, and no on-screen check. §5's own "worth an on-screen check early rather than tuning blind" note has *not* been satisfied. Before this is treated as done: build, run the full `PersistenceTests`/unit suite (no persisted-shape change here, so it should be a no-op, but confirm), install and launch on a Simulator or device with kibble both above and below a spawner's cost, and visually confirm (a) the shimmer appears/disappears correctly with affordability, (b) it reads as "cosy fluff" rather than "shedding," per §5's own guard, and (c) it doesn't visually collide with the existing speed-burst glow ring or the three stacked buff badges (§6's other note).
+
+**Not attempted:** Q4 (spawn-flight arc/trail) and Q5 (Tier B sequencing, reconfirmed deferred to `BoardStateManager` Phase D) — both explicitly out of scope for this pass.
+
 **Gating condition:** `kibbleEngine.kibble >= currentSpawnCost`. Both already exist — `currentSpawnCost` is a computed property on the view model (`MergeBoardViewModel.swift:589`) implementing the Task 2.1 `2^tier` rule. Note it explicitly *excludes* per-family modifiers such as Bask which are applied at the tap site, so a strict affordability check may need the same modifier applied here to avoid shimmering on a tile the player can't actually afford (or staying dark on one they can). **Flagged as an open question, not decided.**
 
 ## 6. Implementation constraint — do not use a per-cell timer
@@ -114,12 +135,12 @@ Also note the shimmer must coexist with the existing golden `speedBurstActive` g
 
 ## 7. Open questions
 
-1. **Affordability precision** — should the shimmer gate on raw `currentSpawnCost`, or on the true per-tap cost including per-family modifiers (Bask etc.) applied at the tap site? The strict version is more honest but requires lifting modifier logic into the cell.
-2. **Does the shimmer extend to other producer types** (supply producers, toolbox), or family spawners only? Supply producers are already cooldown-gated with their own ring, so double-signalling may be noise.
-3. **Non-mammal motif** — is a single tinted tuft genuinely acceptable for Avians/Reptiles/Aquatics, or do those three warrant one alternate shape each (feather / leaf / bubble)? Three shapes is far cheaper than fifteen and might survive the legibility objection.
-4. **Spawn-flight animation** — adopt the reference's fly-from-producer-to-cell arc with a trail? PawSanctuary currently places spawned items directly. Not specified above; would need its own pass.
-5. **Merge Tier B sequencing** — confirm the recommendation to defer phases 1–2 until `BoardStateManager` Phase D, rather than building a parallel animation-state mechanism first.
+1. ~~**Affordability precision**~~ — **Resolved, see §5a.** Strict: the true per-tap cost including per-family modifiers, via a shared `spawnerTapCost(forTier:species:)` helper `activateProducer` now also calls.
+2. ~~**Does the shimmer extend to other producer types**~~ — **Resolved, see §5a.** Family spawners only.
+3. ~~**Non-mammal motif**~~ — **Resolved, see §5a.** One universal tuft, tinted per species — matches this section's own recommended option.
+4. **Spawn-flight animation** — adopt the reference's fly-from-producer-to-cell arc with a trail? PawSanctuary currently places spawned items directly. Not specified above; would need its own pass. Still open.
+5. **Merge Tier B sequencing** — confirm the recommendation to defer phases 1–2 until `BoardStateManager` Phase D, rather than building a parallel animation-state mechanism first. Reconfirmed at §5a's implementation pass; still deferred.
 
 ## 8. Suggested next step
 
-**§3 Tier A is done (see §3a).** The §5 shimmer remains the natural next piece — self-contained, but blocked on real design decisions first: §7's open questions 1–3 (affordability precision, which producer types it applies to, and whether non-mammal families need their own motif) all have real tradeoffs and should go through the same `AskUserQuestion` pattern this project uses for decisions like this, not be guessed at implementation time. `Spec_PartyBoard_Draft.md` remains fully parked pending more reference footage, unrelated to this spec's own progress.
+**§3 Tier A is done (see §3a). §5 is implemented but unverified (see §5a).** The immediate next step is not new work — it's closing the verification gap §5a describes: build, run the test suite, and check the shimmer on an actual Simulator or device (affordability toggling correctly, the "cosy not shedding" read, no collision with the speed-burst ring or buff badges). Only after that should §5 be considered done. Beyond that, remaining open items are Q4 (spawn-flight arc) — a self-contained follow-on, not blocking — and `Spec_PartyBoard_Draft.md`, still fully parked pending more reference footage, unrelated to this spec's own progress.
