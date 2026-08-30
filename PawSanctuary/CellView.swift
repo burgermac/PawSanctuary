@@ -593,7 +593,6 @@ private struct SpawnerPuffView: View {
             .font(.system(size: size * 0.16))
             .foregroundColor(.white)
             .shadow(color: tint.opacity(0.95), radius: 3)
-            .blur(radius: 0.5)
             .opacity(risen ? 0 : 0.9)
             .scaleEffect(risen ? 1.15 : 0.7)
             .offset(
