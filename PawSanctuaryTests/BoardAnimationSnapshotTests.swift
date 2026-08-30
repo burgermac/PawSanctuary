@@ -24,8 +24,21 @@ final class BoardAnimationSnapshotTests: XCTestCase {
 
     // MARK: - Harness plumbing
 
+    /// A bare `UIWindow(frame:)` never gets composited on iOS 13+ unless it's
+    /// attached to a live `UIWindowScene` — first attempt at this omitted
+    /// that and every resulting screenshot came back entirely blank white,
+    /// confirmed against real CI output. The host app is already running
+    /// (this bundle is `TEST_HOST`-hosted inside it), so its own foreground
+    /// scene is grabbed and reused rather than trying to stand up a new one.
     private func hostAndShow<V: View>(_ view: V, size: CGSize) -> UIWindow {
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+        else {
+            XCTFail("No foreground-active UIWindowScene available to host the snapshot window")
+            return UIWindow(frame: CGRect(origin: .zero, size: size))
+        }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(origin: .zero, size: size)
         window.windowLevel = .alert + 1000  // above the host app's own real window
         window.backgroundColor = .white
         let host = UIHostingController(rootView: view)
