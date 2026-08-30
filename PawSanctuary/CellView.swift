@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 // ============================================================
 // MARK: - BOARD CELL VIEW
@@ -26,9 +27,24 @@ struct CellView: View {
     /// `MergeBoardViewModel.mergeHintPair`.
     var mergeHintOffset: CGSize = .zero
 
+    /// Merge-burst sparkles (`Spec_BoardAnimation_Draft.md` §3 Tier A), spawned
+    /// when `isAnimating` goes true. Each `MergeSparkleView` runs its own
+    /// ~0.9s fade-and-drift independent of `isAnimating`'s lifetime, so the
+    /// star trail deliberately outlives the 600ms scale animation the view
+    /// model clears it after — matching the reference, where the sparkles
+    /// linger after the item itself has settled.
+    @State private var mergeSparkles: [MergeSparkle] = []
+    /// White-hot flash at the peak of the merge overshoot, decaying fast.
+    @State private var mergeBloomOpacity: Double = 0
+
     var body: some View {
         ZStack {
             // ── Background & borders ─────────────────────────────────
+            // Clipped on its own, separately from content below, so a
+            // merging item's overshoot (Tier A) can visually breach the
+            // cell's rounded-rect bounds instead of being cut off at them —
+            // matching the reference, which deliberately lets the burst
+            // overlap neighbouring cells rather than clipping it.
             RoundedRectangle(cornerRadius: 12).fill(cellBackground)
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .stroke(borderColor, lineWidth: isSelected ? 3 : 1))
@@ -51,26 +67,46 @@ struct CellView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.cyan.opacity(isLeapSource ? 0.9 : 0), lineWidth: 3)
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isLeapSource))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
             // ── Content ──────────────────────────────────────────────
-            // Locked is checked before item (Task 4.2): a locked row's cache
-            // renders as a dimmed preview under a lock badge, never as a fully
-            // interactive tile — checkTierUnlock only flips isUnlocked, so the
-            // same item just becomes normal itemContent the instant it unlocks.
-            if !cell.isUnlocked {
-                lockedContent(cachedItem: cell.item)
-            } else if let producer = cell.producer {
-                ProducerTileContent(producer: producer, cellSize: cellSize)
-                    .opacity(isDragging ? 0.25 : 1.0)
-            } else if let item = cell.item {
-                itemContent(item)
-                    .opacity(isDragging ? 0.25 : 1.0)
-                    .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
-                    .overlay(bubbleOverlay(for: item))
-                    .offset(mergeHintOffset)
+            // Deliberately unclipped: the merge overshoot and its sparkle
+            // burst need to render past the cell's own bounds. Everything
+            // else here already sits within them during normal play.
+            ZStack {
+                // Locked is checked before item (Task 4.2): a locked row's cache
+                // renders as a dimmed preview under a lock badge, never as a fully
+                // interactive tile — checkTierUnlock only flips isUnlocked, so the
+                // same item just becomes normal itemContent the instant it unlocks.
+                if !cell.isUnlocked {
+                    lockedContent(cachedItem: cell.item)
+                } else if let producer = cell.producer {
+                    ProducerTileContent(producer: producer, cellSize: cellSize)
+                        .opacity(isDragging ? 0.25 : 1.0)
+                } else if let item = cell.item {
+                    itemContent(item)
+                        .opacity(isDragging ? 0.25 : 1.0)
+                        .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
+                        .overlay(bubbleOverlay(for: item))
+                        .offset(mergeHintOffset)
+                        // White-hot bloom at the peak of the overshoot
+                        .shadow(color: .white.opacity(mergeBloomOpacity), radius: cellSize * 0.16)
+                }
+                ForEach(mergeSparkles) { sparkle in
+                    MergeSparkleView(sparkle: sparkle, cellSize: cellSize)
+                }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onChange(of: isAnimating) { _, animating in
+            guard animating else { return }
+            // Replaces rather than appends: the next burst on this cell
+            // simply swaps in a fresh array, and SwiftUI drops the old
+            // (by then fully faded, inert) sparkle views on its own — no
+            // separate cleanup timer needed for a set this small.
+            mergeSparkles = (0..<Int.random(in: 3...5)).map { _ in MergeSparkle() }
+            mergeBloomOpacity = 0.85
+            withAnimation(.easeOut(duration: 0.22)) { mergeBloomOpacity = 0 }
+        }
     }
 
     // MARK: Sub-views
@@ -211,6 +247,48 @@ struct CellView: View {
         if let p = cell.producer { return p.level.tintColor.opacity(0.6) }
         if let item = cell.item  { return (item.def?.color ?? .gray).opacity(0.5) }
         return Color.gray.opacity(0.2)
+    }
+}
+
+// ============================================================
+// MARK: - MERGE SPARKLE BURST
+// ============================================================
+
+/// One gold, four-pointed spark from a merge's Tier A burst
+/// (`Spec_BoardAnimation_Draft.md` §3). Its direction is fixed at spawn so
+/// `MergeSparkleView` can animate purely from `Bool` state rather than a
+/// per-frame timer.
+private struct MergeSparkle: Identifiable {
+    let id = UUID()
+    /// Radians, biased to the upper hemisphere so every spark drifts
+    /// outward *and up*, never down, per the reference.
+    let angle = Double.random(in: -Double.pi...0)
+    let travel = CGFloat.random(in: 0.5...0.9)
+}
+
+/// Renders and self-animates one `MergeSparkle`: pops in at the merge point,
+/// drifts outward along its fixed angle while shrinking and fading. Driven
+/// by `withAnimation` on plain `@State`, not `TimelineView` — see
+/// `Spec_BoardAnimation_Draft.md` §6 on why a per-frame timer is off the
+/// table for board-cell content.
+private struct MergeSparkleView: View {
+    let sparkle: MergeSparkle
+    let cellSize: CGFloat
+    @State private var drifted = false
+
+    var body: some View {
+        Image(systemName: "sparkle")
+            .font(.system(size: cellSize * 0.16, weight: .bold))
+            .foregroundColor(Color(red: 1, green: 0.82, blue: 0.15))
+            .opacity(drifted ? 0 : 1)
+            .scaleEffect(drifted ? 0.35 : 1.0)
+            .offset(
+                x: drifted ? cos(sparkle.angle) * cellSize * sparkle.travel : 0,
+                y: drifted ? sin(sparkle.angle) * cellSize * sparkle.travel : 0
+            )
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.9)) { drifted = true }
+            }
     }
 }
 

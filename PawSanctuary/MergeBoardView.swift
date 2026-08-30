@@ -695,6 +695,7 @@ struct MergeBoardView: View {
                         let cell        = viewModel.board[row][col]
                         let pos         = GridPosition(row: row, col: col)
                         let isDragging  = viewModel.draggingFrom == pos
+                        let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
 
@@ -702,7 +703,7 @@ struct MergeBoardView: View {
                             CellView(
                                 cell: cell,
                                 isSelected: viewModel.selectedCell == pos,
-                                isAnimating: viewModel.animatingCell == pos,
+                                isAnimating: isAnimating,
                                 isDragging: isDragging,
                                 isNewlyUnlocked: viewModel.newlyUnlockedCell == pos,
                                 isSpotlight: isSpotlight,
@@ -731,6 +732,10 @@ struct MergeBoardView: View {
                             }
                         }
                         .frame(width: cellSize, height: cellSize)
+                        // Raised while merging so the Tier A overshoot and its
+                        // sparkle burst (CellView) draw over neighbouring
+                        // cells instead of being occluded by them.
+                        .zIndex(isAnimating ? 5 : 0)
                         .onTapGesture {
                             if viewModel.isActiveBubble(at: pos) {
                                 activeRoute = .bubblePop(pos)
