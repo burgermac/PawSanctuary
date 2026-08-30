@@ -70,18 +70,25 @@ jobs:
           set +e
           set -u
 
-          echo "== xcrun simctl list devices =="
-          xcrun simctl list devices
-
-          UDID=$(xcrun simctl list devices | grep '(Booted)' | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' | head -1)
-          echo "Booted simulator UDID: '${UDID}'"
-          if [ -z "$UDID" ]; then
-            echo "No booted simulator found — skipping snapshot extraction" >&2
-            exit 0
-          fi
-
-          CONTAINER=$(xcrun simctl get_app_container "$UDID" com.timothyherburger.pawsanctuary1 data 2>&1)
-          echo "App container lookup result: '${CONTAINER}'"
+          # xcodebuild test does not leave the simulator it used booted —
+          # every device shows (Shutdown) by the time this step runs (found
+          # by the diagnostics below on the previous attempt), so "find the
+          # booted one" doesn't work. The app's container is a plain
+          # on-disk path that exists regardless of boot state, so instead
+          # scan every simulator UDID this runner has and keep the first
+          # one that actually has our bundle ID installed — only the one
+          # xcodebuild used will resolve.
+          CONTAINER=""
+          FOUND_UDID=""
+          for UDID in $(xcrun simctl list devices | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}'); do
+            C=$(xcrun simctl get_app_container "$UDID" com.timothyherburger.pawsanctuary1 data 2>/dev/null)
+            if [ -n "$C" ] && [ -d "$C" ]; then
+              CONTAINER="$C"
+              FOUND_UDID="$UDID"
+              break
+            fi
+          done
+          echo "App container lookup result: udid='${FOUND_UDID}' container='${CONTAINER}'"
           if [ -z "$CONTAINER" ] || [ ! -d "$CONTAINER" ]; then
             echo "Could not resolve the app's data container — skipping" >&2
             exit 0
