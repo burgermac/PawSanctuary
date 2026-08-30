@@ -47,15 +47,22 @@ final class BoardAnimationSnapshotTests: XCTestCase {
     }
 
     private func save(_ image: UIImage, name: String) {
-        let attachment = XCTAttachment(image: image)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-
         guard let data = image.pngData() else {
             XCTFail("Failed to encode \(name) as PNG")
             return
         }
+
+        // Explicit data + UTI, not XCTAttachment(image:) — its default
+        // encoding isn't documented to be PNG, and CI's fallback extraction
+        // (reading straight out of the .xcresult's Data store, in case the
+        // simctl app-container copy below ever stops resolving) content-
+        // sniffs for "PNG image data", so what's actually stored here has
+        // to be real PNG bytes, not whatever format XCTest might pick.
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+        attachment.name = "\(name).png"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
         do {
             let dir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("BoardAnimationSnapshots", isDirectory: true)

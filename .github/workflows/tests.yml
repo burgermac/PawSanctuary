@@ -53,56 +53,57 @@ jobs:
 
       # BoardAnimationSnapshotTests (PawSanctuaryTests/BoardAnimationSnapshotTests.swift)
       # screenshots the merge burst and producer shimmer from
-      # specs/Spec_BoardAnimation_Draft.md into this Simulator's app sandbox —
-      # the closest thing to an on-screen check available where no local
-      # Simulator exists. Runs `if: always()` so a real test failure above
-      # still gets whatever frames were captured before it failed.
-      - name: Extract board-animation snapshots from the Simulator
+      # specs/Spec_BoardAnimation_Draft.md and attaches each as a PNG
+      # XCTAttachment — the closest thing to an on-screen check available
+      # where no local Simulator exists. Runs `if: always()` so a real test
+      # failure above still gets whatever frames were captured before it.
+      - name: Extract board-animation snapshots from the xcresult bundle
         if: always()
         run: |
           # GitHub Actions launches `run:` steps as `bash -e {0}` — that -e is
           # already active before this script starts, so a `set -uo pipefail`
           # here does NOT turn it off (it only touches -u/pipefail). Every
-          # command below is expected to sometimes fail (grep no-match, an
-          # empty container path) as ordinary, handled control flow, so -e
-          # must be explicitly cancelled or any one of them kills this whole
-          # step — which is exactly what happened on the first run.
+          # command below is expected to sometimes fail (find/grep no-match)
+          # as ordinary, handled control flow, so -e must be explicitly
+          # cancelled or any one of them kills this whole step.
           set +e
           set -u
 
-          # xcodebuild test does not leave the simulator it used booted —
-          # every device shows (Shutdown) by the time this step runs (found
-          # by the diagnostics below on the previous attempt), so "find the
-          # booted one" doesn't work. The app's container is a plain
-          # on-disk path that exists regardless of boot state, so instead
-          # scan every simulator UDID this runner has and keep the first
-          # one that actually has our bundle ID installed — only the one
-          # xcodebuild used will resolve.
-          CONTAINER=""
-          FOUND_UDID=""
-          for UDID in $(xcrun simctl list devices | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}'); do
-            C=$(xcrun simctl get_app_container "$UDID" com.timothyherburger.pawsanctuary1 data 2>/dev/null)
-            if [ -n "$C" ] && [ -d "$C" ]; then
-              CONTAINER="$C"
-              FOUND_UDID="$UDID"
-              break
-            fi
-          done
-          echo "App container lookup result: udid='${FOUND_UDID}' container='${CONTAINER}'"
-          if [ -z "$CONTAINER" ] || [ ! -d "$CONTAINER" ]; then
-            echo "Could not resolve the app's data container — skipping" >&2
-            exit 0
-          fi
-          if [ ! -d "$CONTAINER/tmp/BoardAnimationSnapshots" ]; then
-            echo "No BoardAnimationSnapshots directory in the app container — skipping. Container tmp/ contents:" >&2
-            ls -la "$CONTAINER/tmp" >&2
+          # Two earlier attempts tried pulling FileManager.default.temporaryDirectory
+          # straight out of the Simulator's app-container sandbox via
+          # `simctl get_app_container <udid> <bundle-id> data`. Both failed:
+          # xcodebuild test doesn't leave any simulator booted afterward
+          # (ruling out "find the booted one"), and scanning every UDID on
+          # the runner for one with our bundle ID installed found nothing
+          # either, for reasons not fully diagnosed. Pivoting instead to the
+          # .xcresult bundle xcodebuild always produces in DerivedData — its
+          # path was confirmed directly in a prior run's log
+          # (.../DerivedData/PawSanctuary-*/Logs/Test/Test-PawSanctuary-*.xcresult).
+          # Every screenshot is also attached via XCTAttachment(data:
+          # uniformTypeIdentifier: "public.png") with .lifetime = .keepAlways
+          # specifically for this: sniff the .xcresult's content-addressed
+          # Data/ store for PNG blobs and pull them out directly, with no
+          # dependency on xcresulttool's export-subcommand syntax (untested
+          # from this session, version-sensitive) or on simulator/bundle-ID
+          # lookups at all.
+          XCRESULT=$(find "$HOME/Library/Developer/Xcode/DerivedData" -iname "*.xcresult" -type d 2>/dev/null | head -1)
+          echo "xcresult bundle: '${XCRESULT}'"
+          if [ -z "$XCRESULT" ] || [ ! -d "$XCRESULT/Data" ]; then
+            echo "No .xcresult Data store found — skipping snapshot extraction" >&2
             exit 0
           fi
 
           mkdir -p board-animation-snapshots
-          cp -R "$CONTAINER/tmp/BoardAnimationSnapshots/." board-animation-snapshots/
-          echo "Extracted:"
-          ls -la board-animation-snapshots/
+          count=0
+          for f in "$XCRESULT"/Data/*; do
+            [ -f "$f" ] || continue
+            if file "$f" | grep -q "PNG image data"; then
+              count=$((count + 1))
+              cp "$f" "board-animation-snapshots/snapshot_$(printf '%03d' "$count").png"
+            fi
+          done
+          echo "Extracted ${count} PNG attachment(s) from the xcresult Data store:"
+          ls -la board-animation-snapshots/ 2>/dev/null
 
       - name: Upload board-animation snapshots
         if: always()
