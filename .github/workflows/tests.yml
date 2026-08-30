@@ -15,6 +15,11 @@ jobs:
     name: PawSanctuaryTests
     runs-on: macos-15
     timeout-minutes: 30
+    # contents: write is needed only for the scratch-branch push near the end
+    # (git push origin ci-snapshots/latest) — the repo's default GITHUB_TOKEN
+    # is read-only, confirmed by that step failing with a 403 without this.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
