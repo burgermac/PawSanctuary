@@ -60,17 +60,38 @@ jobs:
       - name: Extract board-animation snapshots from the Simulator
         if: always()
         run: |
-          set -uo pipefail
+          # GitHub Actions launches `run:` steps as `bash -e {0}` — that -e is
+          # already active before this script starts, so a `set -uo pipefail`
+          # here does NOT turn it off (it only touches -u/pipefail). Every
+          # command below is expected to sometimes fail (grep no-match, an
+          # empty container path) as ordinary, handled control flow, so -e
+          # must be explicitly cancelled or any one of them kills this whole
+          # step — which is exactly what happened on the first run.
+          set +e
+          set -u
+
+          echo "== xcrun simctl list devices =="
+          xcrun simctl list devices
+
           UDID=$(xcrun simctl list devices | grep '(Booted)' | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' | head -1)
+          echo "Booted simulator UDID: '${UDID}'"
           if [ -z "$UDID" ]; then
             echo "No booted simulator found — skipping snapshot extraction" >&2
             exit 0
           fi
-          CONTAINER=$(xcrun simctl get_app_container "$UDID" com.timothyherburger.pawsanctuary1 data 2>/dev/null)
-          if [ -z "$CONTAINER" ] || [ ! -d "$CONTAINER/tmp/BoardAnimationSnapshots" ]; then
-            echo "No BoardAnimationSnapshots directory found in app container — skipping" >&2
+
+          CONTAINER=$(xcrun simctl get_app_container "$UDID" com.timothyherburger.pawsanctuary1 data 2>&1)
+          echo "App container lookup result: '${CONTAINER}'"
+          if [ -z "$CONTAINER" ] || [ ! -d "$CONTAINER" ]; then
+            echo "Could not resolve the app's data container — skipping" >&2
             exit 0
           fi
+          if [ ! -d "$CONTAINER/tmp/BoardAnimationSnapshots" ]; then
+            echo "No BoardAnimationSnapshots directory in the app container — skipping. Container tmp/ contents:" >&2
+            ls -la "$CONTAINER/tmp" >&2
+            exit 0
+          fi
+
           mkdir -p board-animation-snapshots
           cp -R "$CONTAINER/tmp/BoardAnimationSnapshots/." board-animation-snapshots/
           echo "Extracted:"
