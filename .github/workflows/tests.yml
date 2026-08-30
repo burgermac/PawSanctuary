@@ -69,40 +69,41 @@ jobs:
           set +e
           set -u
 
-          # Two earlier attempts tried pulling FileManager.default.temporaryDirectory
-          # straight out of the Simulator's app-container sandbox via
-          # `simctl get_app_container <udid> <bundle-id> data`. Both failed:
-          # xcodebuild test doesn't leave any simulator booted afterward
-          # (ruling out "find the booted one"), and scanning every UDID on
-          # the runner for one with our bundle ID installed found nothing
-          # either, for reasons not fully diagnosed. Pivoting instead to the
-          # .xcresult bundle xcodebuild always produces in DerivedData — its
-          # path was confirmed directly in a prior run's log
-          # (.../DerivedData/PawSanctuary-*/Logs/Test/Test-PawSanctuary-*.xcresult).
-          # Every screenshot is also attached via XCTAttachment(data:
-          # uniformTypeIdentifier: "public.png") with .lifetime = .keepAlways
-          # specifically for this: sniff the .xcresult's content-addressed
-          # Data/ store for PNG blobs and pull them out directly, with no
-          # dependency on xcresulttool's export-subcommand syntax (untested
-          # from this session, version-sensitive) or on simulator/bundle-ID
-          # lookups at all.
+          # Third attempt at this. The first two (pulling
+          # FileManager.default.temporaryDirectory out of the Simulator's
+          # app-container sandbox via `simctl get_app_container`, then
+          # sniffing the xcresult's Data/ directory for raw PNG blobs) both
+          # came up empty for reasons not fully pinned down — plausibly a
+          # newer xcresult internal format (this project is on Xcode's
+          # objectVersion 77 — recent enough that the old flat Data/
+          # blob-store layout from Xcode <=15 may no longer apply). Rather
+          # than guess a fourth time, this run is deliberately half
+          # diagnostic: dump the bundle's real structure and xcresulttool's
+          # own --help output unconditionally, so the next attempt (if this
+          # one's export call is also wrong) is informed instead of blind.
           XCRESULT=$(find "$HOME/Library/Developer/Xcode/DerivedData" -iname "*.xcresult" -type d 2>/dev/null | head -1)
           echo "xcresult bundle: '${XCRESULT}'"
-          if [ -z "$XCRESULT" ] || [ ! -d "$XCRESULT/Data" ]; then
-            echo "No .xcresult Data store found — skipping snapshot extraction" >&2
+          if [ -z "$XCRESULT" ]; then
+            echo "No .xcresult bundle found — skipping snapshot extraction" >&2
             exit 0
           fi
 
+          echo "== xcresult bundle structure (3 levels deep) =="
+          find "$XCRESULT" -maxdepth 3
+
+          echo "== xcrun xcresulttool export --help =="
+          xcrun xcresulttool export --help 2>&1
+
+          echo "== xcrun xcresulttool export attachments --help =="
+          xcrun xcresulttool export attachments --help 2>&1
+
           mkdir -p board-animation-snapshots
-          count=0
-          for f in "$XCRESULT"/Data/*; do
-            [ -f "$f" ] || continue
-            if file "$f" | grep -q "PNG image data"; then
-              count=$((count + 1))
-              cp "$f" "board-animation-snapshots/snapshot_$(printf '%03d' "$count").png"
-            fi
-          done
-          echo "Extracted ${count} PNG attachment(s) from the xcresult Data store:"
+          echo "== attempting: xcresulttool export attachments =="
+          xcrun xcresulttool export attachments --path "$XCRESULT" --output-path board-animation-snapshots 2>&1
+          echo "export exit code: $?"
+
+          echo "== board-animation-snapshots contents =="
+          find board-animation-snapshots -type f 2>/dev/null
           ls -la board-animation-snapshots/ 2>/dev/null
 
       - name: Upload board-animation snapshots
