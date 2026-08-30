@@ -690,6 +690,17 @@ struct MergeBoardView: View {
     func boardGridView(cellSize: CGFloat) -> some View {
         VStack(spacing: cellSpacing) {
             ForEach(0..<viewModel.rows, id: \.self) { row in
+                // A cell's own .zIndex below only wins against its *same-row*
+                // neighbours — SwiftUI scopes zIndex to siblings sharing an
+                // immediate parent, so it can't out-rank a cell in a
+                // different HStack (the row above or below). Downward
+                // overshoot bleed needs the whole row raised to draw over
+                // the next row's HStack, which paints after it by default
+                // source order; upward bleed already wins by that same
+                // default (this row paints after the one above it), so it
+                // needs no help. At most one row can ever hold the single
+                // `animatingCell`, so this never contests with itself.
+                let rowHasAnimatingCell = viewModel.animatingCell?.row == row
                 HStack(spacing: cellSpacing) {
                     ForEach(0..<viewModel.cols, id: \.self) { col in
                         let cell        = viewModel.board[row][col]
@@ -794,6 +805,7 @@ struct MergeBoardView: View {
                         )
                     }
                 }
+                .zIndex(rowHasAnimatingCell ? 5 : 0)
             }
         }
         .padding()
