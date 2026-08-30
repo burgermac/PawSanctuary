@@ -50,3 +50,36 @@ jobs:
         with:
           name: xcodebuild-test-log
           path: xcodebuild-test.log
+
+      # BoardAnimationSnapshotTests (PawSanctuaryTests/BoardAnimationSnapshotTests.swift)
+      # screenshots the merge burst and producer shimmer from
+      # specs/Spec_BoardAnimation_Draft.md into this Simulator's app sandbox —
+      # the closest thing to an on-screen check available where no local
+      # Simulator exists. Runs `if: always()` so a real test failure above
+      # still gets whatever frames were captured before it failed.
+      - name: Extract board-animation snapshots from the Simulator
+        if: always()
+        run: |
+          set -uo pipefail
+          UDID=$(xcrun simctl list devices | grep '(Booted)' | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' | head -1)
+          if [ -z "$UDID" ]; then
+            echo "No booted simulator found — skipping snapshot extraction" >&2
+            exit 0
+          fi
+          CONTAINER=$(xcrun simctl get_app_container "$UDID" com.timothyherburger.pawsanctuary1 data 2>/dev/null)
+          if [ -z "$CONTAINER" ] || [ ! -d "$CONTAINER/tmp/BoardAnimationSnapshots" ]; then
+            echo "No BoardAnimationSnapshots directory found in app container — skipping" >&2
+            exit 0
+          fi
+          mkdir -p board-animation-snapshots
+          cp -R "$CONTAINER/tmp/BoardAnimationSnapshots/." board-animation-snapshots/
+          echo "Extracted:"
+          ls -la board-animation-snapshots/
+
+      - name: Upload board-animation snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-animation-snapshots
+          path: board-animation-snapshots
+          if-no-files-found: warn
