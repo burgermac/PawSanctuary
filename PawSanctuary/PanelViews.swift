@@ -2030,9 +2030,12 @@ struct TaskStripView: View {
             // the board's first-render cost to this view alone, more than the
             // entire 63-cell board.
             LazyHStack(spacing: 10) {
-                LevelProgressTaskCard(viewModel: viewModel)
-                FreeChestTaskCard(viewModel: viewModel)
-                SpotlightTaskCard(viewModel: viewModel)
+                // Level Up, Free Chest, Spotlight, quests, daily challenges,
+                // Smile Points, Care Points, Weekly and Monthly have moved to
+                // TaskTrayView as tiles (Spec_TaskTrayRedesign_Draft.md, Task
+                // 6.3). What is left here is the conditional cards, which
+                // follow in 6.5, and the orders, which become their own lane
+                // in 6.6 -- at which point this view goes away entirely (6.7).
                 ForEach(viewModel.activeEvents) { event in
                     EventTaskCard(viewModel: viewModel, event: event)
                         .onTapGesture { activeSheet = .event(event.id) }
@@ -2048,14 +2051,6 @@ struct TaskStripView: View {
                 }
                 AdoptionOrdersTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .adoptionOrders }
-                ForEach(viewModel.dailyChallenges) { challenge in
-                    DailyChallengeTaskCard(challenge: challenge)
-                        .onTapGesture { activeSheet = .dailyChallenges }
-                }
-                ForEach(viewModel.activeQuests) { quest in
-                    QuestTaskCard(quest: quest)
-                        .onTapGesture { activeSheet = .quests }
-                }
                 ForEach(viewModel.exchangeableTrios) { trio in
                     AmbassadorTrioTaskCard(trio: trio,
                                            coinValue: viewModel.ambassadorTrioValue(trio)) {
@@ -2067,13 +2062,6 @@ struct TaskStripView: View {
                         viewModel.retireProducer(at: retirable.position)
                     }
                 }
-                SmilePointsTaskCard(viewModel: viewModel) { viewModel.claimSmileBundle() }
-                CarePointsTaskCard(viewModel: viewModel)
-                    .onTapGesture { activeSheet = .carePoints }
-                WeeklyGoalTaskCard(viewModel: viewModel)
-                    .onTapGesture { activeSheet = .weeklyGoal }
-                MonthlyGoalTaskCard(viewModel: viewModel)
-                    .onTapGesture { activeSheet = .monthlyGoal }
                 if viewModel.isLoyaltyClubUnlocked {
                     LoyaltyTaskCard(viewModel: viewModel)
                         .onTapGesture { activeSheet = .loyalty }

@@ -181,3 +181,309 @@ private extension Double {
         return Swift.min(Swift.max(self, 0), 1)
     }
 }
+
+// ============================================================
+// MARK: - TILE MODEL
+// ============================================================
+
+/// One entry in the tray. A value plus its tap action, so the grid can be
+/// built as data and the container stays free of per-tracker branching.
+struct TrayTile: Identifiable {
+    let id: String
+    let icon: String
+    let tint: Color
+    var status: TrayTileStatus = .none
+    var showsBadge: Bool = false
+    let accessibilityText: String
+    let action: () -> Void
+}
+
+// ============================================================
+// MARK: - CONTAINER GEOMETRY
+// ============================================================
+
+private let trayColumns      = 3
+private let trayTileSpacing:  CGFloat = 8
+private let trayRowSpacing:   CGFloat = 6
+private let trayPanelPadH:    CGFloat = 6
+private let trayPanelPadV:    CGFloat = 6
+/// The tab down the leading edge carrying the position dots — also the handle
+/// that toggles the tray.
+private let trayHandleWidth:  CGFloat = 14
+
+private let trayVisibleRows = 2
+private let trayColumnPitch  = trayTileSize + trayTileSpacing
+private let trayGridWidth    = CGFloat(trayColumns) * trayTileSize
+                             + CGFloat(trayColumns - 1) * trayTileSpacing
+private let trayViewportH    = CGFloat(trayVisibleRows) * trayTileSize
+                             + CGFloat(trayVisibleRows - 1) * trayRowSpacing
+
+/// Total height of the tray band. ~98pt against the ~116pt the header
+/// flattening freed (spec §2.2, §2.3) — the board pays nothing.
+let trayBandHeight = trayViewportH + trayPanelPadV * 2
+
+// ============================================================
+// MARK: - CONTAINER
+// ============================================================
+
+/// The collapsing tray. Three tiles wide when open, one when shut, scrolling
+/// freely through however many rows the tile list makes.
+///
+/// **Collapse is a translation, not a second view** (spec §1.2, §3.1). The
+/// grid is always laid out at its full three-column width; collapsing shifts
+/// it left by two column pitches and narrows the clip so column 3 lands at the
+/// leading edge. That is what the reference does, and doing it any other way
+/// means keeping two layouts in sync and losing the scroll position across the
+/// transition.
+///
+/// Column 3 surviving is a deliberate copy of the reference rather than the
+/// better-reasoned choice: it means the two tiles visible at rest are whatever
+/// happens to sit in the trailing column. See spec §8.2 — tile ordering is
+/// still open, and it is ordering that decides what a player sees by default.
+struct TaskTrayView: View {
+    var viewModel: MergeBoardViewModel
+    @Binding var activeSheet: TaskSheet?
+
+    /// UserDefaults, not `GameState` — this is a UI preference, and routing it
+    /// through the save would mean a schema bump and a migration for something
+    /// no game logic reads (spec §6.3, §7).
+    @AppStorage("taskTrayExpanded") private var isExpanded: Bool = true
+
+    @State private var scrollOffset: CGFloat = 0
+
+    private let scrollSpace = "taskTrayScroll"
+
+    var body: some View {
+        HStack(spacing: 0) {
+            handle
+            grid
+        }
+        .frame(height: trayBandHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(red: 0.90, green: 0.93, blue: 0.90))
+                .overlay(RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color(red: 0.42, green: 0.52, blue: 0.42).opacity(0.28),
+                                  lineWidth: 1))
+        )
+    }
+
+    // MARK: Handle + position dots
+
+    private var handle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.28)) { isExpanded.toggle() }
+        } label: {
+            VStack(spacing: 4) {
+                if isExpanded && dotCount > 1 {
+                    ForEach(0..<dotCount, id: \.self) { i in
+                        Circle()
+                            .fill(i == activeDot
+                                  ? Color(red: 0.30, green: 0.62, blue: 0.35)
+                                  : Color.black.opacity(0.18))
+                            .frame(width: 5, height: 5)
+                    }
+                } else {
+                    Image(systemName: isExpanded ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Color(red: 0.42, green: 0.52, blue: 0.42))
+                }
+            }
+            .frame(width: trayHandleWidth, height: trayBandHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isExpanded ? "Collapse task tray" : "Expand task tray")
+    }
+
+    // MARK: Grid
+
+    private var grid: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(trayTileSize),
+                                                         spacing: trayTileSpacing),
+                                     count: trayColumns),
+                      spacing: trayRowSpacing) {
+                ForEach(tiles) { tile in
+                    Button(action: tile.action) {
+                        TrayTileView(icon: tile.icon,
+                                     tint: tile.tint,
+                                     status: tile.status,
+                                     showsBadge: tile.showsBadge,
+                                     accessibilityText: tile.accessibilityText)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(width: trayGridWidth)
+            // The project already uses onGeometryChange unguarded elsewhere
+            // (MergeBoardView), so this follows existing practice rather than
+            // reaching for the iOS 18 scroll-geometry APIs.
+            .onGeometryChange(for: CGFloat.self) {
+                $0.frame(in: .named(scrollSpace)).minY
+            } action: { scrollOffset = $0 }
+        }
+        .coordinateSpace(.named(scrollSpace))
+        .frame(width: trayGridWidth, height: trayViewportH)
+        // Narrowing the frame with `.trailing` alignment is what keeps column
+        // 3 on screen when shut: the grid holds its full three-column width
+        // and overflows, aligned so its trailing edge meets the frame's.
+        //
+        // This deliberately does NOT use `.offset`. An offset moves rendering
+        // only -- layout and hit-testing stay where they were -- so the
+        // collapsed tray drew column 3 at the leading edge while its tap
+        // target sat two columns to the right, and the invisible column 2
+        // target answered touches over the visible tile. Frame alignment moves
+        // the layout, so touches land where the tile is drawn.
+        .frame(width: isExpanded ? trayGridWidth : trayTileSize, alignment: .trailing)
+        .clipped()
+        // `.clipped()` clips drawing but not hit-testing, which would leave the
+        // off-screen columns still touchable beside the collapsed tray.
+        .contentShape(Rectangle())
+        .padding(.vertical, trayPanelPadV)
+        .padding(.trailing, trayPanelPadH)
+    }
+
+    // MARK: Scroll position
+
+    private var rowCount: Int {
+        max(1, Int(ceil(Double(tiles.count) / Double(trayColumns))))
+    }
+
+    /// One dot per resting position, not per page: `rows − visible + 1`
+    /// (spec §1.4). Four rows in a two-row viewport gives three.
+    private var dotCount: Int { max(1, rowCount - trayVisibleRows + 1) }
+
+    private var activeDot: Int {
+        let contentH = CGFloat(rowCount) * trayTileSize
+                     + CGFloat(max(0, rowCount - 1)) * trayRowSpacing
+        let maxScroll = contentH - trayViewportH
+        guard maxScroll > 0, dotCount > 1 else { return 0 }
+        let progress = min(max(-scrollOffset / maxScroll, 0), 1)
+        return Int((progress * Double(dotCount - 1)).rounded())
+    }
+
+    // MARK: Tiles
+
+    /// The always-present trackers (spec §5 rows 1–9). Conditional tiles —
+    /// events, Parallel Board, Reward Ladder, Loyalty, Invite, ambassador
+    /// trios and the Pass daily claim — land in Task 6.5.
+    private var tiles: [TrayTile] {
+        [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
+         smileTile, careTile, weeklyTile, monthlyTile]
+    }
+
+    private var levelTile: TrayTile {
+        TrayTile(id: "level",
+                 icon: "star.circle.fill",
+                 tint: Color(red: 0.20, green: 0.55, blue: 0.30),
+                 status: .progress(viewModel.xpProgressFraction),
+                 accessibilityText: "Level \(viewModel.playerLevel) progress",
+                 action: { activeSheet = nil })
+    }
+
+    private var freeChestTile: TrayTile {
+        let total = freeChestCooldownHours * 3600
+        return TrayTile(id: "freeChest",
+                        icon: "shippingbox.fill",
+                        tint: Color(red: 0.72, green: 0.52, blue: 0.15),
+                        status: viewModel.isFreeChestReady
+                                ? .label("Open")
+                                : .countdown(viewModel.freeChestTimeRemaining / total),
+                        showsBadge: viewModel.isFreeChestReady,
+                        accessibilityText: "Free chest",
+                        action: { viewModel.claimOrSkipFreeChest() })
+    }
+
+    private var spotlightTile: TrayTile {
+        TrayTile(id: "spotlight",
+                 icon: "sparkles",
+                 tint: Color(red: 0.78, green: 0.55, blue: 0.10),
+                 status: .progress(viewModel.spotlightProgressFraction),
+                 accessibilityText: "Spotlight progress",
+                 action: { activeSheet = .dailyChallenges })
+    }
+
+    /// One tile for the whole quest set, not one per quest — forced by the
+    /// 40pt tile (spec §3.6), and what the reference does too (§1.6).
+    private var questsTile: TrayTile {
+        let done = viewModel.activeQuests.filter(\.isComplete).count
+        let total = max(1, viewModel.activeQuests.count)
+        return TrayTile(id: "quests",
+                        icon: "target",
+                        tint: Color(red: 0.18, green: 0.48, blue: 0.22),
+                        status: .label("\(done)/\(total)"),
+                        showsBadge: done > 0,
+                        accessibilityText: "Quests, \(done) of \(total) complete",
+                        action: { activeSheet = .quests })
+    }
+
+    private var dailiesTile: TrayTile {
+        let done = viewModel.dailyChallenges.filter(\.isComplete).count
+        let total = max(1, viewModel.dailyChallenges.count)
+        return TrayTile(id: "dailies",
+                        icon: "checklist",
+                        tint: Color(red: 0.28, green: 0.44, blue: 0.68),
+                        status: .label("\(done)/\(total)"),
+                        showsBadge: done > 0,
+                        accessibilityText: "Daily challenges, \(done) of \(total) complete",
+                        action: { activeSheet = .dailyChallenges })
+    }
+
+    private var smileTile: TrayTile {
+        TrayTile(id: "smile",
+                 icon: "face.smiling.fill",
+                 tint: Color(red: 0.90, green: 0.55, blue: 0.20),
+                 status: .progress(Double(viewModel.smilePointsBanked) / Double(smilePointsGoal)),
+                 showsBadge: viewModel.isSmileBundleReady,
+                 accessibilityText: "Smile points, \(viewModel.smilePointsBanked) of \(smilePointsGoal)",
+                 action: { viewModel.claimSmileBundle() })
+    }
+
+    private var careTile: TrayTile {
+        // Past Gold there is no next tier, so the bar reads full rather than
+        // dividing by a threshold that no longer exists.
+        let fraction: Double
+        if let next = viewModel.nextCarePointTier {
+            fraction = Double(viewModel.carePointsThisWeek) / Double(max(1, next.pointsNeeded))
+        } else {
+            fraction = 1
+        }
+        return TrayTile(id: "care",
+                        icon: "heart.fill",
+                        tint: Color(red: 0.80, green: 0.30, blue: 0.35),
+                        status: .progress(fraction),
+                        showsBadge: !viewModel.claimableCarePointTiers.isEmpty,
+                        accessibilityText: "Care points, \(viewModel.carePointsThisWeek) this week",
+                        action: { activeSheet = .carePoints })
+    }
+
+    private var weeklyTile: TrayTile {
+        // `weeklyGoalReached` is a (bronze, silver, gold) tuple, so the badge
+        // is "a tier is reached and still unclaimed" rather than the tuple
+        // itself -- the badge means there is something to collect, not that a
+        // threshold was passed at some point this week.
+        let reached = viewModel.weeklyGoalReached
+        let claimable = (reached.bronze && !viewModel.weeklyGoalBronzeClaimed)
+                     || (reached.silver && !viewModel.weeklyGoalSilverClaimed)
+                     || (reached.gold   && !viewModel.weeklyGoalGoldClaimed)
+        return TrayTile(id: "weekly",
+                        icon: "calendar",
+                        tint: Color(red: 0.35, green: 0.45, blue: 0.75),
+                        status: .progress(Double(viewModel.coinsEarnedThisWeek)
+                                          / Double(max(1, viewModel.effectiveWeeklyGoldTarget))),
+                        showsBadge: claimable,
+                        accessibilityText: "Weekly goal",
+                        action: { activeSheet = .weeklyGoal })
+    }
+
+    private var monthlyTile: TrayTile {
+        TrayTile(id: "monthly",
+                 icon: "calendar.badge.clock",
+                 tint: Color(red: 0.50, green: 0.35, blue: 0.70),
+                 status: .label("\(viewModel.weeklyGoldCompletions)/\(viewModel.monthlyGoalWeeksRequired)"),
+                 showsBadge: viewModel.monthlyGoalReached,
+                 accessibilityText: "Monthly goal",
+                 action: { activeSheet = .monthlyGoal })
+    }
+}

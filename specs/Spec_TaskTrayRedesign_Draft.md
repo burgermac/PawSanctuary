@@ -180,7 +180,11 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **6.3 — Build the tray container.** `TaskTrayView`: 3-wide `LazyVGrid` in a fixed ~98pt 2-row viewport with free vertical scrolling; collapse/expand by horizontal translation keeping column 3 (§1.2, §3.1); position dots on the left-edge tab, `rows − 2 + 1` of them. Collapsed state persists in `UserDefaults`, **not** `GameState` — no schema bump, no migration.
 
-**6.4 — Migrate the tracker cards to tiles.** All of §5 except 15 and 16. Quests and dailies aggregate (§3.6). Each tile keeps its existing `activeSheet` / `showParallelBoard` / `onOpenShop` tap route.
+> **Done, and it absorbed the always-present half of 6.4.** The split above was wrong: a container with nothing in it cannot be verified on screen any more than 6.2's tile could, and this project has no SwiftUI previews. 6.3 therefore also migrated §5 rows 1–9 and removed those nine cards from `TaskStripView`, so nothing is duplicated. 6.4 is now the conditional tiles only.
+>
+> **Implementation note — do not use `.offset` for the collapse.** The first attempt translated the grid with `.offset`, which moves rendering but not layout or hit-testing: the collapsed tray drew column 3 at the leading edge while its tap target stayed two columns right, and column 2's invisible target answered touches over the visible tile. It also broke vertical scrolling, because the `ScrollView`'s own hit region was displaced off the tiles, so drags landed on button targets instead of the scroller. Narrowing the frame with `.trailing` alignment moves the layout, and `.contentShape(Rectangle())` after `.clipped()` stops the off-screen columns staying touchable — `.clipped()` clips drawing only.
+
+**6.4 — Migrate the conditional tiles.** §5 rows 10–14: events, Parallel Board, Reward Ladder, Loyalty, Invite. Each keeps its existing `activeSheet` / `showParallelBoard` / `onOpenShop` tap route.
 
 **6.5 — Migrate the two irregular tiles.** `AmbassadorTrioTaskCard` → tray button tile (§3.8). `PassDailyClaimView` → tray tile; it currently inserts an entire conditional strip at `MergeBoardView.swift:524-528` that would break the fixed band height whenever it appears.
 
@@ -208,7 +212,7 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **8.3 Row 4 alignment in the reference (§1.3).** The single leftover tile sat in column 3, not column 1. Trailing-aligned final row, non-row-major fill, or an artefact of that tile's sort position — unresolved, and worth one more look at a longer capture before copying it.
 
-**8.4 What triggers collapse and expand.** Unobserved. The reference collapsed at ~2.5s and expanded at ~11s with no visible cause in frame. Proposal: tap the tray to toggle, auto-collapse on board interaction. Needs a capture with touch indicators enabled to settle.
+**8.4 What triggers collapse and expand.** Unobserved in the reference, which collapsed at ~2.5s and expanded at ~11s with no visible cause in frame. **Partly settled by implementation (Task 6.3): tapping the leading-edge handle toggles it**, which is unambiguous and keeps tile taps meaning "open this tracker". The handle carries the position dots when open and a chevron when shut. Still open: whether board interaction should *auto*-collapse it, as the reference appears to. Needs a capture with touch indicators enabled.
 
 **8.5 Whether the tray belongs on the left at all.** `Spec_TravelTownReview_Draft.md` §3 records Travel Town running a permanently-visible vertical column of ~4 cards down the left side, next to the board rather than above it. That is a different answer to the same problem, and it does cost board width. This spec follows Tasty Travels; the Travel Town shape is not evaluated here.
 

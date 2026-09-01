@@ -395,6 +395,14 @@ struct MergeBoardView: View {
         NotificationManager.shared.scheduleReengagement()
     }
 
+    /// Shared by the tray and the strip while both exist (Tasks 6.3–6.6).
+    private var taskSheetBinding: Binding<TaskSheet?> {
+        Binding(
+            get: { if case .task(let t) = activeRoute { return t } else { return nil } },
+            set: { activeRoute = $0.map { .task($0) } }
+        )
+    }
+
     // MARK: HUD
 
     /// Level ring + number, and the entry point to `ProfileView` — which is
@@ -579,11 +587,19 @@ struct MergeBoardView: View {
             }
             .padding(.top, 8)
 
-            // ── Horizontal task strip ─────────────────────────────
-            TaskStripView(viewModel: viewModel, activeSheet: Binding(
-                get: { if case .task(let t) = activeRoute { return t } else { return nil } },
-                set: { activeRoute = $0.map { .task($0) } }
-            ), showParallelBoard: $showParallelBoard, onOpenShop: { activeRoute = .shop })
+            // ── Task tray + remaining strip ───────────────────────
+            // The tray takes the always-present trackers; the strip still
+            // carries the conditional cards and the orders until Tasks 6.5
+            // and 6.6 move them (Spec_TaskTrayRedesign_Draft.md).
+            HStack(spacing: 8) {
+                TaskTrayView(viewModel: viewModel, activeSheet: taskSheetBinding)
+                TaskStripView(viewModel: viewModel,
+                              activeSheet: taskSheetBinding,
+                              showParallelBoard: $showParallelBoard,
+                              onOpenShop: { activeRoute = .shop })
+            }
+            .padding(.leading, 8)
+            .frame(height: trayBandHeight)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                 tutorialTaskFrame = $0
             }
