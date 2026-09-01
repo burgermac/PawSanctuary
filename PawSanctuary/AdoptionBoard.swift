@@ -107,7 +107,6 @@ class AdoptionBoard {
         // rewards (dog tags, the recirculated board item) key off the deepest
         // line — the order's real headline ask.
         let tier  = lines.map(\.tier).max() ?? 0
-        let count = lines.reduce(0) { $0 + $1.count }
 
         let tags = max(1, (tier + 1) / 2) + Int.random(in: 0...2)
         // Task 2c: coins scale with what the order actually costs to fulfil, so a

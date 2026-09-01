@@ -590,6 +590,25 @@ class MergeBoardViewModel {
     var currentSpawnCost: Int {
         spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
     }
+
+    /// The real kibble cost of one tap on `species`'s family spawner at `tier`,
+    /// including per-family modifiers (Bask) — mirrors the cost computation
+    /// `activateProducer` applies at the actual tap site, so a caller can
+    /// never derive a cost that disagrees with what a tap will charge.
+    func spawnerTapCost(forTier tier: Int, species: AnimalSpecies) -> Int {
+        let baseCost = spawnCost(forTier: tier)
+        let baskActive = species == .turtle && unlockedSuperpowerSpecies.contains(AnimalSpecies.turtle.rawValue)
+        return baskActive ? max(1, baseCost / 2) : baseCost
+    }
+
+    /// True when the player can afford to tap `species`'s family spawner right
+    /// now, at the current spawn multiplier — the affordance gate for the
+    /// producer shimmer (`Spec_BoardAnimation_Draft.md` §5).
+    func canAffordSpawnerTap(species: AnimalSpecies) -> Bool {
+        let maxTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(species))?.maxTier ?? 0
+        let tier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
+        return kibbleEngine.kibble >= spawnerTapCost(forTier: tier, species: species)
+    }
     var showLevelUpBanner: Bool {
         get { progression.showLevelUpBanner }
         set { progression.showLevelUpBanner = newValue }
@@ -1461,10 +1480,9 @@ class MergeBoardViewModel {
             // Task 2.1: the multiplier picks the tier, and the tier sets the price
             // at 2^tier — energy-neutral at every level.
             var spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
-            // Bask (Reptiles .turtle): half kibble cost.
-            let baseCost = spawnCost(forTier: spawnTier)
-            let baskActive = species == .turtle && unlockedSuperpowerSpecies.contains(AnimalSpecies.turtle.rawValue)
-            let cost = baskActive ? max(1, baseCost / 2) : baseCost
+            // Bask (Reptiles .turtle): half kibble cost — folded into spawnerTapCost
+            // so this and the affordance shimmer's gate can never disagree.
+            let cost = spawnerTapCost(forTier: spawnTier, species: species)
             guard kibbleEngine.kibble >= cost else {
                 recordWallEvent(chainID: chainID, tier: spawnTier)
                 triggerToast(.noKibble); selectedCell = pos; return

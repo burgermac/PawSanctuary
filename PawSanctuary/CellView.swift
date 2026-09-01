@@ -26,6 +26,11 @@ struct CellView: View {
     /// the idle "these two can merge" hint. `.zero` outside a hint pulse; see
     /// `MergeBoardViewModel.mergeHintPair`.
     var mergeHintOffset: CGSize = .zero
+    /// True when `cell` holds a family spawner the player can currently
+    /// afford to tap — gates the producer affordance shimmer
+    /// (`Spec_BoardAnimation_Draft.md` §5). Ignored for every other cell
+    /// content; `ProducerTileContent` only reads it on the family-spawner path.
+    var isFamilySpawnerAffordable: Bool = false
 
     /// Merge-burst sparkles (`Spec_BoardAnimation_Draft.md` §3 Tier A), spawned
     /// when `isAnimating` goes true. Each `MergeSparkleView` runs its own
@@ -81,7 +86,8 @@ struct CellView: View {
                 if !cell.isUnlocked {
                     lockedContent(cachedItem: cell.item)
                 } else if let producer = cell.producer {
-                    ProducerTileContent(producer: producer, cellSize: cellSize)
+                    ProducerTileContent(producer: producer, cellSize: cellSize,
+                                        isAffordable: isFamilySpawnerAffordable)
                         .opacity(isDragging ? 0.25 : 1.0)
                 } else if let item = cell.item {
                     itemContent(item)
@@ -303,6 +309,12 @@ private struct MergeSparkleView: View {
 struct ProducerTileContent: View {
     let producer: ProducerTile
     var cellSize: CGFloat = 62
+    /// True when the player can currently afford to tap this family spawner —
+    /// drives the shimmer in `familySpawnerContent` (`Spec_BoardAnimation_Draft.md`
+    /// §5). Read only on that path; supply/animal producers already carry
+    /// their own affordance signal (cooldown ring, charge pips, pulse) and
+    /// adding a second one there would be redundant noise.
+    var isAffordable: Bool = false
 
     // Icon occupies ~45% of the cell; labels use ~13% each.
     private var iconPts: CGFloat  { max(14, cellSize * 0.45) }
@@ -432,6 +444,11 @@ struct ProducerTileContent: View {
                 }
             }
         }
+        .overlay {
+            if isAffordable {
+                SpawnerShimmerView(tint: tint, size: cellSize)
+            }
+        }
     }
 
     // MARK: Supply producer — charge/cooldown display
@@ -502,6 +519,95 @@ struct ProducerTileContent: View {
         case 2:  return .orange
         default: return producer.level.tintColor
         }
+    }
+}
+
+// ============================================================
+// MARK: - PRODUCER AFFORDANCE SHIMMER
+// ============================================================
+
+/// One rising fluff mote in a family spawner's affordance shimmer
+/// (`Spec_BoardAnimation_Draft.md` §5) — the pet-themed stand-in for the
+/// reference title's white star twinkle. Its geometry is fixed at spawn so
+/// `SpawnerPuffView` can animate purely from a `Bool`, the same idiom
+/// `MergeSparkle`/`MergeSparkleView` use above.
+private struct SpawnerPuff: Identifiable {
+    let id = UUID()
+    /// Origin within the tile, as a fraction of `size` from centre.
+    let originX = CGFloat.random(in: -0.28...0.28)
+    let originY = CGFloat.random(in: -0.22...0.22)
+    /// Upward drift and slight horizontal wander, in points at `size == 62`
+    /// (the cell default); scaled by `size / 62` at render time.
+    let drift = CGFloat.random(in: 8...14)
+    let wander = CGFloat.random(in: -4...4)
+    let duration = Double.random(in: 0.5...0.8)
+    let delay = Double.random(in: 0...0.6)
+}
+
+/// Continuous "you can afford to tap this" shimmer over a family spawner —
+/// three soft, rising fluff motes tinted with the family's own colour.
+/// Driven entirely by `.repeatForever` animations (`Spec_BoardAnimation_Draft.md`
+/// §6): this cell type is deliberately never wrapped in a `TimelineView` or
+/// any other per-frame/per-second timer, since family spawners are the most
+/// common producer on the board and a standing timer on every one of them
+/// would reintroduce exactly the per-second redraw cost `ProducerTile.readyAt`
+/// was built to remove (see `familySpawnerContent`'s own doc comment).
+private struct SpawnerShimmerView: View {
+    let tint: Color
+    let size: CGFloat
+    @State private var puffs: [SpawnerPuff] = (0..<3).map { _ in SpawnerPuff() }
+
+    var body: some View {
+        ZStack {
+            ForEach(puffs) { puff in
+                SpawnerPuffView(puff: puff, tint: tint, size: size)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Renders and self-animates one `SpawnerPuff`. Positioned with `.offset`
+/// from the overlay's own centre, **never `.position(x:,y:)`**: inside a
+/// `ZStack` that carries no other sized content of its own, `.position`
+/// silently collapses the stack's layout bounds toward zero, so the puff
+/// would render somewhere other than the tile it's meant to shimmer on.
+/// `.offset` has no layout participation, so it can't do that. (Documented
+/// here because an earlier on-device attempt at this same shimmer hit
+/// exactly this bug — see `Spec_BoardAnimation_Draft.md` §5a.)
+///
+/// Colour is a plain white core plus a tinted `.shadow` glow, not a tinted
+/// fill: that earlier attempt also found a white-to-tint gradient at low
+/// opacity — the fur/fluff look this asks for — blends invisibly into real
+/// board art (a doghouse's own browns and oranges, say). White-plus-glow
+/// reads against any tile colour underneath it.
+private struct SpawnerPuffView: View {
+    let puff: SpawnerPuff
+    let tint: Color
+    let size: CGFloat
+    @State private var risen = false
+
+    var body: some View {
+        let scale = size / 62
+        Image(systemName: "cloud.fill")
+            .font(.system(size: size * 0.16))
+            .foregroundColor(.white)
+            .shadow(color: tint.opacity(0.95), radius: 3)
+            .opacity(risen ? 0 : 0.9)
+            .scaleEffect(risen ? 1.15 : 0.7)
+            .offset(
+                x: size * puff.originX + (risen ? puff.wander * scale : 0),
+                y: size * puff.originY - (risen ? puff.drift * scale : 0)
+            )
+            .onAppear {
+                withAnimation(
+                    .easeInOut(duration: puff.duration)
+                        .repeatForever(autoreverses: false)
+                        .delay(puff.delay)
+                ) {
+                    risen = true
+                }
+            }
     }
 }
 

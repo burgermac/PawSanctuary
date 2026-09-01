@@ -788,6 +788,17 @@ struct MergeBoardView: View {
     func boardGridView(cellSize: CGFloat) -> some View {
         VStack(spacing: cellSpacing) {
             ForEach(0..<viewModel.rows, id: \.self) { row in
+                // A cell's own .zIndex below only wins against its *same-row*
+                // neighbours — SwiftUI scopes zIndex to siblings sharing an
+                // immediate parent, so it can't out-rank a cell in a
+                // different HStack (the row above or below). Downward
+                // overshoot bleed needs the whole row raised to draw over
+                // the next row's HStack, which paints after it by default
+                // source order; upward bleed already wins by that same
+                // default (this row paints after the one above it), so it
+                // needs no help. At most one row can ever hold the single
+                // `animatingCell`, so this never contests with itself.
+                let rowHasAnimatingCell = viewModel.animatingCell?.row == row
                 HStack(spacing: cellSpacing) {
                     ForEach(0..<viewModel.cols, id: \.self) { col in
                         let cell        = viewModel.board[row][col]
@@ -796,6 +807,11 @@ struct MergeBoardView: View {
                         let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
+                        // Producer affordance shimmer gate (Spec_BoardAnimation_Draft.md §5):
+                        // `species` is non-nil only for family-spawner tiles, so this is
+                        // naturally false for every other producer type.
+                        let isSpawnerAffordable = cell.producer?.species
+                            .map { viewModel.canAffordSpawnerTap(species: $0) } ?? false
 
                         ZStack {
                             CellView(
@@ -808,7 +824,8 @@ struct MergeBoardView: View {
                                 cellSize: cellSize,
                                 unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
                                 isLeapSource: viewModel.leapSourceCell == pos,
-                                mergeHintOffset: mergeHintOffset
+                                mergeHintOffset: mergeHintOffset,
+                                isFamilySpawnerAffordable: isSpawnerAffordable
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             // Drag ghost — animal or producer icon follows the finger
@@ -888,6 +905,7 @@ struct MergeBoardView: View {
                         )
                     }
                 }
+                .zIndex(rowHasAnimatingCell ? 5 : 0)
             }
         }
         .padding()
