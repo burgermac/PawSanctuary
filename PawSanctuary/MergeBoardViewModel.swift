@@ -590,7 +590,6 @@ class MergeBoardViewModel {
     var currentSpawnCost: Int {
         spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
     }
-
     var showLevelUpBanner: Bool {
         get { progression.showLevelUpBanner }
         set { progression.showLevelUpBanner = newValue }
