@@ -222,6 +222,12 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **6.7 — Delete the old surfaces.** `TaskStripView` (`PanelViews.swift:2011-2100`), `RetireProducerTaskCard` (§3.7), `MergeBoardViewModel.retirableProducers` (`:703-721`), and the `taskCardWidth` / `taskCardHeight` constants (`PanelViews.swift:1227-1228`).
 
+> **Done.** `PanelViews.swift` 2115 → 1319 lines. All sixteen `*TaskCard` views, `TaskStripView`, and the two card constants are gone.
+>
+> **Kept, against a first reading of this task:** `TaskProgressBar` (still used by `ParallelBoardView.swift:90`), `CarePointsPanelView` (a real sheet, sitting in the middle of the dead block), and `retireProducer(at:)` — which turns out to be the *drag-to-storage drop handler* at `MergeBoardView.swift:854`, confirming §3.7's claim that deleting the card removes the nudge and not the capability.
+>
+> **One test was deleted with it, deliberately.** `SpendQuotaDailiesProducerNeededTests` covered `producerIsNeeded`'s exhaustive switch — D6 coverage proving `.spendCurrency` falls into the "doesn't block retirement" bucket — and reached it through `retirableProducers`, the only public surface it had. With the nudge gone, `producerIsNeeded` has no caller, so the switch under test no longer exists. This is not lost coverage; it is coverage of deleted code. Suite went 504 → 503, exactly the one test. **If the retirement nudge is ever revived, that test should come back with it.**
+
 ---
 
 ## 7. Out of scope

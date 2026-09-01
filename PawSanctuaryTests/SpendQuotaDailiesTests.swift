@@ -51,34 +51,6 @@ final class SpendQuotaDailiesGoalTests: XCTestCase {
     }
 }
 
-@MainActor
-final class SpendQuotaDailiesProducerNeededTests: XCTestCase {
-
-    /// MergeBoardViewModel.producerIsNeeded(_:by:) (private) is exercised
-    /// indirectly through retirableProducers, which is the real, public
-    /// consequence of that switch being exhaustive. A spendCurrency goal
-    /// isn't tied to any specific producer (spec §2's comment on this exact
-    /// switch), so a producer with no other goal referencing it should still
-    /// show up as retirable — proving the new case falls into the same
-    /// "doesn't block retirement" bucket as mergeAny/reachTier, not silently
-    /// falling through to some other behavior.
-    func testASpendGoalAloneDoesNotBlockProducerRetirement() {
-        let vm = MergeBoardViewModel()
-        vm.board = (0..<boardRows).map { row in
-            (0..<7).map { col in
-                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
-            }
-        }
-        vm.boardState.setProducer(ProducerTile(level: .rescueCrate), at: GridPosition(row: 0, col: 0))
-        vm.quests.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
-        ]
-
-        XCTAssertTrue(vm.retirableProducers.contains { $0.position == GridPosition(row: 0, col: 0) },
-                      "a spendCurrency-only goal must not keep a producer from being offered for retirement")
-    }
-}
-
 /// Task 3.2 — QuestCoordinator.updateDailyChallengesAfterSpend, the first
 /// daily-challenge update in the codebase that advances progress by a
 /// variable amount rather than +1 per discrete event.

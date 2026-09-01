@@ -76,12 +76,6 @@ struct Toast: Identifiable, Equatable {
 // MARK: - RETIRABLE PRODUCER
 // ============================================================
 
-struct RetirableProducer: Identifiable {
-    let position: GridPosition
-    let producer: ProducerTile
-    var id: String { "\(position.row)_\(position.col)" }
-}
-
 // ============================================================
 // MARK: - AMBASSADOR TRIO EXCHANGE
 // ============================================================
@@ -696,30 +690,6 @@ class MergeBoardViewModel {
         return nil
     }
 
-    /// Not cached (unlike `exchangeableTrios`): depends on quest/daily-challenge completion
-    /// state as well as board state, and those can change without a board mutation (claiming
-    /// a quest, a daily reset). A 63-cell scan is cheap enough that recomputing on each access
-    /// from this rarely-visited panel is the safer choice over risking a stale cache.
-    var retirableProducers: [RetirableProducer] {
-        let incompleteGoals = quests.activeQuests.filter { !$0.isComplete }.map(\.goal)
-                            + quests.dailyChallenges.filter { !$0.isComplete }.map(\.goal)
-        var result: [RetirableProducer] = []
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let pos = GridPosition(row: r, col: c)
-                guard let producer = boardState.producer(at: pos) else { continue }
-                // Family spawners are deliberately excluded from this nudge (they're
-                // still retirable by dragging to the storage basket) — surfacing them
-                // here reads as pushing players to give up their producers too early
-                // in the game. May revisit with a dedicated spawner-retirement UX later.
-                if producer.level != .familySpawner, !producerIsNeeded(producer, by: incompleteGoals) {
-                    result.append(RetirableProducer(position: pos, producer: producer))
-                }
-            }
-        }
-        return result
-    }
-
     /// Chain/tier pairs the player could produce with **one merge, right now** —
     /// they hold at least two of the tier directly below, across the unlocked
     /// board and the animal inventory.
@@ -793,27 +763,6 @@ class MergeBoardViewModel {
             "\(trio.species.name) Trio exchanged for \(value) coins!"
         )))
         persist()
-    }
-
-    private func producerIsNeeded(_ producer: ProducerTile, by goals: [QuestGoal]) -> Bool {
-        for goal in goals {
-            switch goal {
-            case .spawnBase:
-                if producer.level.targetCategory == .animal { return true }
-            case .mergeInChain(let chainID, _):
-                if producer.level.targetCategory == .animal {
-                    if ContentRegistry.shared.chain(chainID)?.category == .animal { return true }
-                } else if producer.level.targetChainID == chainID {
-                    return true
-                }
-            case .mergeAny, .reachTier, .spendCurrency:
-                // spendCurrency (D6) isn't tied to any specific producer — it's
-                // satisfied by spending through any real sink (§2 of
-                // Spec_SpendQuotaDailies.md), not by running one producer type.
-                break
-            }
-        }
-        return false
     }
 
     var lockedCells: [GridPosition] {

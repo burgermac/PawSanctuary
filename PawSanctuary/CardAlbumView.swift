@@ -186,8 +186,9 @@ struct CardAlbumView: View {
                     // LazyHStack, not HStack: pendingCardPacks has no cap — every
                     // level-up/quest/order/event reward appends to it, and it only
                     // shrinks when the player opens a pack — so it can grow well
-                    // past what's visible in the strip. See TaskStripView for the
-                    // same fix applied to the always-visible task strip.
+                    // past what's visible in the strip. See OrderLaneView for the
+                    // same fix applied to the order lane. (This used to point at
+                    // TaskStripView, which the task-tray redesign deleted.)
                     LazyHStack(spacing: 8) {
                         ForEach(Array(viewModel.pendingCardPacks.enumerated()), id: \.offset) { _, pack in
                             PackChip(pack: pack)
