@@ -240,17 +240,15 @@ private struct OrderLineSlot: View {
 
     private var isComplete: Bool { line.isComplete }
 
-    private var background: Color {
-        if isComplete    { return Color.green.opacity(0.20) }
-        if isMergeReady  { return Color.green.opacity(0.12) }
-        return Color.gray.opacity(0.10)
+    /// Shared with the lane's `CompactOrderSlot` (OrderLaneView.swift) so the
+    /// two cannot drift apart on what "ready to merge" looks like. Only the
+    /// colours are shared; the geometry is not, deliberately — see the note on
+    /// `OrderSlotState`.
+    private var state: OrderSlotState {
+        OrderSlotState(isComplete: isComplete, isMergeReady: isMergeReady)
     }
-
-    private var border: Color {
-        if isComplete   { return .green }
-        if isMergeReady { return Color.green.opacity(0.55) }
-        return Color.gray.opacity(0.25)
-    }
+    private var background: Color { state.background }
+    private var border: Color     { state.border }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {

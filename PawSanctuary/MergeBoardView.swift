@@ -586,19 +586,17 @@ struct MergeBoardView: View {
             }
             .padding(.top, 8)
 
-            // ── Task tray + remaining strip ───────────────────────
-            // The tray takes the always-present trackers; the strip still
-            // carries the conditional cards and the orders until Tasks 6.5
-            // and 6.6 move them (Spec_TaskTrayRedesign_Draft.md).
+            // ── Task tray + order lane ───────────────────────────
+            // The band's two halves, and the whole point of the redesign
+            // (Spec_TaskTrayRedesign_Draft.md): trackers you glance at on the
+            // left, orders you act on along the right. TaskStripView mixed the
+            // two and grew to 16 cards; it is gone as of Task 6.6.
             HStack(spacing: 8) {
                 TaskTrayView(viewModel: viewModel,
                              activeSheet: taskSheetBinding,
                              showParallelBoard: $showParallelBoard,
                              onOpenShop: { activeRoute = .shop })
-                TaskStripView(viewModel: viewModel,
-                              activeSheet: taskSheetBinding,
-                              showParallelBoard: $showParallelBoard,
-                              onOpenShop: { activeRoute = .shop })
+                OrderLaneView(viewModel: viewModel, activeSheet: taskSheetBinding)
             }
             .padding(.leading, 8)
             .frame(height: trayBandHeight)

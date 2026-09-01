@@ -212,6 +212,14 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **6.6 — Build the order lane.** One card per `AdoptionOrder` plus the urgent order, replacing the single `AdoptionOrdersTaskCard`. Reuses the per-line basket rendering already shipped in `Spec_OrdersAndTasks_Draft.md` §1.
 
+> **Done.** `OrderLaneView.swift`. The urgent order leads the lane, because it is the only one that can be lost by not looking at it; the rest follow in slot order. Cards tap through to the Adoption Board sheet exactly as the summary card did — claiming is untouched, per §7's "only the container changes".
+>
+> **Colour logic is shared with the sheet; geometry is not.** `OrderSlotState` now backs both the lane's 26pt slot and the sheet's 44pt `OrderLineSlot`, so the two cannot drift on what "ready to merge" looks like. The slots stayed separate components deliberately: a 26pt slot carrying the sheet's tier badge and count pill would render them at ~6pt. Parameterising one component by size would have made both worse.
+>
+> **A basket's own description is unusable at lane width.** Three lines truncate to "a Houndling + a Houndling + a…", which says nothing the three slots have not already shown. Multi-line orders show `n/N delivered` instead; single-line orders keep the description, where it still fits and reads naturally.
+>
+> Verified on screen: four orders rendering, per-line slots (one, two and three-slot baskets), horizontal scrolling, tap-through to the sheet, and the urgent slot correctly absent while on cooldown.
+
 **6.7 — Delete the old surfaces.** `TaskStripView` (`PanelViews.swift:2011-2100`), `RetireProducerTaskCard` (§3.7), `MergeBoardViewModel.retirableProducers` (`:703-721`), and the `taskCardWidth` / `taskCardHeight` constants (`PanelViews.swift:1227-1228`).
 
 ---
