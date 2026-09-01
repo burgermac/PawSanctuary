@@ -793,28 +793,21 @@ struct MergeBoardView: View {
                         let cell        = viewModel.board[row][col]
                         let pos         = GridPosition(row: row, col: col)
                         let isDragging  = viewModel.draggingFrom == pos
+                        let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
-                        // Producer affordance shimmer (Spec_BoardAnimation_Draft.md
-                        // §5) — computed here, not inside CellView, so CellView
-                        // stays a plain-value view with no view-model dependency.
-                        let isSpawnerAffordable = cell.producer?.species.map {
-                            viewModel.canAffordSpawnerTap(species: $0)
-                        } ?? false
-
                         ZStack {
                             CellView(
                                 cell: cell,
                                 isSelected: viewModel.selectedCell == pos,
-                                isAnimating: viewModel.animatingCell == pos,
+                                isAnimating: isAnimating,
                                 isDragging: isDragging,
                                 isNewlyUnlocked: viewModel.newlyUnlockedCell == pos,
                                 isSpotlight: isSpotlight,
                                 cellSize: cellSize,
                                 unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
                                 isLeapSource: viewModel.leapSourceCell == pos,
-                                mergeHintOffset: mergeHintOffset,
-                                isFamilySpawnerAffordable: isSpawnerAffordable
+                                mergeHintOffset: mergeHintOffset
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             // Drag ghost — animal or producer icon follows the finger
@@ -836,13 +829,10 @@ struct MergeBoardView: View {
                             }
                         }
                         .frame(width: cellSize, height: cellSize)
-                        // Lets the merge overshoot spring (CellView's
-                        // `isAnimating` scale, up to 1.5x) breach into
-                        // neighbouring cells instead of being clipped by
-                        // whichever sibling draws after it — matches the
-                        // reference's deliberate cell-bounds breach at peak
-                        // overshoot (Spec_BoardAnimation_Draft.md §1).
-                        .zIndex(viewModel.animatingCell == pos ? 5 : 0)
+                        // Raised while merging so the Tier A overshoot and its
+                        // sparkle burst (CellView) draw over neighbouring
+                        // cells instead of being occluded by them.
+                        .zIndex(isAnimating ? 5 : 0)
                         .onTapGesture {
                             collapseTrayForBoardInteraction()
                             if viewModel.isActiveBubble(at: pos) {

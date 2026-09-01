@@ -1,6 +1,6 @@
 # PawSanctuary — Board Animation (draft)
 
-**Status: draft, open design questions unresolved, no code written yet.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026), for the next design phase. Companion to `Spec_PartyBoard_Draft.md`; both are accumulating suggestions ahead of a design pass, not queued for implementation.
+**Status: §3 Tier A IMPLEMENTED (29 Aug 2026). §5 (producer shimmer) still draft — open design questions unresolved.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
 
 ## 0. Source material
 
@@ -43,6 +43,18 @@ That is **phase 4 alone**, and it is already the hardest phase to tune — `damp
 **Tier B (needs decoupling — flagged as real work, not a tweak).** Phases 1–2 are *not* additive under the current architecture. `attemptMergeOrMove` mutates board state and then sets `animatingCell`, so by the time any animation runs, the two source items are already gone from the model. Showing them slide together and implode requires the view to keep rendering the pre-merge state for ~0.15s after the model has moved on — i.e. an explicit animation-state object carrying the source items and their origin positions, not just a `GridPosition?`.
 
 This overlaps the deferred `BoardStateManager` Phase D work (`attemptMergeOrMove` → `MergeResult`, see `BoardStateManager_Phase_D_Plan.md`), which would return a structured result describing what merged and from where. **Recommendation: don't build Tier B standalone.** If Phase D lands, Tier B becomes cheap; doing it first would mean building a parallel mechanism that Phase D then has to reconcile. Tier A stands alone and is worth doing regardless.
+
+### 3a. Shipped as Tier A (29 Aug 2026)
+
+Built to the three bullets above, all in `CellView.swift`, no view-model or schema changes — confirming the "additive, cheap" framing held.
+
+**Sparkle burst.** 3–5 `MergeSparkle` values (gold, `sparkle` SF Symbol) spawn into a `@State` array on `isAnimating` going true, each rendered by its own `MergeSparkleView` that runs a single `withAnimation(.easeOut(duration: 0.9))` drifting outward along a fixed random angle (biased to the upper hemisphere — never downward, per the reference) while shrinking and fading. This deliberately outlives `isAnimating`'s own 600ms clear, matching the reference's stars lingering after the item settles. No cleanup timer: the next merge on that cell just replaces the array, and SwiftUI drops the old (by then fully faded) sparkle views on its own — simpler than tracking burst identity for expiry, and sidesteps firing a delayed `Task` from inside a `View` struct to mutate `@State` (untested territory in this codebase — every existing delayed-`Task`-to-self-mutate pattern lives in `MergeBoardViewModel`, an `@MainActor` class, not a View).
+
+**White-hot bloom.** A `.shadow(color: .white.opacity(mergeBloomOpacity), radius:)` on the item, spiked to 0.85 opacity on trigger and eased back to 0 over 0.22s — the "white-hot" flash from phase 3/4, cheap enough to be a single animated shadow rather than a separate overlay.
+
+**Unclipped overshoot.** The bigger structural change: `CellView.body`'s single `.clipShape(RoundedRectangle(cornerRadius: 12))` covered background *and* content together, so the existing 1.5x scale-up was silently being clipped to the cell's own bounds the whole time — the "breach the grid cell" behaviour this section asks for was never actually possible under the old structure. Split into two clip domains: the rounded-rect background/border stack keeps its own clip, the item/producer/locked content and the new sparkle layer sit in a second, unclipped `ZStack`. Paired with `.zIndex(isAnimating ? 5 : 0)` on the per-cell wrapper in `MergeBoardView.swift`'s grid `ForEach`, so the overshooting cell draws over its neighbours rather than under them. No visual change to any idle cell — nothing in normal content ever reached the tile edge anyway.
+
+**Not attempted:** Tier B (phases 1–2, the pre-merge slide/implode) — per this section's own recommendation, still deferred to `BoardStateManager` Phase D.
 
 ---
 
@@ -92,13 +104,13 @@ Proposed particle spec, matching the reference's timing but softened:
 
 This is load-bearing and would be easy to get wrong.
 
-`CellView.swift:273-283` records a deliberate past decision: family spawners are **not** wrapped in a `TimelineView` the way `supplyProducerContent` is, explicitly because "family spawners are the most common producer on the board, so giving every one of them a standing per-second timer... would reintroduce a smaller version of the exact per-second cost this change removes." An earlier approach of mutating the whole board array every second to force redraws was already removed for the same reason.
+`CellView.swift:351-361` (line numbers as of the §3a Tier A commit, which added ~65 lines above this point — was `:273-283` when this section was first written) records a deliberate past decision: family spawners are **not** wrapped in a `TimelineView` the way `supplyProducerContent` is, explicitly because "family spawners are the most common producer on the board, so giving every one of them a standing per-second timer... would reintroduce a smaller version of the exact per-second cost this change removes." An earlier approach of mutating the whole board array every second to force redraws was already removed for the same reason.
 
-A shimmer built on `TimelineView(.animation)` — which drives a redraw every frame, far worse than every second — would directly reverse that decision on the exact cell type it was made for.
+A shimmer built on `TimelineView(.animation)` — which drives a redraw every frame, far worse than every second — would directly reverse that decision on the exact cell type it was made for. Tier A's own sparkle burst (§3a) deliberately avoided this same trap for a different reason — see its note on why a delayed `Task` mutating `@State` was dropped in favour of plain array replacement.
 
-**Build it on `.repeatForever` SwiftUI animations with staggered delays instead.** Those are handed to Core Animation and run without re-evaluating the view body per frame. `familySpawnerContent` already uses this class of effect: the fallback symbol path carries `.symbolEffect(.pulse, options: .repeating, isActive: true)` (`CellView.swift:304`) — though note that path only runs when art is *missing*, so today a spawner with real art has **no idle animation at all**. The shimmer would fill exactly that gap.
+**Build it on `.repeatForever` SwiftUI animations with staggered delays instead.** Those are handed to Core Animation and run without re-evaluating the view body per frame. `familySpawnerContent` already uses this class of effect: the fallback symbol path carries `.symbolEffect(.pulse, options: .repeating, isActive: true)` (`CellView.swift:382`) — though note that path only runs when art is *missing*, so today a spawner with real art has **no idle animation at all**. The shimmer would fill exactly that gap.
 
-Also note the shimmer must coexist with the existing golden `speedBurstActive` glow ring (`CellView.swift:309`) and the three stacked buff badges (bolt/star/eye, `CellView.swift:326-355`) without visual collision.
+Also note the shimmer must coexist with the existing golden `speedBurstActive` glow ring (`CellView.swift:387`) and the three stacked buff badges (bolt/star/eye, `CellView.swift:403-433`) without visual collision.
 
 ## 7. Open questions
 
@@ -110,4 +122,4 @@ Also note the shimmer must coexist with the existing golden `speedBurstActive` g
 
 ## 8. Suggested next step
 
-Accumulate alongside `Spec_PartyBoard_Draft.md` for the design phase. Tier A of §3 and the §5 shimmer are both self-contained enough to implement independently of everything else here, if any of this gets pulled forward.
+**§3 Tier A is done (see §3a).** The §5 shimmer remains the natural next piece — self-contained, but blocked on real design decisions first: §7's open questions 1–3 (affordability precision, which producer types it applies to, and whether non-mammal families need their own motif) all have real tradeoffs and should go through the same `AskUserQuestion` pattern this project uses for decisions like this, not be guessed at implementation time. `Spec_PartyBoard_Draft.md` remains fully parked pending more reference footage, unrelated to this spec's own progress.

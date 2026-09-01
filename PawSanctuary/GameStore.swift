@@ -550,19 +550,45 @@ enum GameStore {
     }
 
     /// Wipes every persisted copy (local file, backup, iCloud).
+    ///
+    /// The whole wipe runs *inside* `writeQueue` (synchronously). `save()` /
+    /// `saveAndSync()` enqueue their writes there and return before the write
+    /// lands, so a wipe that ran on the caller's thread could be overtaken by
+    /// an already-queued write that then recreates the file and bumps
+    /// `lastWrittenSequence` right after this reset it. Queuing the wipe
+    /// behind those writes closes that window: once `clear()` returns, no
+    /// write issued before the call is still pending. That is what lets the
+    /// persistence tests use `clear()` in `setUp`/`tearDown` as a real
+    /// isolation barrier — a stray async write from the previous test can no
+    /// longer land on the shared file (or poison the sequence high-water
+    /// mark) mid-way through the next one.
     static func clear() {
-        try? FileManager.default.removeItem(at: mainFileURL)
-        try? FileManager.default.removeItem(at: backupFileURL)
-        if isCloudAvailable {
-            NSUbiquitousKeyValueStore.default.removeObject(forKey: cloudKey)
-            NSUbiquitousKeyValueStore.default.synchronize()
+        writeQueue.sync {
+            try? FileManager.default.removeItem(at: mainFileURL)
+            try? FileManager.default.removeItem(at: backupFileURL)
+            if isCloudAvailable {
+                NSUbiquitousKeyValueStore.default.removeObject(forKey: cloudKey)
+                NSUbiquitousKeyValueStore.default.synchronize()
+            }
+            // Required for correctness, not just symmetry: each fresh
+            // MergeBoardViewModel instance's own sequence counter restarts at 0
+            // (see lastWrittenSequence's doc comment), so without this reset a
+            // new test's first legitimate write would be rejected as stale
+            // against whatever high-water mark the previous test left behind.
+            lastWrittenSequence.withLock { $0 = 0 }
         }
-        // Required for correctness, not just symmetry: each fresh
-        // MergeBoardViewModel instance's own sequence counter restarts at 0
-        // (see lastWrittenSequence's doc comment), so without this reset a
-        // new test's first legitimate write would be rejected as stale
-        // against whatever high-water mark the previous test left behind.
-        lastWrittenSequence.withLock { $0 = 0 }
+    }
+
+    /// Blocks until every `save()` / `saveAndSync()` write enqueued before
+    /// this call has finished landing on disk. Those two return as soon as the
+    /// write is *queued*, not when it completes, so a test that reads back
+    /// what it just saved has to let the serial `writeQueue` drain first.
+    /// Replaces the fixed `DispatchQueue.asyncAfter` delays the persistence
+    /// tests used to approximate this with — those guessed at a safe delay and
+    /// broke intermittently under CI scheduling load. (`saveNow()` already
+    /// blocks; this is only needed after the async variants.)
+    static func flushPendingWrites() {
+        writeQueue.sync { }
     }
 
     // MARK: Encoding & version checking

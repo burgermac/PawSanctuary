@@ -489,8 +489,8 @@ final class PersistenceTests: XCTestCase {
     // MARK: GameStore save / load
 
     func testGameStoreSaveThenLoadIsFaithful() throws {
-        // GameStore.save(_:) is fire-and-forget (Task.detached — see its doc comment),
-        // so it can't be read back synchronously with no wait. GameStore.saveNow(_:)
+        // GameStore.save(_:) enqueues the write on a serial queue and returns
+        // before it lands, so it can't be read back with no wait. GameStore.saveNow(_:)
         // is the real synchronous path production uses for moments (app backgrounding)
         // that can't tolerate deferral — exercise that instead of a hand-rolled write.
         let original = makeSampleState()
@@ -509,23 +509,24 @@ final class PersistenceTests: XCTestCase {
     // the fix itself was buggy and re-fixed 18 Aug 2026 — see GameStore's
     // lastWrittenSequence doc comment for why)
     //
-    // save()/saveAndSync() capture state synchronously but write it inside a
-    // fire-and-forget Task.detached, so two overlapping calls aren't
-    // guaranteed to finish writing in the order they were made. The fix
-    // stamps every write with a monotonic sequence number generated at
-    // capture time and has GameStore reject any write whose sequence isn't
-    // greater than the most recent one it's already accepted, so "most
-    // recent capture wins" holds regardless of which detached task happens
-    // to finish first. These tests invert call order directly (call the
-    // lower-sequence write *after* the higher-sequence one) rather than
-    // trying to race real concurrency, which is exactly the scenario the
-    // ordering guarantee has to hold against and is fully deterministic to
-    // test this way.
+    // save()/saveAndSync() capture state synchronously but enqueue the actual
+    // write on GameStore's serial writeQueue and return before it lands, so a
+    // lower-sequence write enqueued after a higher-sequence one must still not
+    // win. The guard stamps every write with a monotonic sequence number
+    // generated at capture time and has GameStore reject any write whose
+    // sequence isn't greater than the most recent one it's already accepted,
+    // so "most recent capture wins" holds regardless of write latency. These
+    // tests invert call order directly (call the lower-sequence write *after*
+    // the higher-sequence one) rather than trying to race real concurrency,
+    // which is exactly the scenario the ordering guarantee has to hold against
+    // and is fully deterministic to test this way.
 
     private func waitForAsyncWriteToLand() {
-        let exp = expectation(description: "async save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        // Drains GameStore's serial writeQueue — every save enqueued above is
+        // on disk once this returns. Was a fixed 0.3s sleep, which wasn't
+        // reliably long enough under CI load and let a still-queued write
+        // contaminate a later test's shared save file.
+        GameStore.flushPendingWrites()
     }
 
     func testAnOlderSequencedSaveAndSyncNeverClobbersANewerOneRegardlessOfCallOrder() throws {
@@ -561,7 +562,7 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testSaveNowAlsoRespectsTheOrderingGuarantee() throws {
-        // saveNow() is synchronous (no Task.detached) but shares the same
+        // saveNow() is synchronous (writeQueue.sync) but shares the same
         // guard, so a stale saveNow() call can't clobber a newer one either
         // — matters because saveNow() and save()/saveAndSync() can race each
         // other too (e.g. a periodic autosave landing right as the app
@@ -1797,8 +1798,8 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testCompletedAreaIDsPersistedByGameStore() throws {
-        // See testGameStoreSaveThenLoadIsFaithful — GameStore.save(_:) is async
-        // (Task.detached); use the real synchronous path, GameStore.saveNow(_:),
+        // See testGameStoreSaveThenLoadIsFaithful — GameStore.save(_:) enqueues
+        // its write and returns; use the real synchronous path, GameStore.saveNow(_:),
         // instead of racing it or hand-rolling the write.
         var state = makeSampleState()
         state.completedAreaIDs = ["area.welcome", "area.grooming", "area.rescue"]
