@@ -265,7 +265,17 @@ The two decisions are individually reasonable and jointly wrong. Four ways out:
 
 **8.3 Row 4 alignment in the reference (§1.3).** The single leftover tile sat in column 3, not column 1. Trailing-aligned final row, non-row-major fill, or an artefact of that tile's sort position — unresolved, and worth one more look at a longer capture before copying it.
 
-**8.4 What triggers collapse and expand.** Unobserved in the reference, which collapsed at ~2.5s and expanded at ~11s with no visible cause in frame. **Partly settled by implementation (Task 6.3): tapping the leading-edge handle toggles it**, which is unambiguous and keeps tile taps meaning "open this tracker". The handle carries the position dots when open and a chevron when shut. Still open: whether board interaction should *auto*-collapse it, as the reference appears to. Needs a capture with touch indicators enabled.
+**8.4 What triggers collapse and expand.** ~~Unobserved in the reference.~~ — **Resolved 1 Sep 2026, and no longer inferred from the reference at all.** Three ways in and out, all live:
+
+- **Tap the leading-edge handle** — unambiguous, and keeps tile taps meaning "open this tracker". The handle carries the position dots when open, a chevron when shut.
+- **Swipe left to shut, right to open**, anywhere on the tray. Attached with `simultaneousGesture`, not `gesture`: the grid scrolls vertically, and claiming the drag outright would kill that. Both recognisers see the touch and a dominance test decides — a swipe must be **twice as horizontal as it is vertical** to count, so a slanted scroll flick does not slam the tray shut.
+- **Touching the board auto-collapses it**, which is what the reference appeared to do. Hung off the two view-level interaction sites rather than the view model's own `noteBoardInteraction()`: that would have been the tidier hook, but its `lastBoardInteractionAt` is deliberately `@ObservationIgnored`, and observing it to drive this would re-render the whole board on every touch — precisely what that annotation exists to prevent.
+
+Every route goes through a single `setExpanded(_:)`, so the animation cannot drift between entry points, and a swipe in the direction the tray is already in is a no-op rather than a replayed animation.
+
+The expanded state moved from `@AppStorage` inside `TaskTrayView` to a `@Binding` owned by `MergeBoardView`, because the board has to be able to collapse it and the board is the parent's. Still `UserDefaults`, still no schema change.
+
+Verified on screen: board tap collapses (and the order lane widens into the freed space); swipe right opens; swipe left shuts without being misread as a tile tap; vertical scrolling still reaches the last row with the third dot lit.
 
 **8.5 Whether the tray belongs on the left at all.** `Spec_TravelTownReview_Draft.md` §3 records Travel Town running a permanently-visible vertical column of ~4 cards down the left side, next to the board rather than above it. That is a different answer to the same problem, and it does cost board width. This spec follows Tasty Travels; the Travel Town shape is not evaluated here.
 

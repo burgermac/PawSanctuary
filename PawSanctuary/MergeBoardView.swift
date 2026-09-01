@@ -59,6 +59,12 @@ struct MergeBoardView: View {
 
     let cellSpacing: CGFloat = 4
 
+    /// Whether the task tray is open. Owned here rather than inside
+    /// `TaskTrayView` because touching the board collapses it, and the board is
+    /// this view's (Spec_TaskTrayRedesign_Draft.md §8.4). Still `@AppStorage`,
+    /// so it stays a UserDefaults preference and needs no schema change.
+    @AppStorage("taskTrayExpanded") private var trayExpanded: Bool = true
+
     /// Height of every element in the HUD currency row, pinned rather than left
     /// intrinsic so the row's height is a stated number the task tray can
     /// budget against (Spec_TaskTrayRedesign_Draft.md 2.2 — the row was ~51pt
@@ -395,6 +401,19 @@ struct MergeBoardView: View {
         NotificationManager.shared.scheduleReengagement()
     }
 
+    /// Playing the board gets the tray out of the way (spec §8.4).
+    ///
+    /// Hung off the two view-level interaction sites rather than the view
+    /// model's own `noteBoardInteraction()`, which would have been the tidier
+    /// hook but whose `lastBoardInteractionAt` is deliberately
+    /// `@ObservationIgnored` — observing it to drive this would re-render the
+    /// whole board on every touch, which is exactly what that annotation is
+    /// there to prevent.
+    private func collapseTrayForBoardInteraction() {
+        guard trayExpanded else { return }
+        withAnimation(.easeInOut(duration: 0.28)) { trayExpanded = false }
+    }
+
     /// Shared by the tray and the strip while both exist (Tasks 6.3–6.6).
     private var taskSheetBinding: Binding<TaskSheet?> {
         Binding(
@@ -595,7 +614,8 @@ struct MergeBoardView: View {
                 TaskTrayView(viewModel: viewModel,
                              activeSheet: taskSheetBinding,
                              showParallelBoard: $showParallelBoard,
-                             onOpenShop: { activeRoute = .shop })
+                             onOpenShop: { activeRoute = .shop },
+                             isExpanded: $trayExpanded)
                 OrderLaneView(viewModel: viewModel, activeSheet: taskSheetBinding)
             }
             .padding(.leading, 8)
@@ -824,6 +844,7 @@ struct MergeBoardView: View {
                         // overshoot (Spec_BoardAnimation_Draft.md §1).
                         .zIndex(viewModel.animatingCell == pos ? 5 : 0)
                         .onTapGesture {
+                            collapseTrayForBoardInteraction()
                             if viewModel.isActiveBubble(at: pos) {
                                 activeRoute = .bubblePop(pos)
                             } else {
@@ -836,6 +857,7 @@ struct MergeBoardView: View {
                                     if viewModel.draggingFrom == nil {
                                         viewModel.draggingFrom = pos
                                         viewModel.noteBoardInteraction()
+                                        collapseTrayForBoardInteraction()
                                     }
                                     dragOffset = v.translation
                                     // Expand hit zone by 20 pt so the drop is easy to land

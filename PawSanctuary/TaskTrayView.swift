@@ -276,10 +276,11 @@ struct TaskTrayView: View {
     /// MergeBoardView.swift, so the caller supplies the hop.
     var onOpenShop: () -> Void
 
-    /// UserDefaults, not `GameState` — this is a UI preference, and routing it
-    /// through the save would mean a schema bump and a migration for something
-    /// no game logic reads (spec §6.3, §7).
-    @AppStorage("taskTrayExpanded") private var isExpanded: Bool = true
+    /// Owned by `MergeBoardView` (as `@AppStorage`, so it is still a
+    /// UserDefaults preference rather than a `GameState` field — spec §6.3,
+    /// §7). It lives up there rather than here because touching the board has
+    /// to be able to collapse the tray, and the board is the parent's.
+    @Binding var isExpanded: Bool
 
     @State private var scrollOffset: CGFloat = 0
 
@@ -291,6 +292,22 @@ struct TaskTrayView: View {
             grid
         }
         .frame(height: trayBandHeight)
+        // Swipe left to shut, right to open, anywhere on the tray.
+        //
+        // `simultaneousGesture` rather than `gesture`: the grid inside scrolls
+        // vertically, and claiming the drag outright would kill that. Both
+        // recognisers see the touch, and the dominance test below decides which
+        // one meant it — a swipe has to be twice as horizontal as it is
+        // vertical to count, so a slightly slanted scroll does not slam the
+        // tray shut mid-flick.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 18)
+                .onEnded { v in
+                    let dx = v.translation.width, dy = v.translation.height
+                    guard abs(dx) > abs(dy) * 2 else { return }
+                    setExpanded(dx > 0)
+                }
+        )
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color(red: 0.90, green: 0.93, blue: 0.90))
@@ -302,9 +319,18 @@ struct TaskTrayView: View {
 
     // MARK: Handle + position dots
 
+    /// Every route in and out of the collapsed state goes through here — the
+    /// handle, either swipe, and the board's auto-collapse — so they cannot
+    /// drift apart on timing. The no-op guard keeps a swipe in the direction
+    /// the tray is already in from replaying the animation.
+    private func setExpanded(_ expanded: Bool) {
+        guard isExpanded != expanded else { return }
+        withAnimation(.easeInOut(duration: 0.28)) { isExpanded = expanded }
+    }
+
     private var handle: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.28)) { isExpanded.toggle() }
+            setExpanded(!isExpanded)
         } label: {
             VStack(spacing: 4) {
                 if isExpanded && dotCount > 1 {
