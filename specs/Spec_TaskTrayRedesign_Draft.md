@@ -194,6 +194,12 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **6.4 — Migrate the conditional tiles.** §5 rows 10–14: events, Parallel Board, Reward Ladder, Loyalty, Invite. Each keeps its existing `activeSheet` / `showParallelBoard` / `onOpenShop` tap route.
 
+> **Done.** Conditionals sort ahead of the always-present tiles within a rank, because they are the transient ones — an event window closes, the weekly goal will still be there tomorrow.
+>
+> **A tile with both a bar and a deadline shows the bar, and the deadline sets its rank.** Events and the Parallel Board are the only tiles with both, and there is one status slot. Progress is the part the player can act on, so it takes the slot; the countdown is not lost, it expresses itself by pushing the tile up the tray as the window closes. Showing the countdown instead would have been the more literal reading of the reference but would have hidden the only number the player can change.
+>
+> Verified on screen: event tile (opens its sheet), Reward Ladder (`3/6`, opens the Shop rather than a sheet), Invite (present, ranked idle, found by scrolling to row 3). **Loyalty and Parallel Board could not be reached** — Loyalty is gated above level 5, and Parallel Board needs a live event window, which `TODO.md` records as blocked until 2026-09-11. Both are built identically to the three that were verified.
+
 **6.5 — Migrate the two irregular tiles.** `AmbassadorTrioTaskCard` → tray button tile (§3.8). `PassDailyClaimView` → tray tile; it currently inserts an entire conditional strip at `MergeBoardView.swift:524-528` that would break the fixed band height whenever it appears.
 
 **6.6 — Build the order lane.** One card per `AdoptionOrder` plus the urgent order, replacing the single `AdoptionOrdersTaskCard`. Reuses the per-line basket rendering already shipped in `Spec_OrdersAndTasks_Draft.md` §1.

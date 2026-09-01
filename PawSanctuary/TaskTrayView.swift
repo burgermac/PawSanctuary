@@ -268,6 +268,13 @@ let trayBandHeight = trayViewportH + trayPanelPadV * 2
 struct TaskTrayView: View {
     var viewModel: MergeBoardViewModel
     @Binding var activeSheet: TaskSheet?
+    /// Parallel Board presents full-screen rather than as a sheet — same
+    /// reasoning as the card it replaces (Phase 6b, Task 3.7).
+    @Binding var showParallelBoard: Bool
+    /// The Reward Ladder tile taps through to the Shop, where the ladder
+    /// actually lives (`RewardLadderSection`). `SheetRoute` is private to
+    /// MergeBoardView.swift, so the caller supplies the hop.
+    var onOpenShop: () -> Void
 
     /// UserDefaults, not `GameState` — this is a UI preference, and routing it
     /// through the save would mean a schema bump and a migration for something
@@ -397,15 +404,20 @@ struct TaskTrayView: View {
 
     // MARK: Tiles
 
-    /// The always-present trackers (spec §5 rows 1–9). Conditional tiles —
-    /// events, Parallel Board, Reward Ladder, Loyalty, Invite, ambassador
-    /// trios and the Pass daily claim — land in Task 6.5.
+    /// Every tile the tray can show (spec §5 rows 1–14). Ambassador trios and
+    /// the Pass daily claim — the two that are not trackers — land in Task 6.5.
     ///
     /// Declaration order here is the tiebreak, so it doubles as the resting
     /// order when nothing is urgent. Keep it stable.
+    ///
+    /// The conditionals come first within their rank because they are the
+    /// transient ones: an event or a Parallel Board window closes, while the
+    /// weekly goal will still be there tomorrow.
     private var catalogue: [TrayTile] {
-        [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
-         smileTile, careTile, weeklyTile, monthlyTile]
+        eventTiles
+        + [parallelBoardTile, rewardLadderTile, loyaltyTile, inviteTile].compactMap { $0 }
+        + [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
+           smileTile, careTile, weeklyTile, monthlyTile]
     }
 
     /// Sorted by urgency (spec §3.12).
@@ -424,6 +436,109 @@ struct TaskTrayView: View {
             }
             .map(\.element)
     }
+
+    // MARK: Conditional tiles (Task 6.4)
+
+    /// A tile carrying both a progress bar and a deadline gets the **bar**, and
+    /// the deadline drives its rank instead.
+    ///
+    /// Events and the Parallel Board are the only tiles with both, and there is
+    /// one status slot. Progress is the part the player can act on, so it takes
+    /// the slot; the countdown is not lost, it just expresses itself by pushing
+    /// the tile up the tray as the window closes (`.endingSoon`). A shown
+    /// countdown would have been the more literal reading of the reference, but
+    /// it would have hidden the only number the player can change.
+    private func deadlineRank(remaining: TimeInterval, total: TimeInterval) -> TrayUrgency {
+        guard total > 0 else { return .active }
+        return remaining / total <= trayEndingSoonFraction ? .endingSoon : .active
+    }
+
+    private var eventTiles: [TrayTile] {
+        viewModel.activeEvents.map { event in
+            let maxTokens = ProgressTrackRegistry.tracks[event.id]?.last?.threshold ?? 1
+            let earned = viewModel.progressTrack.progress(trackID: event.id)
+            let window = event.endDate.timeIntervalSince(event.startDate)
+            return TrayTile(
+                id: "event-\(event.id)",
+                icon: event.icon,
+                tint: event.accentColor,
+                status: .progress(Double(earned) / Double(max(1, maxTokens))),
+                showsBadge: !viewModel.progressTrack.claimable(trackID: event.id,
+                                                               paidLaneUnlocked: false).isEmpty,
+                urgency: deadlineRank(remaining: event.timeRemaining, total: window),
+                accessibilityText: "\(event.name), \(event.timerLabel)",
+                action: { activeSheet = .event(event.id) })
+        }
+    }
+
+    private var parallelBoardTile: TrayTile? {
+        guard let coordinator = viewModel.activeParallelBoardEvent,
+              let event = ParallelBoardEventRegistry.activeEvent(),
+              event.id == coordinator.eventID else { return nil }
+        let maxTokens = ProgressTrackRegistry.tracks[event.id]?.last?.threshold ?? 1
+        let earned = coordinator.progressTrack.progress(trackID: event.id)
+        let window = event.endDate.timeIntervalSince(event.startDate)
+        return TrayTile(
+            id: "parallelBoard-\(event.id)",
+            icon: event.icon,
+            tint: Color(red: 0.28, green: 0.44, blue: 0.68),
+            status: .progress(Double(earned) / Double(max(1, maxTokens))),
+            showsBadge: !coordinator.progressTrack.claimable(trackID: event.id,
+                                                             paidLaneUnlocked: false).isEmpty,
+            urgency: deadlineRank(remaining: event.timeRemaining, total: window),
+            accessibilityText: "\(event.name), \(event.timerLabel)",
+            action: { showParallelBoard = true })
+    }
+
+    private var rewardLadderTile: TrayTile? {
+        guard viewModel.isRewardLadderAvailable else { return nil }
+        let rungs = ProgressTrackRegistry.tracks[rewardLadderTrackID]?.count ?? 0
+        let progress = viewModel.progressTrack.progress(trackID: rewardLadderTrackID)
+        return TrayTile(
+            id: "rewardLadder",
+            icon: "arrow.up.right.square.fill",
+            tint: Color(red: 0.55, green: 0.25, blue: 0.75),
+            status: .label("\(progress)/\(max(1, rungs))"),
+            showsBadge: !viewModel.progressTrack.claimable(trackID: rewardLadderTrackID,
+                                                           paidLaneUnlocked: false).isEmpty,
+            urgency: progress > 0 ? .active : .idle,
+            accessibilityText: "Reward ladder, rung \(progress) of \(rungs)",
+            action: onOpenShop)
+    }
+
+    private var loyaltyTile: TrayTile? {
+        guard viewModel.isLoyaltyClubUnlocked else { return nil }
+        let cycle = max(1, loyaltyClubCycle.count)
+        let day = viewModel.loyaltyClubDayIndex % cycle
+        return TrayTile(
+            id: "loyalty",
+            icon: "calendar.badge.plus",
+            tint: Color(red: 0.20, green: 0.55, blue: 0.55),
+            status: .label("\(day + 1)/\(cycle)"),
+            showsBadge: viewModel.canClaimLoyaltyClub,
+            // A streak is only worth something while it is unbroken, so a
+            // running one ranks above an untouched cycle.
+            urgency: viewModel.loyaltyClubStreak > 0 ? .active : .idle,
+            accessibilityText: "Loyalty club, day \(day + 1) of \(cycle)",
+            action: { activeSheet = .loyalty })
+    }
+
+    private var inviteTile: TrayTile? {
+        guard viewModel.isInviteUnlocked else { return nil }
+        let sent = viewModel.inviteProgress.invitesSent
+        let target = inviteMilestones.map(\.invitesRequired).max() ?? 1
+        return TrayTile(
+            id: "invite",
+            icon: "person.2.fill",
+            tint: Color(red: 0.30, green: 0.50, blue: 0.80),
+            status: .progress(Double(sent) / Double(max(1, target))),
+            showsBadge: inviteMilestones.contains { viewModel.inviteProgress.canClaim($0) },
+            urgency: sent > 0 ? .active : .idle,
+            accessibilityText: "Invite friends, \(sent) of \(target) sent",
+            action: { activeSheet = .invite })
+    }
+
+    // MARK: Always-present tiles
 
     private var levelTile: TrayTile {
         TrayTile(id: "level",

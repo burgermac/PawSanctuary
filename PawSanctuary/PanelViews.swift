@@ -2030,25 +2030,15 @@ struct TaskStripView: View {
             // the board's first-render cost to this view alone, more than the
             // entire 63-cell board.
             LazyHStack(spacing: 10) {
+                // Every tracker card has moved to TaskTrayView as a tile:
                 // Level Up, Free Chest, Spotlight, quests, daily challenges,
-                // Smile Points, Care Points, Weekly and Monthly have moved to
-                // TaskTrayView as tiles (Spec_TaskTrayRedesign_Draft.md, Task
-                // 6.3). What is left here is the conditional cards, which
-                // follow in 6.5, and the orders, which become their own lane
-                // in 6.6 -- at which point this view goes away entirely (6.7).
-                ForEach(viewModel.activeEvents) { event in
-                    EventTaskCard(viewModel: viewModel, event: event)
-                        .onTapGesture { activeSheet = .event(event.id) }
-                }
-                if let coordinator = viewModel.activeParallelBoardEvent,
-                   let event = ParallelBoardEventRegistry.activeEvent(), event.id == coordinator.eventID {
-                    ParallelBoardTaskCard(event: event, coordinator: coordinator)
-                        .onTapGesture { showParallelBoard = true }
-                }
-                if viewModel.isRewardLadderAvailable {
-                    RewardLadderTaskCard(viewModel: viewModel)
-                        .onTapGesture { onOpenShop() }
-                }
+                // Smile Points, Care Points, Weekly and Monthly in Task 6.3;
+                // events, Parallel Board, Reward Ladder, Loyalty and Invite in
+                // 6.4 (Spec_TaskTrayRedesign_Draft.md).
+                //
+                // What is left is the two non-trackers, which follow in 6.5,
+                // and the orders, which become their own lane in 6.6 -- at
+                // which point this view goes away entirely (6.7).
                 AdoptionOrdersTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .adoptionOrders }
                 ForEach(viewModel.exchangeableTrios) { trio in
@@ -2061,14 +2051,6 @@ struct TaskStripView: View {
                     RetireProducerTaskCard(retirable: retirable) {
                         viewModel.retireProducer(at: retirable.position)
                     }
-                }
-                if viewModel.isLoyaltyClubUnlocked {
-                    LoyaltyTaskCard(viewModel: viewModel)
-                        .onTapGesture { activeSheet = .loyalty }
-                }
-                if viewModel.isInviteUnlocked {
-                    InviteTaskCard(viewModel: viewModel)
-                        .onTapGesture { activeSheet = .invite }
                 }
             }
             .padding(.horizontal, 12)

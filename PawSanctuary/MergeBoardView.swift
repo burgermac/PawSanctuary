@@ -592,7 +592,10 @@ struct MergeBoardView: View {
             // carries the conditional cards and the orders until Tasks 6.5
             // and 6.6 move them (Spec_TaskTrayRedesign_Draft.md).
             HStack(spacing: 8) {
-                TaskTrayView(viewModel: viewModel, activeSheet: taskSheetBinding)
+                TaskTrayView(viewModel: viewModel,
+                             activeSheet: taskSheetBinding,
+                             showParallelBoard: $showParallelBoard,
+                             onOpenShop: { activeRoute = .shop })
                 TaskStripView(viewModel: viewModel,
                               activeSheet: taskSheetBinding,
                               showParallelBoard: $showParallelBoard,
