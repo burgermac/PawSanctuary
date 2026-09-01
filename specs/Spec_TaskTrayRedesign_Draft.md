@@ -92,6 +92,8 @@ Taken in review 31 Aug 2026. Recorded here because several deviate from the refe
 
 **3.1 Collapse keeps column 3, matching the reference.** An earlier proposal was to collapse toward column 1 instead, so the resting rail would show the two highest-priority trackers rather than whatever happens to occupy the trailing column. **Rejected — follow the reference.** Column 3 survives, and the collapse is implemented as the §1.2 translation.
 
+> **Reversed 1 Sep 2026 — collapse now keeps column 1.** Not a change of mind about the reference, but a consequence of §3.12: once tiles were urgency-sorted, keeping column 3 showed positions 3 and 6 and left the badged, claimable tile off screen. The two decisions were individually reasonable and jointly wrong. See §8.6 for the diagnosis and the options considered. Everything else about §3.1 stands — the collapse is still the single-view narrowing of §1.2, just anchored at the other edge (`.leading` rather than `.trailing`).
+
 **3.2 Board height is fixed.** The tray must fit above the board without shrinking it. This is what forces §2 and rules out the reference-faithful 56pt tile, which would have cost ~4pt per cell.
 
 **3.3 Tile size is 40pt.** Chosen over 56pt precisely to hold §3.2. See §2.4 for what this costs.
@@ -118,7 +120,7 @@ Taken in review 31 Aug 2026. Recorded here because several deviate from the refe
 
 *Countdown bars are tinted differently from progress bars* so "time draining away" and "progress earned" are not the same visual language on adjacent tiles.
 
-**3.12 Tiles are sorted by urgency.** Decided 31 Aug 2026, resolving §8.2. Because collapse keeps column 3 (§3.1), the two tiles visible at rest are whichever sit in the trailing column — so ordering is what decides the default view, not a cosmetic preference.
+**3.12 Tiles are sorted by urgency.** Decided 31 Aug 2026, resolving §8.2. Because the tray spends most of its time collapsed showing one column (§3.1), the tiles visible at rest are decided by sort position — so ordering is what a player sees by default, not a cosmetic preference. (Written when collapse still kept column 3; §8.6 then moved it to column 1 precisely so this sort would reach the resting view.)
 
 *The instability §8.2 warned about is handled by sorting into coarse buckets, not on a continuous score.* Four ranks — something to collect, a window closing, progress under way, idle — with ties broken by a fixed catalogue order. A tile therefore only moves when it crosses a bucket boundary, which is a real change of state worth showing, rather than drifting every time a bar ticks. A continuous sort would have reshuffled the tray under the player's thumb.
 
@@ -184,7 +186,7 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **6.2 — Build the tile primitive.** `TrayTileView`: 40pt square, icon, inset status (bar / ≤4-char label per §2.4), optional red dot badge. Pure presentation, no view-model coupling.
 
-**6.3 — Build the tray container.** `TaskTrayView`: 3-wide `LazyVGrid` in a fixed ~98pt 2-row viewport with free vertical scrolling; collapse/expand by horizontal translation keeping column 3 (§1.2, §3.1); position dots on the left-edge tab, `rows − 2 + 1` of them. Collapsed state persists in `UserDefaults`, **not** `GameState` — no schema bump, no migration.
+**6.3 — Build the tray container.** `TaskTrayView`: 3-wide `LazyVGrid` in a fixed ~98pt 2-row viewport with free vertical scrolling; collapse/expand by narrowing to one column (§1.2, §3.1 — column 1, per the §8.6 reversal); position dots on the left-edge tab, `rows − 2 + 1` of them. Collapsed state persists in `UserDefaults`, **not** `GameState` — no schema bump, no migration.
 
 > **Done, and it absorbed the always-present half of 6.4.** The split above was wrong: a container with nothing in it cannot be verified on screen any more than 6.2's tile could, and this project has no SwiftUI previews. 6.3 therefore also migrated §5 rows 1–9 and removed those nine cards from `TaskStripView`, so nothing is duplicated. 6.4 is now the conditional tiles only.
 >
@@ -228,6 +230,10 @@ The two decisions are individually reasonable and jointly wrong. Four ways out:
 4. **Accept it** — the collapsed tray is a launcher, not a status display, and the player expands it to see what needs doing.
 
 **Recommendation: 1.** It is a two-line change, and it makes the collapsed state answer "what needs me?" instead of "what happens to be third?".
+
+> **Resolved 1 Sep 2026: option 1 taken.** Collapse now keeps column 1, so the resting pair is positions 1 and 4. §3.1 carries the reversal note. The single-view narrowing of §1.2 is unchanged — only the anchor edge moved.
+>
+> **What this costs:** the tray is no longer a faithful copy of Tasty Travels' collapse. That is a smaller loss than it first appears, because the reference does not appear to urgency-sort its own tray — its collapsed column is not a top-2 by anything. Copying its collapse while sorting differently was reproducing the mechanism without the reason for it.
 
 **8.3 Row 4 alignment in the reference (§1.3).** The single leftover tile sat in column 3, not column 1. Trailing-aligned final row, non-row-major fill, or an artefact of that tile's sort position — unresolved, and worth one more look at a longer capture before copying it.
 

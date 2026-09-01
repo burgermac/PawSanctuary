@@ -259,10 +259,12 @@ let trayBandHeight = trayViewportH + trayPanelPadV * 2
 /// means keeping two layouts in sync and losing the scroll position across the
 /// transition.
 ///
-/// Column 3 surviving is a deliberate copy of the reference rather than the
-/// better-reasoned choice: it means the two tiles visible at rest are whatever
-/// happens to sit in the trailing column. See spec §8.2 — tile ordering is
-/// still open, and it is ordering that decides what a player sees by default.
+/// **Column 1 survives, where the reference keeps column 3** (spec §3.1,
+/// reversed by §8.6). Tiles are urgency-sorted, so the collapsed pair is
+/// positions 1 and 4 — the two most wanting attention. Keeping column 3 put
+/// positions 3 and 6 on screen, which meant a claimable, badged tile could sit
+/// invisible while the tray was shut; the sort and the reference's collapse
+/// were individually reasonable and jointly wrong.
 struct TaskTrayView: View {
     var viewModel: MergeBoardViewModel
     @Binding var activeSheet: TaskSheet?
@@ -348,9 +350,16 @@ struct TaskTrayView: View {
         }
         .coordinateSpace(.named(scrollSpace))
         .frame(width: trayGridWidth, height: trayViewportH)
-        // Narrowing the frame with `.trailing` alignment is what keeps column
-        // 3 on screen when shut: the grid holds its full three-column width
-        // and overflows, aligned so its trailing edge meets the frame's.
+        // Narrowing the frame with `.leading` alignment is what keeps column 1
+        // on screen when shut: the grid holds its full three-column width and
+        // overflows past the clip on the trailing side.
+        //
+        // Column 1, not the reference's column 3 (spec §3.1, reversed by §8.6).
+        // Tiles are urgency-sorted, so position 1 is the thing most wanting
+        // attention; collapsing to column 3 showed positions 3 and 6 and put
+        // the badged, claimable tile off screen — the sort was defeated in the
+        // state the tray is in most of the time. Column 1 makes the resting
+        // pair positions 1 and 4.
         //
         // This deliberately does NOT use `.offset`. An offset moves rendering
         // only -- layout and hit-testing stay where they were -- so the
@@ -358,7 +367,7 @@ struct TaskTrayView: View {
         // target sat two columns to the right, and the invisible column 2
         // target answered touches over the visible tile. Frame alignment moves
         // the layout, so touches land where the tile is drawn.
-        .frame(width: isExpanded ? trayGridWidth : trayTileSize, alignment: .trailing)
+        .frame(width: isExpanded ? trayGridWidth : trayTileSize, alignment: .leading)
         .clipped()
         // `.clipped()` clips drawing but not hit-testing, which would leave the
         // off-screen columns still touchable beside the collapsed tray.
