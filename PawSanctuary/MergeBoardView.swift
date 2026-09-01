@@ -59,6 +59,14 @@ struct MergeBoardView: View {
 
     let cellSpacing: CGFloat = 4
 
+    /// Height of every element in the HUD currency row, pinned rather than left
+    /// intrinsic so the row's height is a stated number the task tray can
+    /// budget against (Spec_TaskTrayRedesign_Draft.md 2.2 — the row was ~51pt
+    /// when its tallest child ran to three lines, and the tray needs the
+    /// difference). Also keeps the pills aligned with each other regardless of
+    /// which ones are currently showing their optional trailing text.
+    let hudPillHeight: CGFloat = 32
+
     var body: some View {
         gameBody
             .task { viewModel.loadGame() }
@@ -387,6 +395,106 @@ struct MergeBoardView: View {
         NotificationManager.shared.scheduleReengagement()
     }
 
+    // MARK: HUD
+
+    /// Level ring + number, and the entry point to `ProfileView` — which is
+    /// where the Rescued and Ambassador counters moved to when this row was
+    /// flattened to one line (Spec_TaskTrayRedesign_Draft.md, Task 6.1).
+    private var levelBadge: some View {
+        Button(action: { activeRoute = .profile }) {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.93, green: 0.97, blue: 0.93))
+                Circle()
+                    .stroke(Color(red: 0.08, green: 0.38, blue: 0.15).opacity(0.18), lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: viewModel.xpProgressFraction)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color(red: 0.30, green: 0.70, blue: 0.40),
+                                     Color(red: 0.20, green: 0.55, blue: 0.30)],
+                            startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.35), value: viewModel.xpProgressFraction)
+                Text("\(viewModel.playerLevel)")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(Color(red: 0.20, green: 0.45, blue: 0.28))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                    .padding(3)
+            }
+            .frame(width: hudPillHeight, height: hudPillHeight)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var kibblePill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: 13))
+                .foregroundColor(Color(red: 0.28, green: 0.15, blue: 0.02))
+            Text(viewModel.kibbleDisplayText)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(viewModel.kibble == 0
+                                 ? Color(red: 0.75, green: 0.15, blue: 0.10)
+                                 : Color(red: 0.15, green: 0.15, blue: 0.15))
+            if viewModel.kibble < kibbleRegenCap {
+                Text(viewModel.kibbleStatusText)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.kibble < kibbleRegenCap)
+        .lineLimit(1)
+        .padding(.horizontal, 9)
+        .frame(height: hudPillHeight)
+        .background(RoundedRectangle(cornerRadius: 10)
+            .fill(Color(red: 1.0, green: 0.97, blue: 0.90)))
+    }
+
+    /// Coins keep the centre slot they had in the old three-line stack.
+    private var coinPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "dollarsign.circle.fill")
+                .font(.system(size: 13))
+                .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
+            Text("\(viewModel.coins)")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
+                // Coin balances run to six figures late-game; shrink rather
+                // than push the dog-tag pill off the row.
+                .minimumScaleFactor(0.7)
+        }
+        .lineLimit(1)
+        .padding(.horizontal, 9)
+        .frame(height: hudPillHeight)
+        .background(RoundedRectangle(cornerRadius: 10)
+            .fill(Color(red: 1.0, green: 0.96, blue: 0.85)))
+    }
+
+    private var dogTagPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "tag.fill")
+                .font(.system(size: 13))
+                .foregroundColor(viewModel.isPassActive
+                                 ? Color(red: 0.6, green: 0.2, blue: 0.8)
+                                 : Color(red: 0.20, green: 0.40, blue: 0.65))
+            Text("\(viewModel.dogTags)")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Color(red: 0.15, green: 0.15, blue: 0.15))
+                .minimumScaleFactor(0.7)
+        }
+        .lineLimit(1)
+        .padding(.horizontal, 9)
+        .frame(height: hudPillHeight)
+        .background(RoundedRectangle(cornerRadius: 10)
+            .fill(viewModel.isPassActive
+                  ? Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.12)
+                  : Color(red: 0.92, green: 0.95, blue: 1.0)))
+    }
+
     // MARK: Game scroll content
 
     /// Top-level game layout — fixed, non-scrolling.
@@ -394,103 +502,48 @@ struct MergeBoardView: View {
         VStack(spacing: 0) {
             // ── Fixed header ──────────────────────────────────────
             VStack(spacing: 6) {
-                // Currency bar + Shop button
+                // Currency bar + Shop button.
+                //
+                // Single row, every element one line tall
+                // (Spec_TaskTrayRedesign_Draft.md, Task 6.1). This used to be
+                // three lines deep -- the kibble regen countdown sat under the
+                // kibble count, "Dog Tags"/"Pass Active" under the tag count,
+                // and a three-line Rescued/Ambassadors/coins stack in the
+                // middle. That stack set the row's height at ~51pt. The task
+                // tray that replaces TaskStripView needs ~19pt of that back,
+                // and the board is already at its constraint crossover (see
+                // the spec's 2.1), so there is nowhere else to take it from.
+                //
+                // Where the displaced content went:
+                //   Rescued, Ambassadors -> ProfileView, via the level badge
+                //   "Dog Tags" label     -> dropped; the icon carries it
+                //   "Pass Active"        -> the tag pill's tint, as before
+                //   regen countdown      -> kept, inline in the kibble pill
+                //
+                // The countdown stays because kibble gates play: knowing the
+                // next tick is 20 seconds out rather than four minutes changes
+                // whether you wait, and that is a decision made at a glance.
                 HStack(spacing: 6) {
-                    // Kibble card
-                    HStack(spacing: 6) {
-                        Image(systemName: "pawprint")
-                            .font(.title3)
-                            .foregroundColor(Color(red: 0.28, green: 0.15, blue: 0.02))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(viewModel.kibbleDisplayText)
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(viewModel.kibble == 0
-                                                 ? Color(red: 0.75, green: 0.15, blue: 0.10)
-                                                 : Color(red: 0.15, green: 0.15, blue: 0.15))
-                            if viewModel.kibble < kibbleRegenCap {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 8, weight: .semibold))
-                                    Text(viewModel.kibbleStatusText)
-                                        .font(.system(size: 10, weight: .semibold))
-                                }
-                                .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            }
-                        }
-                        .animation(.easeInOut(duration: 0.2), value: viewModel.kibble < kibbleRegenCap)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(red: 1.0, green: 0.97, blue: 0.90)))
+                    levelBadge
 
-                    Spacer()
+                    Spacer(minLength: 4)
 
-                    // Centre stats
-                    VStack(spacing: 2) {
-                        Text("Rescued: \(viewModel.rescueCount)")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        (Text(Image(systemName: "medal.fill")) + Text(" Amb: \(viewModel.ambassadors)"))
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
-                        HStack(spacing: 3) {
-                            Image(systemName: "dollarsign.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
-                            Text("\(viewModel.coins)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
-                        }
-                    }
+                    kibblePill
+                    coinPill
+                    dogTagPill
 
-                    Spacer()
-
-                    // Dog Tags card
-                    HStack(spacing: 6) {
-                        Image(systemName: "tag.fill")
-                            .font(.title3)
-                            .foregroundColor(Color(red: 0.20, green: 0.40, blue: 0.65))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(viewModel.dogTags)")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(Color(red: 0.15, green: 0.15, blue: 0.15))
-                            if viewModel.isPassActive {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "medal.fill")
-                                        .font(.system(size: 8))
-                                        .foregroundColor(Color(red: 0.6, green: 0.2, blue: 0.8))
-                                    Text("Pass Active")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundColor(Color(red: 0.6, green: 0.2, blue: 0.8))
-                                }
-                            } else {
-                                Text("Dog Tags")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.40))
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 12)
-                        .fill(viewModel.isPassActive
-                              ? Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.12)
-                              : Color(red: 0.92, green: 0.95, blue: 1.0)))
+                    Spacer(minLength: 4)
 
                     // Shop button — hidden until the D7 monetization gate flips
                     // (Task 3.4): a fresh account sees no store push at all.
                     if viewModel.isMonetizationUnlocked {
                         Button(action: { activeRoute = .shop }) {
-                            VStack(spacing: 2) {
-                                Image(systemName: "cart.fill")
-                                    .font(.system(size: 18))
-                                Text("Shop")
-                                    .font(.system(size: 9, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10).padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
+                            Image(systemName: "cart.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .frame(width: 30, height: 30)
+                                .background(RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(red: 0.3, green: 0.5, blue: 0.7)))
                         }
                     }
                     #if DEBUG
@@ -504,16 +557,12 @@ struct MergeBoardView: View {
                     // real progression (or this button itself) flips the gate.
                     if !viewModel.isMonetizationUnlocked {
                         Button(action: { viewModel.unlockMonetizationForTesting() }) {
-                            VStack(spacing: 2) {
-                                Image(systemName: "lock.open.fill")
-                                    .font(.system(size: 18))
-                                Text("Unlock")
-                                    .font(.system(size: 9, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10).padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(red: 0.55, green: 0.25, blue: 0.75)))
+                            Image(systemName: "lock.open.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .frame(width: 30, height: 30)
+                                .background(RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(red: 0.55, green: 0.25, blue: 0.75)))
                         }
                     }
                     #endif
@@ -604,6 +653,19 @@ struct MergeBoardView: View {
         switch route {
         case .shop:
             ShopView(storeManager: storeManager, viewModel: viewModel)
+        case .profile:
+            NavigationStack {
+                ScrollView { ProfileView(viewModel: viewModel) }
+                .navigationTitle("Profile")
+                #if !os(macOS)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { activeRoute = nil }
+                    }
+                }
+                #endif
+            }
         case .task(.event(let eventID)):
             if let event = viewModel.activeEvents.first(where: { $0.id == eventID }) {
                 EventSheetView(viewModel: viewModel, event: event, storeManager: storeManager)
@@ -697,6 +759,12 @@ struct MergeBoardView: View {
                         let isDragging  = viewModel.draggingFrom == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
+                        // Producer affordance shimmer (Spec_BoardAnimation_Draft.md
+                        // §5) — computed here, not inside CellView, so CellView
+                        // stays a plain-value view with no view-model dependency.
+                        let isSpawnerAffordable = cell.producer?.species.map {
+                            viewModel.canAffordSpawnerTap(species: $0)
+                        } ?? false
 
                         ZStack {
                             CellView(
@@ -709,7 +777,8 @@ struct MergeBoardView: View {
                                 cellSize: cellSize,
                                 unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
                                 isLeapSource: viewModel.leapSourceCell == pos,
-                                mergeHintOffset: mergeHintOffset
+                                mergeHintOffset: mergeHintOffset,
+                                isFamilySpawnerAffordable: isSpawnerAffordable
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             // Drag ghost — animal or producer icon follows the finger
@@ -731,6 +800,13 @@ struct MergeBoardView: View {
                             }
                         }
                         .frame(width: cellSize, height: cellSize)
+                        // Lets the merge overshoot spring (CellView's
+                        // `isAnimating` scale, up to 1.5x) breach into
+                        // neighbouring cells instead of being clipped by
+                        // whichever sibling draws after it — matches the
+                        // reference's deliberate cell-bounds breach at peak
+                        // overshoot (Spec_BoardAnimation_Draft.md §1).
+                        .zIndex(viewModel.animatingCell == pos ? 5 : 0)
                         .onTapGesture {
                             if viewModel.isActiveBubble(at: pos) {
                                 activeRoute = .bubblePop(pos)
@@ -1518,6 +1594,7 @@ private struct SellAnimalButton: View {
 
 private enum SheetRoute: Identifiable, Equatable {
     case shop
+    case profile
     case task(TaskSheet)
     case kibbleRefill
     case mergeProgression(String)
@@ -1526,6 +1603,7 @@ private enum SheetRoute: Identifiable, Equatable {
     var id: String {
         switch self {
         case .shop:                       return "shop"
+        case .profile:                    return "profile"
         case .task(let t):                return "task-\(t.id)"
         case .kibbleRefill:               return "kibbleRefill"
         case .mergeProgression(let cid):  return "progression-\(cid)"
