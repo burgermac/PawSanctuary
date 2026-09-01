@@ -538,10 +538,18 @@ private struct SpawnerPuff: Identifiable {
     let originY = CGFloat.random(in: -0.22...0.22)
     /// Upward drift and slight horizontal wander, in points at `size == 62`
     /// (the cell default); scaled by `size / 62` at render time.
-    let drift = CGFloat.random(in: 8...14)
-    let wander = CGFloat.random(in: -4...4)
-    let duration = Double.random(in: 0.5...0.8)
-    let delay = Double.random(in: 0...0.6)
+    let drift = CGFloat.random(in: 14...22)
+    let wander = CGFloat.random(in: -5...5)
+    /// Slow on purpose. At the original 0.5–0.8s a mote completed its whole
+    /// rise in about half a second, which the eye reads as a blink rather than
+    /// as something drifting — the motion was over before it registered as
+    /// motion. A ~3s cycle over a slightly longer travel is what makes it
+    /// legible as drift.
+    let duration = Double.random(in: 2.6...3.6)
+    /// Spread wide enough that three motes never pulse together; at the old
+    /// 0–0.6s against a 0.65s cycle they were effectively in phase, so the
+    /// tile brightened and dimmed as a unit.
+    let delay = Double.random(in: 0...2.4)
 }
 
 /// Continuous "you can afford to tap this" shimmer over a family spawner —
@@ -600,9 +608,17 @@ private struct SpawnerPuffView: View {
                 y: size * puff.originY - (risen ? puff.drift * scale : 0)
             )
             .onAppear {
+                // autoreverses, where this used to hard-cut. With
+                // `autoreverses: false` the mote snapped from fully risen and
+                // invisible back to its origin at 0.9 opacity between cycles,
+                // with no interpolation across that boundary — an instant
+                // bright pop every cycle. That discontinuity, not the speed
+                // alone, is what made the effect flash. Reversing means the
+                // mote settles back down as gently as it rose and there is no
+                // seam anywhere in the loop.
                 withAnimation(
                     .easeInOut(duration: puff.duration)
-                        .repeatForever(autoreverses: false)
+                        .repeatForever(autoreverses: true)
                         .delay(puff.delay)
                 ) {
                     risen = true
