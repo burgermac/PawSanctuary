@@ -363,13 +363,47 @@ enum GameStore {
 
     // MARK: Storage locations
 
-    /// `Application Support/PawSanctuary/` (created on demand).
+    /// Redirects the save files somewhere else entirely. Nil in the app.
+    ///
+    /// The seam exists for tests that want a directory of their own; the
+    /// blanket protection below means no suite has to remember to use it.
+    ///
+    /// nonisolated(unsafe): same reasoning as `discardedIncompatibleVersion`
+    /// above — set once from the test's own thread before any save runs.
+    nonisolated(unsafe) static var folderOverride: URL? = nil
+
+    /// True when XCTest is loaded into the process.
+    ///
+    /// The test bundle's host is the app itself, so tests run inside the app's
+    /// own container and reach for the same Application Support path the real
+    /// game uses. `PersistenceTests` clears that path in both `setUp` and
+    /// `tearDown` — its own tearDown comment calls it "the shared store" — so
+    /// running the suite wiped whatever game was on the Simulator.
+    ///
+    /// That is not just a lost save. It manufactures states that look exactly
+    /// like production bugs: a board that comes back empty with currencies it
+    /// never earned reads as a broken migration, and costs real time to rule
+    /// out. This project verifies features by playing them on screen, so a
+    /// test run and a manual check could not coexist.
+    private static var isRunningUnderTests: Bool {
+        NSClassFromString("XCTestCase") != nil
+    }
+
+    /// `Application Support/PawSanctuary/` (created on demand), or a sandbox
+    /// beside it under test.
     private static var folderURL: URL {
+        if let folderOverride { return folderOverride }
         let base = (try? FileManager.default.url(for: .applicationSupportDirectory,
                                                  in: .userDomainMask,
                                                  appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent("PawSanctuary", isDirectory: true)
+        let root = base.appendingPathComponent("PawSanctuary", isDirectory: true)
+        // Structural rather than behavioural: a new suite cannot reintroduce
+        // the problem by forgetting to opt in, and tests keep the real
+        // filenames so the migration cases that plant raw files still work.
+        return isRunningUnderTests
+            ? root.appendingPathComponent("TestSandbox", isDirectory: true)
+            : root
     }
     /// Internal (not private) so unit tests can plant/inspect files.
     static var mainFileURL:   URL { folderURL.appendingPathComponent("gameState.json") }

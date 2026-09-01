@@ -91,6 +91,18 @@ All fixed: scheme wiring, deployment target, the 9 compile errors, and 7 further
 
 - [x] **RESOLVED (commit `fdf02df`, 4 Aug 2026) — stale entry, already fixed before this line was next reviewed.** ~~`RescueStage` is vestigial but still drives live quest generation... quests can only ever target the bottom 9 tiers... Tiers 9–14 unreachable~~. Two things had changed since this was written that this entry never caught up to: the animal chains themselves were cut from 15 tiers to 12 (`animalChainTopTier = 11`) in an earlier pass, and separately, `fdf02df` ("Extend quest pools to reach tiers 9-11, closing the endgame quest gap") added direct `reachTier` goals for tiers 9/10/11 ("Mythic"/"Ancient"/"Primordial") to both the legendary quest pool and the hard/legendary daily-challenge pool in `QuestCoordinator.swift`, alongside the pre-existing `RescueStage`-derived entries for tiers 0–8. `PawSanctuaryTests/QuestCoordinatorTests.swift` covers it, including a 2000-iteration statistical reachability check at max player level confirming all three top tiers actually get generated, not just theoretically present in the pool. `RescueStage` itself is still vestigial/legacy — it just isn't blocking anything anymore. Verified current on 13 Aug 2026 (also independently confirmed in `specs/Gap_Analysis_Round2.md` as closed item C-10).
 
+### `xcodebuild test` wiped the Simulator's real save — FIXED 31 Aug 2026
+
+The test bundle's host is the app itself, so tests ran inside the app's own container and `GameStore.folderURL` handed them the same `Application Support/PawSanctuary/` path the real game uses. `PersistenceTests` calls `GameStore.clear()` in both `setUp` and `tearDown` — its own tearDown comment called it "the shared store" — so **every test run deleted whatever game was on the Simulator.**
+
+Worse than a lost save: it manufactured states that look exactly like production bugs. Found while verifying the task tray, when a board came back empty with currencies it had never earned — which reads as a broken migration and takes real time to rule out. It also meant a test run and a manual on-screen check could not coexist, which this project's own verification practice depends on.
+
+Fixed in `GameStore.folderURL`: under XCTest the path gains a `TestSandbox/` component, so tests keep the real filenames (the migration cases that plant raw files still work) but never touch the real save. A `folderOverride` seam sits alongside it for tests that want a directory of their own. Deliberately structural rather than behavioural — a new suite cannot reintroduce this by forgetting to opt in.
+
+Verified by hashing `gameState.json` either side of a full run: unchanged, its mtime predating the run, with `TestSandbox/` created during it. 504/504 pass.
+
+**Related, already fixed separately:** the write-ordering race below. Tests sharing one global save path is what made that race reachable in the first place; this change removes the shared path.
+
 ### Background save was fire-and-forget at suspension time — FIXED 26 July 2026
 
 The `GameStore.save()`/`load()` race hit by 3 tests above wasn't only a test-timing artefact. `MergeBoardView.swift` handled `.background`/`.inactive` by calling `viewModel.persist()` under a "Flush save" comment, but `GameStore.save()`/`saveAndSync()` are `Task.detached(priority: .utility)` — a low-QoS task started as iOS suspends the process, with no background-task assertion protecting it. Not a flush; a request that might never be scheduled. Saves made in the final moments of a session could be silently lost.
