@@ -110,6 +110,14 @@ Taken in review 31 Aug 2026. Recorded here because several deviate from the refe
 
 **3.10 Coins stay in the HUD, centre, on the same row as kibble and dog tags.** The three currency pills read left-to-right as kibble · coins · dog tags.
 
+**3.11 Countdowns render as a depleting bar, with no text.** Decided 31 Aug 2026, resolving §8.1 — option 3 of the three that section offered. This keeps every tile a uniform 40pt and avoids the abbreviation compromise, at the cost of the two consequences below.
+
+*Denominators exist.* A bar needs the full interval where text needed only the remainder. Both countdown tiles can supply one: Free Chest from `freeChestCooldownHours` (`AnimalSpecies.swift:2000`), events from `EventDefinition.startDate`/`endDate` (`EventSystem.swift:42-43`). Verified before adopting.
+
+*Accepted consequence — a bar has no scale.* Two-thirds full reads identically whether the timer runs four hours or seven days, and a seven-day bar barely moves between sessions. The mitigation is that the tile's icon identifies which tracker it is, so the player knows the scale from what they are looking at, and the exact figure is one tap away in the sheet. Worth revisiting if playtesting shows people mis-reading long timers as stalled.
+
+*Countdown bars are tinted differently from progress bars* so "time draining away" and "progress earned" are not the same visual language on adjacent tiles.
+
 ---
 
 ## 4. Target layout
@@ -194,7 +202,7 @@ One per session, per the project working rules. Each must leave the game playabl
 
 ## 8. Open questions
 
-**8.1 Countdown legibility at 40pt (§2.4).** Abbreviate to ≤4 characters, spend the 18pt headroom on an external pill, or drop to a bar. Recommendation is abbreviate. **Blocks 6.2.**
+**8.1 Countdown legibility at 40pt (§2.4).** ~~Abbreviate to ≤4 characters, spend the 18pt headroom on an external pill, or drop to a bar. Recommendation is abbreviate. **Blocks 6.2.**~~ — **Resolved 31 Aug 2026: depleting bar, no text.** Option 3 was taken over this section's own recommendation. See §3.11 for the decision and the two consequences accepted with it.
 
 **8.2 Tile ordering.** With collapse keeping column 3 (§3.1), the two tiles visible at rest are whatever sits in the trailing column at the current scroll offset. Ordering therefore decides what a player sees by default. Fixed order, or sorted by urgency? Note that sorting by urgency makes the resting pair change under the player, which may read as instability. **Blocks 6.4.**
 
