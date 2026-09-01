@@ -404,20 +404,62 @@ struct TaskTrayView: View {
 
     // MARK: Tiles
 
-    /// Every tile the tray can show (spec §5 rows 1–14). Ambassador trios and
-    /// the Pass daily claim — the two that are not trackers — land in Task 6.5.
+    /// Every tile the tray can show (spec §5).
     ///
     /// Declaration order here is the tiebreak, so it doubles as the resting
     /// order when nothing is urgent. Keep it stable.
     ///
-    /// The conditionals come first within their rank because they are the
-    /// transient ones: an event or a Parallel Board window closes, while the
-    /// weekly goal will still be there tomorrow.
+    /// Three groups, in order. The two **claim** tiles first — they are pure
+    /// "collect this", they always rank `.claimable`, and they vanish the
+    /// moment they are used. Then the **conditionals**, transient because an
+    /// event or a Parallel Board window closes. Then the **standing**
+    /// trackers, which will still be there tomorrow.
     private var catalogue: [TrayTile] {
-        eventTiles
+        ([passDailyTile].compactMap { $0 } + trioTiles)
+        + eventTiles
         + [parallelBoardTile, rewardLadderTile, loyaltyTile, inviteTile].compactMap { $0 }
         + [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
            smileTile, careTile, weeklyTile, monthlyTile]
+    }
+
+    // MARK: Claim tiles (Task 6.5)
+
+    /// The Sanctuary Pass daily kibble.
+    ///
+    /// This used to be `PassDailyClaimView`, an entire conditional strip
+    /// inserted between the HUD and the board. That was fine when the band
+    /// below was a scrolling strip; it is not fine now that the band is a
+    /// fixed height the board is budgeted against (spec §2), because the strip
+    /// appearing would have pushed the board down every time the claim came
+    /// up. As a tile it costs nothing — the grid already scrolls.
+    private var passDailyTile: TrayTile? {
+        guard viewModel.canClaimPassDaily else { return nil }
+        return TrayTile(
+            id: "passDaily",
+            icon: "medal.fill",
+            tint: Color(red: 0.6, green: 0.2, blue: 0.8),
+            status: .label("+\(passDailyKibble)"),
+            showsBadge: true,
+            accessibilityText: "Sanctuary Pass daily kibble, \(passDailyKibble) to claim",
+            action: { viewModel.claimPassDaily() })
+    }
+
+    /// One per exchangeable ambassador trio. The only tiles that act on the
+    /// board rather than opening something, so tapping one claims it outright
+    /// — which is also why they carry no progress: a trio either exists and is
+    /// worth coins, or it is not in the list at all.
+    private var trioTiles: [TrayTile] {
+        viewModel.exchangeableTrios.map { trio in
+            TrayTile(id: "trio-\(trio.id)",
+                     icon: "medal.fill",
+                     tint: Color(red: 0.85, green: 0.55, blue: 0.08),
+                     status: .label("×\(trio.positions.count)"),
+                     showsBadge: true,
+                     accessibilityText: "Exchange \(trio.positions.count) ambassador "
+                                      + "\(trio.species.name) for "
+                                      + "\(viewModel.ambassadorTrioValue(trio)) coins",
+                     action: { viewModel.exchangeAmbassadorTrio(trio) })
+        }
     }
 
     /// Sorted by urgency (spec §3.12).

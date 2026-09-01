@@ -202,6 +202,14 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **6.5 — Migrate the two irregular tiles.** `AmbassadorTrioTaskCard` → tray button tile (§3.8). `PassDailyClaimView` → tray tile; it currently inserts an entire conditional strip at `MergeBoardView.swift:524-528` that would break the fixed band height whenever it appears.
 
+> **Done.** Both old views were deleted rather than left dead, since nothing else referenced them.
+>
+> Claim tiles sort ahead of everything within a rank — they always rank `.claimable`, are pure "collect this", and disappear the moment they are used.
+>
+> **Neither could be verified on screen, for different reasons.** Ambassador trios need three top-tier animals of one species on the board, which is real play rather than a state that can be arranged. The Pass daily needs an active Sanctuary Pass, and `isPassActive` turns out to be **derived from StoreKit entitlements, not persisted** — `StoreManager.checkPassEntitlement()` runs on init and `MergeBoardView.swift:300` syncs it across. Editing the save cannot fake it, and it is correct that it cannot: the entitlement is the source of truth and a persisted copy would be forgeable. **Do not "fix" this by adding `isPassActive` to `GameState`.** Seeing the tile needs a StoreKit purchase under a proper Xcode Run, which `TODO.md` already records as outstanding for the Reward Ladder.
+>
+> What was confirmed: removing the Pass strip leaves the header at one row and the band at its fixed height, so the layout no longer shifts when a claim comes up — the reason this migration mattered beyond tidiness.
+
 **6.6 — Build the order lane.** One card per `AdoptionOrder` plus the urgent order, replacing the single `AdoptionOrdersTaskCard`. Reuses the per-line basket rendering already shipped in `Spec_OrdersAndTasks_Draft.md` §1.
 
 **6.7 — Delete the old surfaces.** `TaskStripView` (`PanelViews.swift:2011-2100`), `RetireProducerTaskCard` (§3.7), `MergeBoardViewModel.retirableProducers` (`:703-721`), and the `taskCardWidth` / `taskCardHeight` constants (`PanelViews.swift:1227-1228`).

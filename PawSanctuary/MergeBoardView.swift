@@ -577,13 +577,12 @@ struct MergeBoardView: View {
                 }
                 .padding(.horizontal)
 
-                // Pass daily claim strip
-                if viewModel.canClaimPassDaily {
-                    PassDailyClaimView(viewModel: viewModel)
-                        .padding(.horizontal)
-                        .transition(.opacity)
-                }
-
+                // The Pass daily claim is a tray tile now
+                // (Spec_TaskTrayRedesign_Draft.md, Task 6.5). It used to be an
+                // entire strip inserted here, which would have pushed the
+                // board down every time the claim came up — tolerable when the
+                // band below scrolled, not once it became a fixed height the
+                // board is budgeted against.
             }
             .padding(.top, 8)
 
@@ -1129,44 +1128,6 @@ private struct AmbassadorCollectionQuestCard: View {
                 .strokeBorder(ready ? Color(red: 0.72, green: 0.50, blue: 0.05).opacity(0.5)
                                     : Color.clear, lineWidth: 1.5)
         )
-    }
-}
-
-// ============================================================
-// MARK: - PASS DAILY CLAIM STRIP
-// ============================================================
-
-private struct PassDailyClaimView: View {
-    let viewModel: MergeBoardViewModel
-
-    var body: some View {
-        Button(action: { viewModel.claimPassDaily() }) {
-            HStack(spacing: 8) {
-                Image(systemName: "medal.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(Color(red: 0.6, green: 0.2, blue: 0.8))
-                Text("Sanctuary Pass — Daily Kibble")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(red: 0.35, green: 0.10, blue: 0.55))
-                Spacer()
-                HStack(spacing: 3) {
-                    Image(systemName: "pawprint.fill").font(.system(size: 10))
-                    Text("+\(passDailyKibble)").font(.system(size: 12, weight: .bold))
-                }
-                .foregroundColor(Color(red: 0.25, green: 0.55, blue: 0.35))
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 10)
-                .fill(Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.08))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.25), lineWidth: 1)
-                ))
-        }
     }
 }
 

@@ -2036,17 +2036,14 @@ struct TaskStripView: View {
                 // events, Parallel Board, Reward Ladder, Loyalty and Invite in
                 // 6.4 (Spec_TaskTrayRedesign_Draft.md).
                 //
-                // What is left is the two non-trackers, which follow in 6.5,
-                // and the orders, which become their own lane in 6.6 -- at
-                // which point this view goes away entirely (6.7).
+                // Ambassador trios moved to the tray in 6.5. What is left is
+                // the orders, which become their own lane in 6.6 -- at which
+                // point this view goes away entirely (6.7) along with
+                // RetireProducerTaskCard, which is deleted rather than moved
+                // (spec §3.7: dragging a producer to storage is already the
+                // real retirement path, so this card is only a nudge).
                 AdoptionOrdersTaskCard(viewModel: viewModel)
                     .onTapGesture { activeSheet = .adoptionOrders }
-                ForEach(viewModel.exchangeableTrios) { trio in
-                    AmbassadorTrioTaskCard(trio: trio,
-                                           coinValue: viewModel.ambassadorTrioValue(trio)) {
-                        viewModel.exchangeAmbassadorTrio(trio)
-                    }
-                }
                 ForEach(viewModel.retirableProducers) { retirable in
                     RetireProducerTaskCard(retirable: retirable) {
                         viewModel.retireProducer(at: retirable.position)
@@ -2066,72 +2063,6 @@ struct TaskStripView: View {
         // it down into a fraction of the screen. Pin the height explicitly so
         // the strip hugs its content again and the board gets the rest.
         .frame(height: taskCardHeight + 12)
-    }
-}
-
-// ============================================================
-// MARK: - AMBASSADOR TRIO EXCHANGE TASK CARD
-// ============================================================
-
-struct AmbassadorTrioTaskCard: View {
-    let trio: ExchangeableTrio
-    /// Phase 2c: derived from the trio's sell value rather than a flat constant,
-    /// so the card can't advertise a number the exchange no longer pays.
-    let coinValue: Int
-    let onClaim: () -> Void
-
-    var body: some View {
-        Button(action: onClaim) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 5) {
-                    Image(systemName: "medal.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(red: 0.85, green: 0.68, blue: 0.08))
-                    Text("Trio Exchange")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(red: 0.55, green: 0.40, blue: 0.05))
-                    Spacer()
-                    // "×3" badge
-                    Text("×3")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(red: 0.85, green: 0.55, blue: 0.08)))
-                }
-
-                Text("Ambassador \(trio.species.name)")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 4) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(red: 0.55, green: 0.35, blue: 0.02))
-                    Text("+\(coinValue) coins")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
-                    Spacer()
-                    Text("Claim")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color(red: 0.55, green: 0.40, blue: 0.05))
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(width: taskCardWidth, height: taskCardHeight, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(red: 1.0, green: 0.97, blue: 0.82))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color(red: 0.85, green: 0.68, blue: 0.08).opacity(0.55),
-                                      lineWidth: 1.5))
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 
