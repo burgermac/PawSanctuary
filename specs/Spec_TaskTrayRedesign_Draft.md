@@ -118,6 +118,12 @@ Taken in review 31 Aug 2026. Recorded here because several deviate from the refe
 
 *Countdown bars are tinted differently from progress bars* so "time draining away" and "progress earned" are not the same visual language on adjacent tiles.
 
+**3.12 Tiles are sorted by urgency.** Decided 31 Aug 2026, resolving §8.2. Because collapse keeps column 3 (§3.1), the two tiles visible at rest are whichever sit in the trailing column — so ordering is what decides the default view, not a cosmetic preference.
+
+*The instability §8.2 warned about is handled by sorting into coarse buckets, not on a continuous score.* Four ranks — something to collect, a window closing, progress under way, idle — with ties broken by a fixed catalogue order. A tile therefore only moves when it crosses a bucket boundary, which is a real change of state worth showing, rather than drifting every time a bar ticks. A continuous sort would have reshuffled the tray under the player's thumb.
+
+*"Something to collect" is the badge*, so the rank and the red dot can never disagree — one derives from the other.
+
 ---
 
 ## 4. Target layout
@@ -208,7 +214,20 @@ One per session, per the project working rules. Each must leave the game playabl
 
 **8.1 Countdown legibility at 40pt (§2.4).** ~~Abbreviate to ≤4 characters, spend the 18pt headroom on an external pill, or drop to a bar. Recommendation is abbreviate. **Blocks 6.2.**~~ — **Resolved 31 Aug 2026: depleting bar, no text.** Option 3 was taken over this section's own recommendation. See §3.11 for the decision and the two consequences accepted with it.
 
-**8.2 Tile ordering.** With collapse keeping column 3 (§3.1), the two tiles visible at rest are whatever sits in the trailing column at the current scroll offset. Ordering therefore decides what a player sees by default. Fixed order, or sorted by urgency? Note that sorting by urgency makes the resting pair change under the player, which may read as instability. **Blocks 6.4.**
+**8.2 Tile ordering.** ~~Fixed order, or sorted by urgency?~~ — **Resolved 31 Aug 2026: urgency-sorted.** See §3.12.
+
+**8.6 §3.1 and §3.12 pull against each other — the collapsed tray hides the urgent tiles.** Found on screen once both were implemented, 31 Aug 2026.
+
+Urgency sorting puts the most urgent tile at position 1. Collapsing to column 3 shows positions **3 and 6**. So the sort's whole purpose — surface what needs attention — is defeated in exactly the state the tray spends most of its time in. Observed directly: with Free Chest claimable and ranked first with a red badge, the collapsed tray showed Daily Challenges and Spotlight, and the badge was off screen.
+
+The two decisions are individually reasonable and jointly wrong. Four ways out:
+
+1. **Collapse toward column 1** — the resting pair becomes positions 1 and 4, the two most urgent. This was §8.2's original recommendation, rejected in §3.1 in favour of matching the reference. It is the only option where both decisions keep their intent; it costs only fidelity to Tasty Travels, which sorts its own tray differently (its collapsed column is not an urgency top-2 either).
+2. **Fill the grid column-major**, so reading order runs down each column and position 1 lands in column 3. Keeps the reference's collapse, but the expanded grid then reads top-to-bottom-then-across, which no other list in this app does.
+3. **A dedicated collapsed view** showing the top 2 by rank regardless of grid position. Abandons the single-translation model (§1.2) and reintroduces the two-layouts-to-keep-in-sync problem.
+4. **Accept it** — the collapsed tray is a launcher, not a status display, and the player expands it to see what needs doing.
+
+**Recommendation: 1.** It is a two-line change, and it makes the collapsed state answer "what needs me?" instead of "what happens to be third?".
 
 **8.3 Row 4 alignment in the reference (§1.3).** The single leftover tile sat in column 3, not column 1. Trailing-aligned final row, non-row-major fill, or an artefact of that tile's sort position — unresolved, and worth one more look at a longer capture before copying it.
 

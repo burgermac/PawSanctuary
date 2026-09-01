@@ -28,6 +28,12 @@ let trayTileSize: CGFloat = 40
 /// Height of the status strip inset along the bottom of a tile.
 private let trayStatusHeight: CGFloat = 7
 
+/// A countdown at or below this share of its window counts as `.endingSoon`
+/// for ordering (spec §3.12). A threshold rather than a continuous score is
+/// the whole point — it is what stops tiles drifting past each other as bars
+/// tick.
+private let trayEndingSoonFraction: Double = 0.25
+
 // ============================================================
 // MARK: - TILE STATUS
 // ============================================================
@@ -186,6 +192,18 @@ private extension Double {
 // MARK: - TILE MODEL
 // ============================================================
 
+/// How much a tile wants looking at. Coarse on purpose — see `TrayTile.rank`.
+enum TrayUrgency: Int {
+    /// Something is waiting to be collected. Always paired with the badge.
+    case claimable = 0
+    /// A window is about to close.
+    case endingSoon = 1
+    /// Progress is under way but nothing is due.
+    case active = 2
+    /// Nothing is happening here.
+    case idle = 3
+}
+
 /// One entry in the tray. A value plus its tap action, so the grid can be
 /// built as data and the container stays free of per-tracker branching.
 struct TrayTile: Identifiable {
@@ -194,8 +212,13 @@ struct TrayTile: Identifiable {
     let tint: Color
     var status: TrayTileStatus = .none
     var showsBadge: Bool = false
+    var urgency: TrayUrgency = .idle
     let accessibilityText: String
     let action: () -> Void
+
+    /// The badge and the top rank are the same fact, so one derives from the
+    /// other rather than each call site having to keep them in step.
+    var rank: TrayUrgency { showsBadge ? .claimable : urgency }
 }
 
 // ============================================================
@@ -368,9 +391,29 @@ struct TaskTrayView: View {
     /// The always-present trackers (spec §5 rows 1–9). Conditional tiles —
     /// events, Parallel Board, Reward Ladder, Loyalty, Invite, ambassador
     /// trios and the Pass daily claim — land in Task 6.5.
-    private var tiles: [TrayTile] {
+    ///
+    /// Declaration order here is the tiebreak, so it doubles as the resting
+    /// order when nothing is urgent. Keep it stable.
+    private var catalogue: [TrayTile] {
         [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
          smileTile, careTile, weeklyTile, monthlyTile]
+    }
+
+    /// Sorted by urgency (spec §3.12).
+    ///
+    /// Collapse keeps column 3, so the two tiles on screen at rest are
+    /// whichever land in the trailing column — ordering is what decides the
+    /// default view. Sorting is by the four coarse ranks rather than a
+    /// continuous score, with declaration order breaking ties: a tile moves
+    /// only when it crosses a rank boundary, which is a real change of state,
+    /// instead of drifting every time a bar ticks under the player's thumb.
+    private var tiles: [TrayTile] {
+        catalogue.enumerated()
+            .sorted { lhs, rhs in
+                let a = lhs.element.rank.rawValue, b = rhs.element.rank.rawValue
+                return a == b ? lhs.offset < rhs.offset : a < b
+            }
+            .map(\.element)
     }
 
     private var levelTile: TrayTile {
@@ -378,19 +421,25 @@ struct TaskTrayView: View {
                  icon: "star.circle.fill",
                  tint: Color(red: 0.20, green: 0.55, blue: 0.30),
                  status: .progress(viewModel.xpProgressFraction),
+                 urgency: viewModel.xpProgressFraction > 0 ? .active : .idle,
                  accessibilityText: "Level \(viewModel.playerLevel) progress",
                  action: { activeSheet = nil })
     }
 
     private var freeChestTile: TrayTile {
         let total = freeChestCooldownHours * 3600
+        let remaining = viewModel.freeChestTimeRemaining / total
         return TrayTile(id: "freeChest",
                         icon: "shippingbox.fill",
                         tint: Color(red: 0.72, green: 0.52, blue: 0.15),
                         status: viewModel.isFreeChestReady
                                 ? .label("Open")
-                                : .countdown(viewModel.freeChestTimeRemaining / total),
+                                : .countdown(remaining),
                         showsBadge: viewModel.isFreeChestReady,
+                        // A chest nearly off cooldown is worth surfacing before
+                        // it is claimable, so the player sees it coming rather
+                        // than only after it has been sitting there.
+                        urgency: remaining <= trayEndingSoonFraction ? .endingSoon : .idle,
                         accessibilityText: "Free chest",
                         action: { viewModel.claimOrSkipFreeChest() })
     }
@@ -400,6 +449,7 @@ struct TaskTrayView: View {
                  icon: "sparkles",
                  tint: Color(red: 0.78, green: 0.55, blue: 0.10),
                  status: .progress(viewModel.spotlightProgressFraction),
+                 urgency: viewModel.spotlightProgressFraction > 0 ? .active : .idle,
                  accessibilityText: "Spotlight progress",
                  action: { activeSheet = .dailyChallenges })
     }
@@ -414,6 +464,7 @@ struct TaskTrayView: View {
                         tint: Color(red: 0.18, green: 0.48, blue: 0.22),
                         status: .label("\(done)/\(total)"),
                         showsBadge: done > 0,
+                        urgency: .active,
                         accessibilityText: "Quests, \(done) of \(total) complete",
                         action: { activeSheet = .quests })
     }
@@ -426,6 +477,7 @@ struct TaskTrayView: View {
                         tint: Color(red: 0.28, green: 0.44, blue: 0.68),
                         status: .label("\(done)/\(total)"),
                         showsBadge: done > 0,
+                        urgency: .active,
                         accessibilityText: "Daily challenges, \(done) of \(total) complete",
                         action: { activeSheet = .dailyChallenges })
     }
@@ -436,6 +488,7 @@ struct TaskTrayView: View {
                  tint: Color(red: 0.90, green: 0.55, blue: 0.20),
                  status: .progress(Double(viewModel.smilePointsBanked) / Double(smilePointsGoal)),
                  showsBadge: viewModel.isSmileBundleReady,
+                 urgency: viewModel.smilePointsBanked > 0 ? .active : .idle,
                  accessibilityText: "Smile points, \(viewModel.smilePointsBanked) of \(smilePointsGoal)",
                  action: { viewModel.claimSmileBundle() })
     }
@@ -454,6 +507,7 @@ struct TaskTrayView: View {
                         tint: Color(red: 0.80, green: 0.30, blue: 0.35),
                         status: .progress(fraction),
                         showsBadge: !viewModel.claimableCarePointTiers.isEmpty,
+                        urgency: viewModel.carePointsThisWeek > 0 ? .active : .idle,
                         accessibilityText: "Care points, \(viewModel.carePointsThisWeek) this week",
                         action: { activeSheet = .carePoints })
     }
@@ -473,6 +527,7 @@ struct TaskTrayView: View {
                         status: .progress(Double(viewModel.coinsEarnedThisWeek)
                                           / Double(max(1, viewModel.effectiveWeeklyGoldTarget))),
                         showsBadge: claimable,
+                        urgency: viewModel.coinsEarnedThisWeek > 0 ? .active : .idle,
                         accessibilityText: "Weekly goal",
                         action: { activeSheet = .weeklyGoal })
     }
@@ -483,6 +538,7 @@ struct TaskTrayView: View {
                  tint: Color(red: 0.50, green: 0.35, blue: 0.70),
                  status: .label("\(viewModel.weeklyGoldCompletions)/\(viewModel.monthlyGoalWeeksRequired)"),
                  showsBadge: viewModel.monthlyGoalReached,
+                 urgency: viewModel.weeklyGoldCompletions > 0 ? .active : .idle,
                  accessibilityText: "Monthly goal",
                  action: { activeSheet = .monthlyGoal })
     }
