@@ -796,6 +796,7 @@ struct MergeBoardView: View {
                         let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
+
                         ZStack {
                             CellView(
                                 cell: cell,
