@@ -702,9 +702,11 @@ class MergeBoardViewModel {
     /// "you could make it next merge" is the same affordance translated to the
     /// rule this game actually runs.
     ///
-    /// Not cached: it depends on board *and* inventory contents, and it is read
-    /// only while the adoption panel is open — the same reasoning
-    /// `retirableProducers` records for recomputing over caching.
+    /// Not cached: it depends on board *and* inventory contents, either of
+    /// which can change without touching the other, and it is read only while
+    /// the adoption panel is open. Recomputing the scan per access from a
+    /// rarely-open panel is cheaper than keeping a cache honest against two
+    /// independent sources of invalidation.
     var mergeReadyKeys: Set<ChainTierKey> {
         var counts: [ChainTierKey: Int] = [:]
         for cell in flatBoard where cell.isUnlocked {
@@ -858,7 +860,7 @@ class MergeBoardViewModel {
     /// True once `loadGame()` has fully populated the board and every other
     /// piece of session state. `MergeBoardView` gates all real gameplay
     /// content on this — the board (and quite a bit of the rest of the view
-    /// layer, e.g. `retirableProducers`) scans `board[r][c]` for `r`/`c` up to
+    /// layer, e.g. `lockedCells`) scans `board[r][c]` for `r`/`c` up to
     /// `rows`/`cols`, which already hold their real values before `board`
     /// itself is populated; rendering that content one frame too early is an
     /// out-of-bounds crash, not just an empty frame.
