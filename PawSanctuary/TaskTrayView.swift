@@ -661,16 +661,26 @@ struct TaskTrayView: View {
                         action: { activeSheet = .quests })
     }
 
+    /// The daily tasks also have their own cards in the lane
+    /// (`DailyTaskLaneCard`) — this tile stays because the lane scrolls and the
+    /// tile does not, so it is the only always-visible answer to "is anything
+    /// ready to hand in today?". Its badge keys off *claimable*, not claimed:
+    /// a claimed task needs nothing from the player.
     private var dailiesTile: TrayTile {
-        let done = viewModel.dailyChallenges.filter(\.isComplete).count
-        let total = max(1, viewModel.dailyChallenges.count)
+        let claimed = viewModel.dailyChallenges.filter(\.isClaimed).count
+        let total   = max(1, viewModel.dailyChallenges.count)
+        let ready   = viewModel.dailyChallenges.contains {
+            !$0.isClaimed && viewModel.isDailyTaskStocked($0)
+        }
         return TrayTile(id: "dailies",
                         icon: "checklist",
                         tint: Color(red: 0.28, green: 0.44, blue: 0.68),
-                        status: .label("\(done)/\(total)"),
-                        showsBadge: done > 0,
-                        urgency: .active,
-                        accessibilityText: "Daily challenges, \(done) of \(total) complete",
+                        status: .label("\(claimed)/\(total)"),
+                        showsBadge: ready,
+                        urgency: ready ? .claimable : .active,
+                        accessibilityText: ready
+                            ? "Daily tasks, one ready to hand in"
+                            : "Daily tasks, \(claimed) of \(total) handed in",
                         action: { activeSheet = .dailyChallenges })
     }
 

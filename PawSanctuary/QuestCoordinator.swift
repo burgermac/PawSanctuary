@@ -251,7 +251,7 @@ class QuestCoordinator {
 
     // MARK: Daily challenges
 
-    func checkDailyChallengeReset(unlockedChainIDs: [ChainID]) {
+    func checkDailyChallengeReset(unlockedAnimalChainIDs: [ChainID], playerLevel: Int) {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let isSameDay = lastDailyChallengeReset.map {
@@ -263,141 +263,89 @@ class QuestCoordinator {
             lastDailyChallengeReset = today
             dailyChallengeBonusClaimed = false
         }
-        generateDailyChallenges(unlockedChainIDs: unlockedChainIDs)
+        generateDailyChallenges(unlockedAnimalChainIDs: unlockedAnimalChainIDs,
+                                playerLevel: playerLevel)
     }
 
-    // Merge2_Reference_Blueprint.md §5, Gap_Analysis_Round2.md 3.1: daily
-    // challenges are deliberately calibrated so the next is 60-90% complete
-    // the moment the current one finishes -- the near-miss stagger *is* the
-    // mechanic. All three of a day's challenges share one "anchor" goal shape
-    // (the same counted event, e.g. any merge, or a merge in one chosen
-    // chain), so ordinary play toward the easy one pushes medium and hard in
-    // exact lockstep; only the target count differs, chosen so each ratio
-    // lands in [0.6, 0.9] by construction rather than by hoping unrelated
-    // goal types happen to correlate.
-    private enum DailyChallengeAnchor {
-        case mergeAny
-        case spawnBase
-        case mergeInChain(ChainID)
-        case reachTier(ChainCategory, tier: Int)
-        /// D6 (Spec_SpendQuotaDailies.md, Task 3.4) — kibble and dog tags are
-        /// two separate pool entries below, not one entry that then rolls a
-        /// currency, so each gets an equal, independent shot at being picked.
-        case spendCurrency(RewardKind)
+    // ── Daily hand-in tasks (Spec_DailyHandInTasks.md) ──────────────
+    //
+    // These used to be counted-event goals sharing one "anchor" shape, so that
+    // finishing the easy one left the medium one 60-90% done — the deliberate
+    // near-miss stagger of Merge2_Reference_Blueprint.md §5 /
+    // Gap_Analysis_Round2.md 3.1. That stagger is **gone for dailies**, an
+    // explicit override recorded as D-C in Spec_DailyHandInTasks.md: three
+    // baskets of freely-mixed creatures at mixed stages cannot share an anchor,
+    // and the reference titles' own daily tasks do not stagger either. It still
+    // operates on standing quests and on the fixed order-slot difficulty
+    // spread. If it is ever wanted back here, nest the baskets (task 2 ⊃ task
+    // 1) — but note that claiming task 1 then eats task 2's pieces.
 
-        func goal(count: Int) -> QuestGoal {
-            switch self {
-            case .mergeAny:                     return .mergeAny(count: count)
-            case .spawnBase:                    return .spawnBase(count: count)
-            case .mergeInChain(let id):         return .mergeInChain(id, count: count)
-            case .reachTier(let cat, let tier): return .reachTier(cat, tier: tier, count: count)
-            case .spendCurrency(let kind):      return .spendCurrency(kind, count: count)
+    /// Rolls one task's basket: distinct creatures from the player's own
+    /// unlocked families, at stages drawn from the shared order tier bands so
+    /// this demand channel stays comparable with adoption orders in
+    /// `EconomySimulation`.
+    private func generateDailyTask(unlockedAnimalChainIDs: [ChainID],
+                                   playerLevel: Int,
+                                   difficulty: QuestDifficulty) -> DailyChallenge {
+        let fallback  = ContentRegistry.animalChainID(.dog)
+        let pool      = unlockedAnimalChainIDs.isEmpty ? [fallback] : unlockedAnimalChainIDs
+        let band      = difficulty.dailyTaskOrderBand
+        let maxTier   = maxAchievableOrderTier(forPlayerLevel: playerLevel)
+        let lineCount = AdoptionBoard.rollLineCount(difficulty: band)
+
+        // Line 0 carries the task's headline stage; further lines draw one band
+        // easier, exactly as order baskets do — the cost of a basket should be
+        // board space and attention, not a tripled kibble bill.
+        let rolled: [DailyTaskLine] = (0..<lineCount).map { index in
+            let lineBand = index == 0 ? band : band.basketFillerDifficulty
+            let tier = min(AdoptionBoard.rollTier(difficulty: lineBand), maxTier)
+            return DailyTaskLine(chainID: pool.randomElement() ?? fallback,
+                                 tier: tier, count: 1)
+        }
+
+        // Collapse duplicate (chain, stage) pairs into one line with a higher
+        // count. A card listing the same creature twice would render two
+        // identical slots and read as two separate asks.
+        var lines: [DailyTaskLine] = []
+        for line in rolled {
+            if let i = lines.firstIndex(where: { $0.key == line.key }) {
+                lines[i].count += line.count
+            } else {
+                lines.append(line)
             }
         }
-        /// Easy-slot target -- small enough that "complete" arrives quickly
-        /// on the anchor's typical event rate.
-        var baseEasyCount: Int {
-            switch self {
-            case .mergeAny:  return 3
-            case .spawnBase: return 4
-            case .spendCurrency(let kind): return kind == .kibble ? 40 : 8
-            default:         return 2
-            }
+
+        let coins = dailyTaskCoinPayout(
+            lines: lines,
+            spreadFactor: Double.random(in: (1 - orderCoinSpread)...(1 + orderCoinSpread)))
+        return DailyChallenge(lines: lines, difficulty: difficulty, coinReward: coins)
+    }
+
+    func generateDailyChallenges(unlockedAnimalChainIDs: [ChainID], playerLevel: Int) {
+        dailyChallenges = dailyTaskSlotDifficulties.map {
+            generateDailyTask(unlockedAnimalChainIDs: unlockedAnimalChainIDs,
+                              playerLevel: playerLevel, difficulty: $0)
         }
     }
 
-    // Same tiers the old per-difficulty pools drew from, flattened into one
-    // pool: a reachTier-anchored day picks one tier for all three challenges
-    // (they differ only by count), so top tiers must stay reachable without
-    // being locked to the hard slot the way they used to be.
-    private static let dailyChallengeReachTierPool: [Int] = [
-        RescueStage.groomed.tierIndex, RescueStage.vaccinated.tierIndex,
-        RescueStage.trained.tierIndex, RescueStage.foster.tierIndex,
-        RescueStage.adopted.tierIndex, RescueStage.bondedPair.tierIndex,
-        9, 10, 11,
-    ]
-
-    private func pickDailyChallengeAnchor(unlockedChainIDs: [ChainID]) -> DailyChallengeAnchor {
-        let mergeable = unlockedChainIDs.filter {
-            let category = ContentRegistry.shared.chain($0)?.category
-            return category == .animal || category == .supply
-        }
-        let hasSupply = unlockedChainIDs.contains {
-            ContentRegistry.shared.chain($0)?.category == .supply
-        }
-        var pool: [DailyChallengeAnchor] = [
-            .mergeAny, .spawnBase,
-            .reachTier(.animal, tier: Self.dailyChallengeReachTierPool.randomElement()!),
-            .spendCurrency(.kibble), .spendCurrency(.dogTags),
-        ]
-        if let chainID = mergeable.randomElement() { pool.append(.mergeInChain(chainID)) }
-        if hasSupply { pool.append(.reachTier(.supply, tier: [1, 3].randomElement()!)) }
-        return pool.randomElement()!
+    /// Marks one task claimed and returns it so the caller can surrender the
+    /// pieces and pay out. Returns `nil` if it is already claimed or the board
+    /// no longer holds what it asks for — the stock check runs against the live
+    /// census passed in, never against anything cached on the card.
+    func claimDailyTask(id: UUID, census: [ChainTierKey: Int]) -> DailyChallenge? {
+        guard let idx = dailyChallenges.firstIndex(where: { $0.id == id }),
+              !dailyChallenges[idx].isClaimed,
+              dailyChallenges[idx].isStocked(census: census) else { return nil }
+        dailyChallenges[idx].isClaimed = true
+        return dailyChallenges[idx]
     }
 
-    /// Derives the next slot's target count from the previous one so its
-    /// progress lands at a random ratio in [0.65, 0.85] -- comfortably inside
-    /// the measured 60-90% band with rounding room to spare -- the instant
-    /// the previous slot completes.
-    private func staggeredCount(after previous: Int) -> Int {
-        let ratio = Double.random(in: 0.65...0.85)
-        return max(previous + 1, Int((Double(previous) / ratio).rounded()))
-    }
-
-    func generateDailyChallenges(unlockedChainIDs: [ChainID]) {
-        let anchor      = pickDailyChallengeAnchor(unlockedChainIDs: unlockedChainIDs)
-        let easyCount   = anchor.baseEasyCount
-        let mediumCount = staggeredCount(after: easyCount)
-        let hardCount   = staggeredCount(after: mediumCount)
-        dailyChallenges = [
-            DailyChallenge(goal: anchor.goal(count: easyCount),   difficulty: .easy),
-            DailyChallenge(goal: anchor.goal(count: mediumCount), difficulty: .medium),
-            DailyChallenge(goal: anchor.goal(count: hardCount),   difficulty: .hard),
-        ]
-    }
-
-    func updateDailyChallengesAfterMerge(chainID: ChainID, tier: Int) {
-        let mergedCategory = ContentRegistry.shared.chain(chainID)?.category
-        for i in dailyChallenges.indices {
-            guard !dailyChallenges[i].isComplete else { continue }
-            switch dailyChallenges[i].goal {
-            case .mergeAny:
-                dailyChallenges[i].progress += 1
-            case .mergeInChain(let id, _) where id == chainID:
-                dailyChallenges[i].progress += 1
-            case .reachTier(let category, let t, _) where t == tier && category == mergedCategory:
-                dailyChallenges[i].progress += 1
-            default: break
-            }
-        }
-    }
-
-    func updateDailyChallengesAfterRescue() {
-        for i in dailyChallenges.indices {
-            guard !dailyChallenges[i].isComplete else { continue }
-            if case .spawnBase = dailyChallenges[i].goal { dailyChallenges[i].progress += 1 }
-        }
-    }
-
-    /// D6 (Spec_SpendQuotaDailies.md) — the first daily-challenge update that
-    /// advances by a variable amount rather than +1 per discrete event, since
-    /// a currency spend has a real size (spending 40 kibble should add 40,
-    /// not 1). Every other update* function above only ever adds 1.
-    func updateDailyChallengesAfterSpend(kind: RewardKind, amount: Int) {
-        for i in dailyChallenges.indices {
-            guard !dailyChallenges[i].isComplete else { continue }
-            if case .spendCurrency(let k, _) = dailyChallenges[i].goal, k == kind {
-                dailyChallenges[i].progress += amount
-            }
-        }
-    }
-
-    /// Called after each daily challenge update. If all three are now complete and
-    /// the bonus hasn't been claimed yet, returns a reward bundle for MBVM to apply.
+    /// Called after each daily task claim. If all three are now claimed and the
+    /// sweep bonus hasn't been paid yet, returns a reward bundle for MBVM to apply.
     func checkAllDailyChallengesComplete(coinsPerDailyComplete: Int) -> QuestRewards? {
         guard !dailyChallengeBonusClaimed,
               !dailyChallenges.isEmpty,
-              dailyChallenges.allSatisfy({ $0.isComplete }) else { return nil }
+              dailyChallenges.allSatisfy({ $0.isClaimed }) else { return nil }
         dailyChallengeBonusClaimed = true
         let newStreak = dailyChallengeStreak + 1
         dailyChallengeStreak = newStreak

@@ -78,7 +78,8 @@ final class PersistenceTests: XCTestCase {
                       dogTagReward: 12, kibbleReward: 20),
             ],
             dailyChallenges: [
-                DailyChallenge(goal: .spawnBase(count: 8), difficulty: .medium),
+                DailyChallenge(lines: [DailyTaskLine(chainID: aid(.cat), tier: 3, count: 2)],
+                               difficulty: .medium, coinReward: 260),
             ],
             dailyChallengeStreak: 5, dailyChallengeBonusClaimed: true,
             adoptionOrders: [
@@ -181,9 +182,15 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.activeQuests[0].goal.targetCount, 4)
         XCTAssertEqual(decoded.activeQuests[1].difficulty, .legendary)
 
-        // Daily challenge
+        // Daily hand-in task (schema v40 — a basket of specific creatures,
+        // not a counted-event goal)
         XCTAssertEqual(decoded.dailyChallenges.count, 1)
-        XCTAssertEqual(decoded.dailyChallenges[0].goal.targetCount, 8)
+        XCTAssertEqual(decoded.dailyChallenges[0].lines.count, 1)
+        XCTAssertEqual(decoded.dailyChallenges[0].lines[0].chainID, aid(.cat))
+        XCTAssertEqual(decoded.dailyChallenges[0].lines[0].tier, 3)
+        XCTAssertEqual(decoded.dailyChallenges[0].lines[0].count, 2)
+        XCTAssertEqual(decoded.dailyChallenges[0].coinReward, 260)
+        XCTAssertFalse(decoded.dailyChallenges[0].isClaimed)
 
         // Adoption order (including v8 rewardCoins field)
         XCTAssertEqual(decoded.adoptionOrders.count, 1)
@@ -1476,6 +1483,90 @@ final class PersistenceTests: XCTestCase {
         let order = try XCTUnwrap(loaded.adoptionOrders.first)
         XCTAssertTrue(order.lines.isEmpty)
         XCTAssertFalse(order.isComplete, "an empty basket must never read as complete")
+    }
+
+    // MARK: v40 — daily challenges become hand-in tasks
+
+    /// A pre-v40 save carries `dailyChallenges` in the counted-event shape
+    /// (`{goal, difficulty, progress}`), which v40's `DailyChallenge` cannot
+    /// decode. `resetDailyChallengesForHandIn` empties the array;
+    /// `QuestCoordinator.checkDailyChallengeReset` regenerates on next load.
+    private func makeV39BlobWithCountedDailies() throws -> [String: Any] {
+        var state = makeSampleState()
+        state.dailyChallenges = []          // real shape is injected as raw JSON below
+        state.dailyChallengeBonusClaimed = true
+        state.dailyChallengeStreak = 5
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj["dailyChallenges"] = [
+            ["id": UUID().uuidString,
+             "goal": ["spawnBase": ["count": 8]],
+             "difficulty": "Medium",
+             "progress": 3],
+        ]
+        obj["version"] = 39
+        return obj
+    }
+
+    func testV39toV40ResetsCountedDailyChallengesRatherThanFailingToDecode() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV39BlobWithCountedDailies()))
+        let loaded = try XCTUnwrap(GameStore.load(),
+                                   "a v39 save must migrate, not be discarded, despite the incompatible daily shape")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.dailyChallenges.isEmpty,
+                      "the counted-event shape has no faithful basket rewrite — it is emptied and regenerated")
+    }
+
+    /// A player who already swept today must not be handed a second sweep by
+    /// upgrading, so the flag is deliberately *not* reset alongside the array.
+    /// It clears on its own at the next midnight reset.
+    func testV39toV40PreservesTheAlreadyClaimedSweepFlagAndStreak() throws {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: try makeV39BlobWithCountedDailies()))
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertTrue(loaded.dailyChallengeBonusClaimed)
+        XCTAssertEqual(loaded.dailyChallengeStreak, 5, "the streak is unrelated to the shape change")
+    }
+
+    /// The migration table is flat: a save far older than v39 jumps straight to
+    /// `currentVersion` without passing a v39→v40 step, so the reset has to run
+    /// from `finishMigration` for every `sourceVersion < 40`. Same trap
+    /// `collapseOrdersIntoBaskets` documents.
+    func testAnOldSaveAlsoGetsTheDailyTaskResetDespiteSkippingTheV39Step() throws {
+        var obj = try makeV36BlobWithFlatOrders()
+        obj["dailyChallenges"] = [
+            ["id": UUID().uuidString,
+             "goal": ["mergeAny": ["count": 6]],
+             "difficulty": "Easy",
+             "progress": 2],
+        ]
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(),
+                                   "a v36 save must not be discarded by the v40 shape change")
+        XCTAssertTrue(loaded.dailyChallenges.isEmpty)
+        XCTAssertEqual(loaded.adoptionOrders.first?.lines.count, 1,
+                       "the v37 basket collapse still runs on the same pass")
+    }
+
+    func testDailyHandInTaskRoundTripsOnAFreshSave() throws {
+        let dog = ContentRegistry.animalChainID(.dog)
+        let cat = ContentRegistry.animalChainID(.cat)
+        var state = makeSampleState()
+        state.dailyChallenges = [
+            DailyChallenge(lines: [DailyTaskLine(chainID: dog, tier: 2, count: 1),
+                                   DailyTaskLine(chainID: cat, tier: 4, count: 3)],
+                           difficulty: .hard, coinReward: 1_480, isClaimed: true),
+        ]
+
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        let task = try XCTUnwrap(decoded.dailyChallenges.first)
+        XCTAssertEqual(task.lines.count, 2)
+        XCTAssertEqual(task.lines[1].chainID, cat)
+        XCTAssertEqual(task.lines[1].tier, 4)
+        XCTAssertEqual(task.lines[1].count, 3)
+        XCTAssertEqual(task.coinReward, 1_480)
+        XCTAssertTrue(task.isClaimed, "a claimed task must stay claimed across a relaunch")
+        XCTAssertEqual(task.wantedCount, 4)
     }
 
     func testOrderBasketRoundTripsOnAFreshSave() throws {

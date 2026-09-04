@@ -31,6 +31,11 @@ struct CellView: View {
     /// (`Spec_BoardAnimation_Draft.md` §5). Ignored for every other cell
     /// content; `ProducerTileContent` only reads it on the family-spawner path.
     var isFamilySpawnerAffordable: Bool = false
+    /// Whether an unclaimed daily hand-in task wants what is standing in this
+    /// cell, and whether that task is fully stocked
+    /// (`Spec_DailyHandInTasks.md` D-B). Drives the muted/bright blue tint
+    /// that tells the player where a task's pieces are.
+    var dailyTaskHighlight: MergeBoardViewModel.DailyTaskHighlight = .none
 
     /// Merge-burst sparkles (`Spec_BoardAnimation_Draft.md` §3 Tier A), spawned
     /// when `isAnimating` goes true. Each `MergeSparkleView` runs its own
@@ -62,6 +67,13 @@ struct CellView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.yellow.opacity(isSpotlight && cell.item != nil ? 0.8 : 0.0),
                             lineWidth: 2.5))
+                // Daily hand-in task ring. The fill alone is legible at rest,
+                // but the board already tints every cell by its item's stage
+                // colour, so a stocked task needs an edge as well to survive a
+                // board full of other tints.
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(dailyTaskBorder, lineWidth: dailyTaskHighlight == .stocked ? 2.5 : 0)
+                    .animation(.easeInOut(duration: 0.25), value: dailyTaskHighlight))
                 // Top-tier gold gradient ring
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .stroke(
@@ -241,9 +253,31 @@ struct CellView: View {
 
     // MARK: Computed colours
 
+    /// Muted blue — a task wants this creature but is still short.
+    private var dailyTaskWantedTint: Color {
+        Color(red: 0.30, green: 0.52, blue: 0.78).opacity(0.22)
+    }
+    /// Bright blue — every line of a task this cell serves is stocked.
+    private var dailyTaskStockedTint: Color {
+        Color(red: 0.10, green: 0.55, blue: 0.98).opacity(0.55)
+    }
+    private var dailyTaskBorder: Color {
+        dailyTaskHighlight == .stocked
+            ? Color(red: 0.05, green: 0.45, blue: 0.95)
+            : .clear
+    }
+
     private var cellBackground: Color {
         if !cell.isUnlocked    { return Color.gray.opacity(0.12) }
         if isSelected           { return Color.yellow.opacity(0.3) }
+        // Daily-task tint outranks the item's own stage colour: the whole
+        // point is that it reads as *different from the board*, and the item
+        // tint it replaces is already carried by the art itself.
+        switch dailyTaskHighlight {
+        case .stocked: return dailyTaskStockedTint
+        case .wanted:  return dailyTaskWantedTint
+        case .none:    break
+        }
         if let p = cell.producer { return p.level.tintColor.opacity(0.12) }
         if let item = cell.item  { return (item.def?.color ?? .gray).opacity(0.12) }
         return Color.white.opacity(0.7)

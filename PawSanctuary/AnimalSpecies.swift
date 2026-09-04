@@ -832,14 +832,74 @@ struct Quest: Identifiable, Codable {
     var progressText: String     { "\(min(progress, goal.targetCount))/\(goal.targetCount)" }
 }
 
+/// One creature a daily task asks for — a specific chain at a specific merge
+/// stage, and how many copies of it.
+///
+/// Deliberately **not** `OrderLine`. That type carries `fulfilled`, a
+/// credit-on-merge counter incremented when the player *makes* the item;
+/// daily tasks are credit-on-possession, satisfied by what is standing on the
+/// board right now (see `Spec_DailyHandInTasks.md` §2/§3). Carrying a field
+/// whose semantics are the opposite of this system's is how two systems drift
+/// into each other.
+struct DailyTaskLine: Codable, Equatable, Hashable {
+    var chainID: ChainID
+    var tier: Int
+    /// Copies of this creature the task wants.
+    var count: Int
+
+    var key: ChainTierKey { ChainTierKey(chainID: chainID, tier: tier) }
+
+    // Registry-backed display helpers, same pattern as `OrderLine`.
+    var symbol: String   { ContentRegistry.shared.tier(chainID, tier)?.symbol ?? "pawprint.fill" }
+    var tint: Color      { ContentRegistry.shared.tier(chainID, tier)?.tint ?? .brown }
+    var color: Color     { ContentRegistry.shared.tier(chainID, tier)?.color ?? .gray }
+    var tierName: String { ContentRegistry.shared.tier(chainID, tier)?.name ?? "animal" }
+    var stageLabel: String { QuestGoal.animalTierLabel(tier) }
+
+    /// The real illustrated art for this creature at this exact stage — the
+    /// whole point of the redesign. `nil` only for a chain with no delivered
+    /// art, in which case the card falls back to `symbol`.
+    var artImage: Image? { ContentRegistry.shared.chain(chainID)?.artImage(forTier: tier) }
+}
+
+/// One of the three daily hand-in tasks (`Spec_DailyHandInTasks.md`).
+///
+/// Holds no `progress`: fulfilment is derived from a live board census every
+/// render (`MergeBoardViewModel.boardTaskCensus`), never accumulated. That is
+/// what keeps the card and the board highlight correct when pieces are merged
+/// away, sold, stashed in inventory, or eaten by another task's claim — a
+/// stored counter drifts on every one of those.
 struct DailyChallenge: Identifiable, Codable {
     var id = UUID()
-    var goal: QuestGoal
+    var lines: [DailyTaskLine]
     var difficulty: QuestDifficulty
-    var progress: Int = 0
-    var isComplete: Bool         { progress >= goal.targetCount }
-    var progressFraction: Double { min(Double(progress) / Double(goal.targetCount), 1.0) }
-    var progressText: String     { "\(min(progress, goal.targetCount))/\(goal.targetCount)" }
+    /// Coins paid when the player presses Claim and surrenders the pieces.
+    /// Rolled once at generation so the card can show a stable number.
+    var coinReward: Int
+    var isClaimed: Bool = false
+
+    /// Total creatures asked for, across every line.
+    var wantedCount: Int { lines.reduce(0) { $0 + $1.count } }
+
+    /// An empty basket is never stocked — it would otherwise read as instantly
+    /// claimable if one ever slipped through generation or migration.
+    func isStocked(census: [ChainTierKey: Int]) -> Bool {
+        !lines.isEmpty && lines.allSatisfy { (census[$0.key] ?? 0) >= $0.count }
+    }
+
+    func held(_ line: DailyTaskLine, census: [ChainTierKey: Int]) -> Int {
+        min(census[line.key] ?? 0, line.count)
+    }
+
+    func heldTotal(census: [ChainTierKey: Int]) -> Int {
+        lines.reduce(0) { $0 + held($1, census: census) }
+    }
+
+    func progressFraction(census: [ChainTierKey: Int]) -> Double {
+        let wanted = wantedCount
+        guard wanted > 0 else { return 0 }
+        return min(Double(heldTotal(census: census)) / Double(wanted), 1.0)
+    }
 }
 
 // ============================================================
@@ -1430,10 +1490,27 @@ let carePointsGold   = 520
 /// itself is worth (5,632 sold, 13,312 to an order). Was 10 — pure noise.
 let coinsPerAmbassadorMerge = 500
 
-/// Coins for clearing all three daily challenges.
-/// Rationale: a day's engagement, worth about one average order (~400) — a real
-/// top-up that doesn't compete with the main faucet. Was 15.
-let coinsPerAllDailyChallenges = 400
+/// Flat coin bonus for clearing all three daily tasks, on top of what each task
+/// pays individually.
+///
+/// **Zero since schema v40, and that is a rebalance, not a removal.** This was
+/// 400 (Phase 2c: "a day's engagement, worth about one average order") in a
+/// world where the three daily slots paid *no per-slot coins at all* — it was
+/// the entire daily coin channel. Schema v40's hand-in tasks pay per task, so
+/// leaving 400 on top put the channel ~40% over its budget and dropped the
+/// Sanctuary Map projection to 52.9 days against a 55-70 target
+/// (`Spec_DailyHandInTasks.md` §5a).
+///
+/// The money moved rather than vanished: it now funds `dailyTaskCoinFloor`,
+/// where it reaches the player as three visible per-card payouts instead of one
+/// invisible lump that only landed on a perfect day. The sweep still pays its
+/// dog tags, XP and Care Points — only the coin rider is zero.
+///
+/// Kept as a live dial rather than deleted: the sweep's coin path
+/// (`checkAllDailyChallengesComplete`) still carries the event-bonus rider
+/// `coinsPerDailyComplete`, and re-funding this line is a one-number change if
+/// the streak ever needs its own coin reward back.
+let coinsPerAllDailyChallenges = 0
 
 /// Multiplier applied to the combined sell value when three top-tier tiles of one
 /// species are exchanged together.
@@ -1744,6 +1821,80 @@ func orderCoinPayout(lines: [OrderLine], spreadFactor: Double = 1.0) -> Int {
 /// What the whole basket would fetch if its items were sold outright instead.
 /// The payout must always beat this, or filling orders is a trap.
 func orderSellValue(lines: [OrderLine]) -> Int {
+    lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
+}
+
+// ── Daily hand-in tasks (Spec_DailyHandInTasks.md) ────────────
+//
+// Deliberately derived from the order tables above rather than given their own
+// bands. Daily tasks and adoption orders are the game's two item-demand
+// channels; giving each its own tier distribution is how the two drift apart
+// in `EconomySimulation` and stop being comparable.
+
+/// The fixed per-slot difficulty of the three daily tasks. Fixed for the same
+/// reason `orderSlotDifficultyPattern` is: a day must never roll three easy
+/// tasks (or three hard ones) by chance.
+let dailyTaskSlotDifficulties: [QuestDifficulty] = [.easy, .medium, .hard]
+
+extension QuestDifficulty {
+    /// The order difficulty band a daily task of this difficulty draws its
+    /// tiers and line count from. `.legendary` never reaches a daily slot
+    /// (`dailyTaskSlotDifficulties` tops out at `.hard`) but maps to `.hard`
+    /// so the mapping is total.
+    var dailyTaskOrderBand: OrderDifficulty {
+        switch self {
+        case .easy:                 return .easy
+        case .medium:               return .medium
+        case .hard, .legendary:     return .hard
+        }
+    }
+}
+
+/// Multiplier on the order-rate payout for a daily task's basket.
+///
+/// **Swept through `EconomySimulation` 4 Sep 2026** (see `Spec_DailyHandInTasks.md`
+/// §5a), which is how it moved off its unswept 1.0. The sweep found the channel
+/// ~40% over its coin budget: at 1.0 the Phase 2c map projection fell to 52.9
+/// days against a 55-70 day target, because PawSanctuary's orders credit on
+/// *merge* and never consume, so the same kibble earns twice — once as order
+/// coins when the creature is built, once again as task coins when it is handed
+/// in. Nothing offsets it.
+///
+/// 0.75 with `dailyTaskCoinFloor` lands the whole curve back inside the band
+/// (L45 56.1 days, L60 55.1). It is lower than 1.0 while the *cards pay more* —
+/// the floor below is where the money went.
+let dailyTaskCoinMultiplier = 0.75
+
+/// Minimum coins one daily task pays, before the ±`orderCoinSpread` jitter.
+///
+/// **Deliberately breaks the strict build-cost proportionality orders use**, and
+/// that is the point. A task's cost is `2^tier`, so under pure proportionality
+/// the easy slot — which always draws tiers 0-1, at every player level — paid 10
+/// coins at level 60, the medium slot 44, and the hard slot took 93% of the
+/// channel. Two of the three cards were never worth pressing, and no multiplier
+/// fixes that: doubling it makes the easy card pay 20.
+///
+/// The floor is what makes every card worth pressing at every level, and it
+/// costs the endgame nothing — at L45 the hard slot's proportional payout is
+/// ~3.4x the floor, so the floor never binds where the map projection is
+/// anchored. It binds hardest at L1-30, exactly where the old numbers looked
+/// derisory. Hard's share of the channel drops from 93% to ~66%.
+let dailyTaskCoinFloor = 150
+
+/// Coins a daily task pays for surrendering its whole basket.
+///
+/// The floor is applied *before* the spread, so a floored task still jitters
+/// like any other rather than reading as a suspiciously exact 150 on every card.
+func dailyTaskCoinPayout(lines: [DailyTaskLine], spreadFactor: Double = 1.0) -> Int {
+    let kibble = lines.reduce(0) { $0 + buildCost(tier: $1.tier, count: $1.count) }
+    let proportional = Double(kibble) * coinsPerKibbleOfOrder * dailyTaskCoinMultiplier
+    return max(1, Int((max(Double(dailyTaskCoinFloor), proportional) * spreadFactor).rounded()))
+}
+
+/// What a daily task's basket would fetch if sold outright. The payout must
+/// always beat this — same invariant `orderSellValue` enforces for orders, and
+/// it bites harder here because a daily task genuinely takes the creatures.
+func dailyTaskSellValue(lines: [DailyTaskLine]) -> Int {
     lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
 }
 

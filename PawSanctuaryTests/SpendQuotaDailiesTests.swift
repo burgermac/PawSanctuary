@@ -3,8 +3,28 @@
 //  PawSanctuaryTests
 //
 //  D6 (Spec_SpendQuotaDailies.md) Task 3.1 — QuestGoal.spendCurrency's generic
-//  switches (targetCount, description, icon, iconColor, dedupeKey). Both
-//  currencies are covered since both generate in v1 (spec §2).
+//  switches (targetCount, description, icon, iconColor, dedupeKey).
+//
+//  **Rescoped by Spec_DailyHandInTasks.md (4 Sep 2026).** Daily challenges are
+//  no longer counted-event goals, so `QuestGoal.spendCurrency` now reaches the
+//  player only through standing quests (the D6 follow-up,
+//  Spec_StandingQuestSpendGoals.md). The goal-shape tests below are unchanged
+//  and still load-bearing. What went with the daily half:
+//
+//   - `SpendQuotaDailiesProgressTests` — tested
+//     `updateDailyChallengesAfterSpend`, which no longer exists. The standing-
+//     quest equivalent (`updateQuestsAfterSpend`) is covered in
+//     `StandingQuestSpendGoalsTests`.
+//   - `SpendQuotaDailiesAnchorTests` — tested the shared-anchor daily pool,
+//     removed with the anchor mechanic itself (spec D-C).
+//   - `SpendQuotaDailiesChokepointTests` — the daily half is replaced by
+//     `DailyHandInTasksTests`\' claim-driven sweep test.
+//
+//  `SpendQuotaDailiesWiringTests` survives intact and is the reason this file
+//  still matters: it is the only coverage that every one of the nine real
+//  spend sites actually calls `updateAllAfterSpend`. It now measures progress
+//  on a standing quest rather than a daily challenge — the chokepoint being
+//  proved is the same one.
 //
 
 import XCTest
@@ -51,103 +71,6 @@ final class SpendQuotaDailiesGoalTests: XCTestCase {
     }
 }
 
-/// Task 3.2 — QuestCoordinator.updateDailyChallengesAfterSpend, the first
-/// daily-challenge update in the codebase that advances progress by a
-/// variable amount rather than +1 per discrete event.
-@MainActor
-final class SpendQuotaDailiesProgressTests: XCTestCase {
-
-    func testAdvancesByTheFullAmountNotOne() {
-        let coordinator = QuestCoordinator()
-        coordinator.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
-        ]
-
-        coordinator.updateDailyChallengesAfterSpend(kind: .kibble, amount: 15)
-
-        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 15,
-                       "must add the real spend amount, not +1 the way every other daily-challenge update does")
-    }
-
-    func testOnlyAdvancesSlotsMatchingTheSpentCurrency() {
-        let coordinator = QuestCoordinator()
-        coordinator.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
-            DailyChallenge(goal: .spendCurrency(.dogTags, count: 8), difficulty: .medium),
-        ]
-
-        coordinator.updateDailyChallengesAfterSpend(kind: .dogTags, amount: 5)
-
-        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 0, "a dog-tag spend must not advance a kibble slot")
-        XCTAssertEqual(coordinator.dailyChallenges[1].progress, 5)
-    }
-
-    func testIgnoresNonSpendGoals() {
-        let coordinator = QuestCoordinator()
-        coordinator.dailyChallenges = [DailyChallenge(goal: .mergeAny(count: 3), difficulty: .easy)]
-
-        coordinator.updateDailyChallengesAfterSpend(kind: .kibble, amount: 100)
-
-        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 0)
-    }
-
-    func testSkipsAlreadyCompleteSlots() {
-        let coordinator = QuestCoordinator()
-        coordinator.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy, progress: 40),
-        ]
-
-        coordinator.updateDailyChallengesAfterSpend(kind: .kibble, amount: 10)
-
-        XCTAssertEqual(coordinator.dailyChallenges[0].progress, 40,
-                       "an already-complete slot must not keep accumulating")
-    }
-}
-
-/// Task 3.2 — MergeBoardViewModel.updateAllAfterSpend, the chokepoint every
-/// real spend site (Task 3.3) will call into.
-@MainActor
-final class SpendQuotaDailiesChokepointTests: XCTestCase {
-
-    private func makeViewModel() -> MergeBoardViewModel {
-        let vm = MergeBoardViewModel()
-        vm.board = (0..<boardRows).map { row in
-            (0..<7).map { col in
-                BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
-            }
-        }
-        return vm
-    }
-
-    func testAdvancesTheMatchingDailyChallengeToCompletion() {
-        let vm = makeViewModel()
-        vm.quests.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
-        ]
-
-        vm.updateAllAfterSpend(kind: .kibble, amount: 40)
-
-        XCTAssertTrue(vm.quests.dailyChallenges[0].isComplete)
-    }
-
-    func testCompletingAllThreeViaSpendStillPaysTheExistingBonus() {
-        let vm = makeViewModel()
-        vm.quests.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 50), difficulty: .medium),
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 65), difficulty: .hard),
-        ]
-        let dogTagsBefore = vm.dogTags
-        XCTAssertFalse(vm.quests.dailyChallengeBonusClaimed)
-
-        vm.updateAllAfterSpend(kind: .kibble, amount: 65)
-
-        XCTAssertTrue(vm.quests.dailyChallengeBonusClaimed)
-        XCTAssertGreaterThan(vm.dogTags, dogTagsBefore,
-                             "the existing all-three-complete bonus (spec §2) must still pay out — no new reward mechanic")
-    }
-}
-
 /// Task 3.3 — every real spend site actually calls updateAllAfterSpend with
 /// the right currency and the right amount, end to end through the public
 /// action a player would trigger, not just the chokepoint in isolation
@@ -156,11 +79,15 @@ final class SpendQuotaDailiesChokepointTests: XCTestCase {
 @MainActor
 final class SpendQuotaDailiesWiringTests: XCTestCase {
 
-    /// A viewmodel with a full empty unlocked board and a single easy daily
-    /// challenge for the given currency, generous enough (999) that no
-    /// individual site's spend could complete it — keeps every test focused
-    /// on "did progress advance by the right amount," not completion/bonus
-    /// interaction (already covered by SpendQuotaDailiesChokepointTests).
+    /// A viewmodel with a full empty unlocked board and a single standing
+    /// quest carrying a spend goal for the given currency, generous enough
+    /// (999) that no individual site's spend could complete it — keeps every
+    /// test focused on "did progress advance by the right amount," not
+    /// completion/reward interaction.
+    ///
+    /// Was a daily challenge until Spec_DailyHandInTasks.md; the chokepoint
+    /// under test (`MergeBoardViewModel.updateAllAfterSpend`) is unchanged, and
+    /// standing quests are now the only consumer of `spendCurrency`.
     private func makeViewModel(dailyGoalCurrency: RewardKind) -> MergeBoardViewModel {
         let vm = MergeBoardViewModel()
         vm.board = (0..<boardRows).map { row in
@@ -174,13 +101,14 @@ final class SpendQuotaDailiesWiringTests: XCTestCase {
         // see a stale empty cache and silently no-op via their "nowhere to
         // place it" guard, never reaching the spend at all.
         vm.boardState.recalc()
-        vm.quests.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(dailyGoalCurrency, count: 999), difficulty: .easy),
+        vm.quests.activeQuests = [
+            Quest(goal: .spendCurrency(dailyGoalCurrency, count: 999), difficulty: .easy,
+                  dogTagReward: 1, kibbleReward: 2),
         ]
         return vm
     }
 
-    private func progress(_ vm: MergeBoardViewModel) -> Int { vm.quests.dailyChallenges[0].progress }
+    private func progress(_ vm: MergeBoardViewModel) -> Int { vm.quests.activeQuests[0].progress }
 
     func testBuyProducerAdvancesTheKibbleGoalByItsDogTagCost() {
         // buyProducer spends dog tags, not kibble — this confirms the wiring
@@ -289,61 +217,5 @@ final class SpendQuotaDailiesWiringTests: XCTestCase {
         vm.activateProducer(at: pos)
 
         XCTAssertGreaterThan(progress(vm), 0, "activating a producer must spend kibble and advance the kibble goal")
-    }
-}
-
-/// Task 3.4 — the two new DailyChallengeAnchor.spendCurrency pool entries in
-/// pickDailyChallengeAnchor/generateDailyChallenges. Mirrors the existing
-/// statistical style QuestCoordinatorTests.swift already uses for anchor
-/// reachability (e.g. testDailyChallengeReachTierAnchorCanTargetTopThreeTiers)
-/// rather than trying to force a specific anchor deterministically — the
-/// picker is private and genuinely random by design.
-@MainActor
-final class SpendQuotaDailiesAnchorTests: XCTestCase {
-
-    private func anySpendCurrency(_ goal: QuestGoal) -> RewardKind? {
-        if case .spendCurrency(let kind, _) = goal { return kind }
-        return nil
-    }
-
-    func testBothCurrenciesAreReachableAsAnchors() {
-        let coordinator = QuestCoordinator()
-        let dogID = ContentRegistry.animalChainID(.dog)
-        var seenKinds: Set<RewardKind> = []
-        for _ in 0..<500 {
-            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
-            if let kind = anySpendCurrency(coordinator.dailyChallenges[0].goal) {
-                seenKinds.insert(kind)
-            }
-        }
-        XCTAssertEqual(seenKinds, [.kibble, .dogTags],
-                       "both currencies must be independently pickable, per spec §3.4's two-separate-pool-entries design")
-    }
-
-    func testWhenASpendAnchorIsPickedAllThreeSlotsShareTheSameCurrency() {
-        let coordinator = QuestCoordinator()
-        let dogID = ContentRegistry.animalChainID(.dog)
-        var checkedAtLeastOneSpendDay = false
-        for _ in 0..<500 {
-            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
-            guard let easyKind = anySpendCurrency(coordinator.dailyChallenges[0].goal) else { continue }
-            checkedAtLeastOneSpendDay = true
-            XCTAssertEqual(anySpendCurrency(coordinator.dailyChallenges[1].goal), easyKind,
-                           "confirmed §3.4: all three slots share one spend anchor, not a mix")
-            XCTAssertEqual(anySpendCurrency(coordinator.dailyChallenges[2].goal), easyKind)
-        }
-        XCTAssertTrue(checkedAtLeastOneSpendDay, "test is meaningless if a spend anchor was never picked in 500 tries")
-    }
-
-    func testEasySlotUsesTheConfirmedSection4SeedForEachCurrency() {
-        let coordinator = QuestCoordinator()
-        let dogID = ContentRegistry.animalChainID(.dog)
-        for _ in 0..<500 {
-            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
-            guard let kind = anySpendCurrency(coordinator.dailyChallenges[0].goal) else { continue }
-            let expected = kind == .kibble ? 40 : 8
-            XCTAssertEqual(coordinator.dailyChallenges[0].goal.targetCount, expected,
-                           "easy-slot seed must match spec §4 exactly (40 kibble / 8 dog tags)")
-        }
     }
 }

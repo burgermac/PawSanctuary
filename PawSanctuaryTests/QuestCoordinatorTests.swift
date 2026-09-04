@@ -38,43 +38,20 @@ final class QuestCoordinatorTests: XCTestCase {
                        "A max-level player's legendary quests should eventually cover all three top tiers")
     }
 
-    func testDailyChallengeReachTierAnchorCanTargetTopThreeTiers() {
-        let coordinator = QuestCoordinator()
-        let dogID = ContentRegistry.animalChainID(.dog)
-        var seenTopTiers: Set<Int> = []
-        for _ in 0..<2000 {
-            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
-            for challenge in coordinator.dailyChallenges {
-                if case .reachTier(.animal, let tier, _) = challenge.goal, tier >= 9 {
-                    seenTopTiers.insert(tier)
-                }
-            }
-        }
-        XCTAssertEqual(seenTopTiers, [9, 10, 11],
-                       "Daily challenges should eventually cover all three top tiers via the reachTier anchor")
-    }
-
-    // Gap_Analysis_Round2.md 3.1: the daily-challenge stagger's whole point is
-    // that medium/hard are already 60-90% along the instant the slot below
-    // them completes, since all three share one anchor goal tracked in
-    // lockstep. Verify the guarantee holds across many generated days, not
-    // just by inspection of the formula.
-    func testDailyChallengeStaggerLandsInTargetBand() {
-        let coordinator = QuestCoordinator()
-        let dogID = ContentRegistry.animalChainID(.dog)
-        for _ in 0..<500 {
-            coordinator.generateDailyChallenges(unlockedChainIDs: [dogID])
-            let easy   = coordinator.dailyChallenges[0].goal.targetCount
-            let medium = coordinator.dailyChallenges[1].goal.targetCount
-            let hard   = coordinator.dailyChallenges[2].goal.targetCount
-            let easyToMedium = Double(easy) / Double(medium)
-            let mediumToHard = Double(medium) / Double(hard)
-            // A little wider than the [0.6, 0.9] target band to absorb rounding at
-            // the small counts daily challenges actually use, without flaking.
-            XCTAssertTrue((0.55...0.92).contains(easyToMedium),
-                           "medium should be well underway (\(easy)/\(medium)) when easy completes")
-            XCTAssertTrue((0.55...0.92).contains(mediumToHard),
-                           "hard should be well underway (\(medium)/\(hard)) when medium completes")
-        }
-    }
+    // Spec_DailyHandInTasks.md replaced the two daily-challenge tests that
+    // used to live here:
+    //
+    //  - `testDailyChallengeReachTierAnchorCanTargetTopThreeTiers` — daily
+    //    challenges no longer carry `QuestGoal`s at all, so there is no
+    //    reachTier anchor to reach the top three tiers. Deep stages are still
+    //    reachable, now as basket lines; `DailyHandInTasksTests` covers that
+    //    against `maxAchievableOrderTier` instead.
+    //  - `testDailyChallengeStaggerLandsInTargetBand` — the shared-anchor
+    //    stagger it guarded is deliberately gone (spec D-C, an explicit
+    //    override of Gap_Analysis_Round2.md 3.1). Deleting the test with the
+    //    mechanic rather than weakening it: a stagger assertion that no longer
+    //    has a stagger to assert would be worse than none.
+    //
+    // The standing-quest reachTier coverage above is untouched — that is where
+    // the near-miss psychology still operates.
 }

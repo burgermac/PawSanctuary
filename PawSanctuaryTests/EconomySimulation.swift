@@ -161,6 +161,107 @@ struct EconomySimulation {
         return total / Double(persistentSlots + 1)
     }
 
+    // MARK: Daily hand-in tasks (Spec_DailyHandInTasks.md)
+    //
+    // **Coin side only, deliberately — there is no demand-side term below.**
+    //
+    // A daily task destroys board items, which looks like kibble demand. It is
+    // not, in this model's terms, because PawSanctuary's orders credit on
+    // *merge* and never consume: an order pays out the moment the item is
+    // built, and the item then stays on the board. The kibble that built it is
+    // already counted in `grossDemand`. A hand-in spends that same item a
+    // second time, so counting its build cost again would double-count the
+    // build and report a wall the game does not have.
+    //
+    // What a hand-in really is here is a **sink on the item stock** — a reason
+    // for the board to clear, which is the thing this economy was previously
+    // short of. `Row`/`ratio` is a flow model (kibble per day in, kibble per
+    // day asked for), so it has nowhere to express a stock drain, and inventing
+    // an overlap fraction to smuggle one in would be tuning the ratio to taste
+    // — exactly what the supply model's own header forbids.
+    //
+    // The coin side has no such ambiguity: the coins are simply paid.
+
+    /// Every (basket kibble cost, probability) a daily task of `difficulty` can
+    /// roll at `level`.
+    ///
+    /// Enumerated rather than averaged because `dailyTaskCoinFloor` binds on
+    /// *individual* baskets: E[max(floor, cost)] > max(floor, E[cost]), so
+    /// applying the floor to an average would understate the faucet — the
+    /// unsafe direction for a coin source.
+    ///
+    /// Mirrors `QuestCoordinator.generateDailyTask`: the slot's difficulty maps
+    /// to an order band, line 0 draws that band, further lines draw
+    /// `basketFillerDifficulty` independently, and — unlike an order — there is
+    /// **no** "bring me two of these" count roll. Keep in step with it.
+    static func dailyTaskCostDistribution(difficulty: QuestDifficulty,
+                                          level: Int) -> [(cost: Double, p: Double)] {
+        let band    = difficulty.dailyTaskOrderBand
+        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+
+        func tierOutcomes(_ d: OrderDifficulty) -> [(cost: Double, p: Double)] {
+            var weights: [Int: Double] = [:]
+            for (bandProbability, tiers) in orderDifficultyBands[d] ?? [] {
+                let each = bandProbability / Double(tiers.count)
+                for t in tiers { weights[min(t, maxTier), default: 0] += each }
+            }
+            return weights.map { (cost: Double(spawnCost(forTier: $0.key)), p: $0.value) }
+        }
+
+        let headline = tierOutcomes(band)
+        let filler   = tierOutcomes(band.basketFillerDifficulty)
+        let sizes    = Array(orderBasketLineCounts[band] ?? 1...1)
+        guard !sizes.isEmpty else { return [] }
+        let pSize = 1.0 / Double(sizes.count)
+
+        var result: [(cost: Double, p: Double)] = []
+        for lineCount in sizes {
+            var acc = headline.map { (cost: $0.cost, p: $0.p * pSize) }
+            for _ in 0..<max(0, lineCount - 1) {
+                acc = acc.flatMap { a in
+                    filler.map { f in (cost: a.cost + f.cost, p: a.p * f.p) }
+                }
+            }
+            result += acc
+        }
+        return result
+    }
+
+    /// Expected kibble value of one daily task's basket at `level`.
+    static func expectedDailyTaskCost(difficulty: QuestDifficulty, level: Int) -> Double {
+        dailyTaskCostDistribution(difficulty: difficulty, level: level)
+            .reduce(0.0) { $0 + $1.p * $1.cost }
+    }
+
+    /// Kibble value handed in per day across all three slots, assuming the
+    /// player clears them.
+    ///
+    /// Full clearance rather than a completion rate: on a faucet, assuming
+    /// players earn *less* is the assumption that hides an overpay, so the
+    /// safe direction here is to assume they earn all of it.
+    static func dailyTaskKibbleHandedIn(level: Int) -> Double {
+        dailyTaskSlotDifficulties.reduce(0.0) {
+            $0 + expectedDailyTaskCost(difficulty: $1, level: level)
+        }
+    }
+
+    /// Coins one daily slot pays per day, floor included.
+    static func dailyTaskCoinIncome(difficulty: QuestDifficulty, level: Int) -> Double {
+        dailyTaskCostDistribution(difficulty: difficulty, level: level).reduce(0.0) { total, outcome in
+            total + outcome.p * max(Double(dailyTaskCoinFloor),
+                                    outcome.cost * coinsPerKibbleOfOrder * dailyTaskCoinMultiplier)
+        }
+    }
+
+    /// Coins per day from claiming all three daily tasks — the per-task payouts
+    /// only. The flat all-three sweep bonus is counted separately in
+    /// `otherCoinIncome`, as it was before this channel existed.
+    static func dailyTaskCoinIncome(level: Int) -> Double {
+        dailyTaskSlotDifficulties.reduce(0.0) {
+            $0 + dailyTaskCoinIncome(difficulty: $1, level: level)
+        }
+    }
+
     static func ordersPerDay(level: Int) -> Double {
         Double(slotCount(level: level) + 1) * Double(orderCyclesPerDay)   // + the urgent order
     }
@@ -310,7 +411,11 @@ struct EconomySimulation {
     /// Coins per day from the faucets that aren't the two main channels.
     static func otherCoinIncome(level: Int) -> Double {
         let production = kibbleIntoOrders(level: level)
-        let dailies = Double(coinsPerAllDailyChallenges)
+        // Schema v40: the three daily slots now pay per-task coins for the
+        // creatures handed in, on top of the flat all-three sweep bonus. Before
+        // v40 they paid nothing individually, which is why this line used to be
+        // the sweep bonus alone.
+        let dailies = Double(coinsPerAllDailyChallenges) + dailyTaskCoinIncome(level: level)
         let quests  = questClaimsPerDay * averageQuestCoins
         // A top-tier merge consumes a full top-tier item's worth of production.
         let topTierMergesPerDay = production / Double(spawnCost(forTier: animalChainTopTier))
@@ -361,6 +466,20 @@ struct EconomySimulation {
         }
         out += String(format: "\nheadline (L%d): never-sell %.1f days · sell %.1f days\n",
                       projectionLevel, daysToFullMap(sells: false), daysToFullMap(sells: true))
+
+        out += "\ndaily hand-in tasks — multiplier \(dailyTaskCoinMultiplier), "
+        out += "sweep bonus \(coinsPerAllDailyChallenges)\n"
+        for level in reportLevels {
+            let easy   = dailyTaskCoinIncome(difficulty: .easy,   level: level)
+            let medium = dailyTaskCoinIncome(difficulty: .medium, level: level)
+            let hard   = dailyTaskCoinIncome(difficulty: .hard,   level: level)
+            let total  = easy + medium + hard
+            out += String(format:
+                "L%-3d  easy %6.0f  medium %6.0f  hard %7.0f  |  per-task total %7.0f  + sweep %d = %7.0f  (hard is %3.0f%%)\n",
+                level, easy, medium, hard, total,
+                coinsPerAllDailyChallenges, total + Double(coinsPerAllDailyChallenges),
+                total == 0 ? 0 : hard / total * 100)
+        }
         return out
     }
 

@@ -152,9 +152,114 @@ final class EconomyTests: XCTestCase {
         XCTAssertLessThan(QuestDifficulty.legendary.coinReward,
                           orderCoinPayout(tier: animalChainTopTier))
         XCTAssertLessThan(QuestDifficulty.easy.coinReward, averageOrder)
-        XCTAssertLessThan(coinsPerAllDailyChallenges, averageOrder * 2)
+        // The daily channel used to be one flat 400-coin sweep bonus, asserted
+        // here against `averageOrder * 2`. Since schema v40 that bonus is 0 and
+        // the channel is three per-task payouts, so the meaningful successor
+        // assertion is on a whole day of dailies, not on the (now zero) rider —
+        // checking the old constant would pass vacuously.
+        let wholeDayOfDailies = EconomySimulation.dailyTaskCoinIncome(level: 45)
+                              + Double(coinsPerAllDailyChallenges)
+        XCTAssertLessThan(wholeDayOfDailies, Double(orderCoinPayout(tier: animalChainTopTier)),
+                          "a full day of dailies must not rival one top-tier order")
+        XCTAssertGreaterThan(wholeDayOfDailies, Double(averageOrder),
+                             "but three claimed tasks should beat a single mid-tier order")
         // An Ambassador merge is a bonus on top of the item, never a rival to it.
         XCTAssertLessThan(coinsPerAmbassadorMerge, animalSellValue(tier: animalChainTopTier))
+    }
+
+    // MARK: Schema v40 — the daily hand-in channel
+
+    /// The sweep that moved `dailyTaskCoinMultiplier` off its unswept 1.0
+    /// (`Spec_DailyHandInTasks.md` §5a). At 1.0 with the old 400-coin bonus the
+    /// channel paid 1,135 coins/day at L45 against ~523 of budget, which put the
+    /// map at 52.9 days. Locking the corrected size in.
+    func testTheDailyChannelFitsInsideItsCoinBudget() {
+        // Budget = what the map projection can absorb at the anchor level
+        // before falling through the 55-day floor.
+        let ceiling = Double(EconomySimulation.mapTotalCoinCost) / 55.0
+        let withoutDailies = EconomySimulation.coinRow(level: EconomySimulation.projectionLevel,
+                                                       sells: true).total
+                           - EconomySimulation.dailyTaskCoinIncome(level: EconomySimulation.projectionLevel)
+                           - Double(coinsPerAllDailyChallenges)
+        let budget = ceiling - withoutDailies
+        let spend  = EconomySimulation.dailyTaskCoinIncome(level: EconomySimulation.projectionLevel)
+                   + Double(coinsPerAllDailyChallenges)
+
+        XCTAssertLessThan(spend, budget,
+                          "daily channel spends \(spend)/day against \(budget) of budget at L\(EconomySimulation.projectionLevel)")
+    }
+
+    /// The whole point of `dailyTaskCoinFloor`. Under strict build-cost
+    /// proportionality the easy slot paid 10 coins at *every* level (its band is
+    /// always tiers 0-1) and the hard slot took 93% of the channel — two of the
+    /// three cards were never worth pressing.
+    func testNoDailySlotIsDerisoryAtAnyLevel() {
+        for level in EconomySimulation.reportLevels {
+            for difficulty in dailyTaskSlotDifficulties {
+                let coins = EconomySimulation.dailyTaskCoinIncome(difficulty: difficulty, level: level)
+                XCTAssertGreaterThanOrEqual(coins, Double(dailyTaskCoinFloor),
+                                            "L\(level) \(difficulty.rawValue) slot pays \(coins)")
+            }
+        }
+    }
+
+    func testTheHardSlotNoLongerSwallowsTheWholeChannel() {
+        for level in EconomySimulation.reportLevels {
+            let hard  = EconomySimulation.dailyTaskCoinIncome(difficulty: .hard, level: level)
+            let total = EconomySimulation.dailyTaskCoinIncome(level: level)
+            XCTAssertLessThan(hard / total, 0.75,
+                              "L\(level): hard slot is \(hard / total * 100)% of the daily channel")
+        }
+    }
+
+    /// The floor must not bind where the projection is anchored — if it did, it
+    /// would be paying out at the endgame rather than only rescuing the early
+    /// game, and the budget above would be spent on the wrong levels.
+    func testTheFloorDoesNotBindAtTheEndgameHardSlot() {
+        let proportional = EconomySimulation.expectedDailyTaskCost(
+            difficulty: .hard, level: EconomySimulation.projectionLevel)
+            * coinsPerKibbleOfOrder * dailyTaskCoinMultiplier
+        XCTAssertGreaterThan(proportional, Double(dailyTaskCoinFloor) * 2,
+                             "the endgame hard slot should clear the floor comfortably, not sit on it")
+    }
+
+    /// Handing in must always beat selling the same creatures, at every level and
+    /// every slot — it costs the player the animals, unlike an order.
+    func testEveryDailySlotBeatsSellingItsBasket() {
+        for level in EconomySimulation.reportLevels {
+            for difficulty in dailyTaskSlotDifficulties {
+                let coins = EconomySimulation.dailyTaskCoinIncome(difficulty: difficulty, level: level)
+                let sold  = EconomySimulation.expectedDailyTaskCost(difficulty: difficulty, level: level)
+                          * coinsPerKibbleOfSale
+                XCTAssertGreaterThan(coins, sold,
+                                     "L\(level) \(difficulty.rawValue): \(coins) coins vs \(sold) sold")
+            }
+        }
+    }
+
+    /// `dailyTaskCostDistribution` mirrors `generateDailyTask`; if the generator
+    /// changes bands or line counts and the model does not, every number above
+    /// silently stops describing the game.
+    func testTheModelsBasketDistributionMatchesWhatIsActuallyGenerated() {
+        let coordinator = QuestCoordinator()
+        let dog = ContentRegistry.animalChainID(.dog)
+        let level = 45
+        var observed: [QuestDifficulty: [Int]] = [:]
+        for _ in 0..<4_000 {
+            coordinator.generateDailyChallenges(unlockedAnimalChainIDs: [dog], playerLevel: level)
+            for task in coordinator.dailyChallenges {
+                let kibble = task.lines.reduce(0) { $0 + buildCost(tier: $1.tier, count: $1.count) }
+                observed[task.difficulty, default: []].append(kibble)
+            }
+        }
+        for difficulty in dailyTaskSlotDifficulties {
+            let sample = observed[difficulty] ?? []
+            XCTAssertFalse(sample.isEmpty)
+            let measured = Double(sample.reduce(0, +)) / Double(sample.count)
+            let modelled = EconomySimulation.expectedDailyTaskCost(difficulty: difficulty, level: level)
+            XCTAssertEqual(measured, modelled, accuracy: modelled * 0.15,
+                           "\(difficulty.rawValue): generator averages \(measured) kibble, model says \(modelled)")
+        }
     }
 
     // MARK: Phase 2c — map build-out projection
