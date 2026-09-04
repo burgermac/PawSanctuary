@@ -262,6 +262,90 @@ final class EconomyTests: XCTestCase {
         }
     }
 
+    // MARK: Schema v40 — board congestion (the stock model)
+
+    /// `unlockedCells` mirrors `boardRowUnlockTiers`. If a row's gate moves and
+    /// the model does not, every congestion number below stops describing the
+    /// game.
+    func testUnlockedCellsTracksTheRealRowUnlockGates() {
+        XCTAssertEqual(EconomySimulation.unlockedCells(deepestTier: 0), 21,
+                       "three rows open from the start")
+        XCTAssertEqual(EconomySimulation.unlockedCells(deepestTier: 2), 28)
+        XCTAssertEqual(EconomySimulation.unlockedCells(deepestTier: 10), boardRows * 7,
+                       "the whole board is open by tier 10")
+        // Monotone, and never past the real board.
+        var previous = 0
+        for tier in 0...11 {
+            let cells = EconomySimulation.unlockedCells(deepestTier: tier)
+            XCTAssertGreaterThanOrEqual(cells, previous)
+            XCTAssertLessThanOrEqual(cells, boardRows * 7)
+            previous = cells
+        }
+    }
+
+    /// Read off the live area roster, not hardcoded — one spawner per rewarding
+    /// area plus the Canines spawner every save starts with.
+    func testEveryFamilySpawnerIsAccountedFor() {
+        XCTAssertEqual(EconomySimulation.totalFamilySpawners,
+                       AnimalSpecies.allCases.count,
+                       "every family should be reachable exactly once, via the map or the day-one dog")
+    }
+
+    /// The v40-specific claim on the board. This is the number that regresses if
+    /// anyone widens `orderBasketLineCounts` or the hard tier band, and the one
+    /// worth failing loudly on.
+    func testDailyTasksClaimAMinorityOfTheBoardAtEveryLevel() {
+        for level in EconomySimulation.reportLevels {
+            let capacity = EconomySimulation.unlockedCells(
+                deepestTier: EconomySimulation.assumedDeepestTier(level: level))
+            let claim = EconomySimulation.dailyTaskHoldCells()
+                      + EconomySimulation.dailyTaskStagingCells(level: level)
+            XCTAssertLessThan(claim / Double(capacity), 0.40,
+                              "L\(level): daily tasks want \(claim) of \(capacity) cells")
+        }
+    }
+
+    /// `dailyTaskHoldCells` counts *items*, so the duplicate-collapse in
+    /// `generateDailyTask` (two identical lines becoming one line of count 2)
+    /// must leave it unchanged. Sampled against the real generator.
+    func testHoldCellsMatchWhatTheGeneratorActuallyPutsOnTheBoard() {
+        let coordinator = QuestCoordinator()
+        let dog = ContentRegistry.animalChainID(.dog)
+        var totalItems = 0
+        let days = 2_000
+        for _ in 0..<days {
+            coordinator.generateDailyChallenges(unlockedAnimalChainIDs: [dog], playerLevel: 45)
+            for task in coordinator.dailyChallenges { totalItems += task.wantedCount }
+        }
+        let measured = Double(totalItems) / Double(days)
+        XCTAssertEqual(measured, EconomySimulation.dailyTaskHoldCells(), accuracy: 0.2,
+                       "generator asks for \(measured) creatures a day, model says \(EconomySimulation.dailyTaskHoldCells())")
+    }
+
+    /// The corner the congestion model exists to find. Board capacity is gated
+    /// on **deepest merge tier**; spawner count on **map areas bought with
+    /// materials**. Different currencies, so they can drift — and the tightest
+    /// board in the sweep is one where map progress has outrun tier progress.
+    ///
+    /// Asserting the *shape*, not a comfort level: the squeeze must be
+    /// spawner-driven, because if daily tasks ever become the dominant claim
+    /// that is a v40 regression rather than a pre-existing progression quirk.
+    func testTheTightestBoardIsSpawnerDrivenNotDailyTaskDriven() {
+        let worst = EconomySimulation.worstCaseCongestion()
+        XCTAssertGreaterThan(Double(worst.spawners), worst.hold + worst.staging,
+                             "worst corner: \(worst.description)")
+    }
+
+    /// Even in that corner the board must not be unplayable — a merge needs
+    /// somewhere to land, and a spawn needs a free cell to drop into.
+    func testTheBoardStillHasRoomToPlayInEvenAtItsTightest() {
+        let worst = EconomySimulation.worstCaseCongestion()
+        XCTAssertGreaterThan(worst.workingCells, 2.0,
+                             "worst corner leaves \(worst.workingCells) working cells: \(worst.description)")
+        XCTAssertLessThan(worst.occupancy, 0.90,
+                          "worst corner occupancy \(worst.occupancy * 100)%")
+    }
+
     // MARK: Phase 2c — map build-out projection
 
     func testMapBuildOutLandsInTheTargetWindow() {
