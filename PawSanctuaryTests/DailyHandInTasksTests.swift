@@ -397,6 +397,42 @@ final class DailyHandInTaskClaimTests: XCTestCase {
         XCTAssertNil(vm.boardState.item(at: GridPosition(row: 0, col: 1)))
     }
 
+    /// The lane shows only what the player can still act on. A claimed task's
+    /// creatures are gone and its coins are paid, so leaving it in the
+    /// horizontal band pushes the orders — which still want something — further
+    /// off screen for the rest of the day.
+    func testClaimedTasksLeaveTheLaneButStayInTheDaySet() {
+        let vm = makeViewModel()
+        vm.quests.dailyChallenges = (0..<3).map { i in
+            DailyChallenge(lines: [DailyTaskLine(chainID: dog, tier: i, count: 1)],
+                           difficulty: [.easy, .medium, .hard][i], coinReward: 20)
+        }
+        place(vm, dog, tier: 0, col: 0)
+        XCTAssertEqual(vm.unclaimedDailyTasks.count, 3)
+
+        vm.claimDailyTask(id: vm.quests.dailyChallenges[0].id)
+
+        XCTAssertEqual(vm.unclaimedDailyTasks.count, 2, "the claimed task drops out of the lane")
+        XCTAssertEqual(vm.dailyChallenges.count, 3,
+                       "but the day's full set survives — the sheet and the N/3 tile still need it")
+        XCTAssertFalse(vm.unclaimedDailyTasks.contains { $0.isClaimed })
+    }
+
+    func testTheLaneEmptiesOnceEveryTaskIsHandedIn() {
+        let vm = makeViewModel()
+        vm.quests.dailyChallenges = (0..<3).map { i in
+            DailyChallenge(lines: [DailyTaskLine(chainID: dog, tier: 0, count: 1)],
+                           difficulty: [.easy, .medium, .hard][i], coinReward: 20)
+        }
+        for col in 0..<3 { place(vm, dog, tier: 0, col: col) }
+
+        for task in vm.quests.dailyChallenges { vm.claimDailyTask(id: task.id) }
+
+        XCTAssertTrue(vm.unclaimedDailyTasks.isEmpty,
+                      "a fully swept day leaves the band to the orders")
+        XCTAssertEqual(vm.dailyChallenges.filter(\.isClaimed).count, 3)
+    }
+
     /// The sweep now fires on the third *claim*, not the third counter filling.
     func testClaimingAllThreeStillPaysTheExistingSweepBonus() {
         let vm = makeViewModel()

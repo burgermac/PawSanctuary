@@ -67,12 +67,21 @@ struct CellView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.yellow.opacity(isSpotlight && cell.item != nil ? 0.8 : 0.0),
                             lineWidth: 2.5))
-                // Daily hand-in task ring. The fill alone is legible at rest,
-                // but the board already tints every cell by its item's stage
-                // colour, so a stocked task needs an edge as well to survive a
-                // board full of other tints.
+                // Daily hand-in task ring — drawn for BOTH states, and after
+                // the spotlight ring so it wins the cell when they collide.
+                //
+                // `strokeBorder`, not `stroke`: this group is clipped to its own
+                // rounded rect, and a centred stroke loses its outer half to
+                // that clip — which is why the first pass's "2.5pt" ring read as
+                // about one point. `strokeBorder` insets instead, so the width
+                // asked for is the width drawn.
+                //
+                // Deliberately no pulse or glow. A `repeatForever` animation
+                // here would run on every highlighted cell at once, and that is
+                // exactly the shape of the real-device OOM `TODO.md` records
+                // against the producer shimmer. Colour and edge do the work.
                 .overlay(RoundedRectangle(cornerRadius: 12)
-                    .stroke(dailyTaskBorder, lineWidth: dailyTaskHighlight == .stocked ? 2.5 : 0)
+                    .strokeBorder(dailyTaskBorder, lineWidth: dailyTaskBorderWidth)
                     .animation(.easeInOut(duration: 0.25), value: dailyTaskHighlight))
                 // Top-tier gold gradient ring
                 .overlay(RoundedRectangle(cornerRadius: 12)
@@ -253,18 +262,36 @@ struct CellView: View {
 
     // MARK: Computed colours
 
-    /// Muted blue — a task wants this creature but is still short.
+    // Daily hand-in highlight (`Spec_DailyHandInTasks.md` D-B).
+    //
+    // **Retuned 4 Sep 2026 after looking at it on device.** The first pass used
+    // a 0.22-opacity fill for `.wanted` and drew a ring only for `.stocked`.
+    // On screen that is barely distinguishable from an empty cell, and the gold
+    // spotlight ring — which lands on the same cells often, since the spotlight
+    // chain is also a chain tasks ask for — visually won. The highlight existed
+    // and did nothing. Both states now carry a real fill *and* a real ring.
+
+    /// A task wants this creature but is still short of it.
     private var dailyTaskWantedTint: Color {
-        Color(red: 0.30, green: 0.52, blue: 0.78).opacity(0.22)
+        Color(red: 0.24, green: 0.52, blue: 0.85).opacity(0.38)
     }
-    /// Bright blue — every line of a task this cell serves is stocked.
+    /// Every line of a task this cell serves is stocked — hand it in.
     private var dailyTaskStockedTint: Color {
-        Color(red: 0.10, green: 0.55, blue: 0.98).opacity(0.55)
+        Color(red: 0.05, green: 0.55, blue: 1.00).opacity(0.62)
     }
     private var dailyTaskBorder: Color {
-        dailyTaskHighlight == .stocked
-            ? Color(red: 0.05, green: 0.45, blue: 0.95)
-            : .clear
+        switch dailyTaskHighlight {
+        case .stocked: return Color(red: 0.02, green: 0.42, blue: 0.95)
+        case .wanted:  return Color(red: 0.24, green: 0.52, blue: 0.85).opacity(0.85)
+        case .none:    return .clear
+        }
+    }
+    private var dailyTaskBorderWidth: CGFloat {
+        switch dailyTaskHighlight {
+        case .stocked: return 3
+        case .wanted:  return 2
+        case .none:    return 0
+        }
     }
 
     private var cellBackground: Color {

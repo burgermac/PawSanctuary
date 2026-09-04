@@ -34,6 +34,21 @@ unclaimed daily task still wants goes **muted blue**; when a task is fully
 stocked, every cell serving that task goes **bright blue**. Per-task colours were
 considered and rejected as noise at a 50pt cell.
 
+> **Retuned 4 Sep 2026, after looking at it on device (§9).** The first pass
+> shipped `.wanted` at a 0.22-opacity fill with **no ring at all**, and drew a
+> ring only for `.stocked`. On screen that is very nearly an ordinary empty
+> cell, and the gold spotlight ring — which lands on the same cells often, since
+> the spotlight chain is also a chain tasks draw from — visually won. The
+> highlight existed and did no work. Both states now carry a real fill *and* a
+> real ring.
+
+**D-F. A claimed task leaves the lane.** Added 4 Sep 2026. A claimed task's
+creatures are gone and its coins are paid; the card can only say "Handed in", and
+keeping it in the horizontal band pushes the orders — the cards that still want
+something — further off screen for the rest of the day. The lane renders
+`MergeBoardViewModel.unclaimedDailyTasks`. The day's full set stays in the sheet,
+and the tray tile still shows the N/3 count, so nothing is lost.
+
 **D-C. The near-miss stagger is dropped for dailies.** This contradicts a
 recorded decision — `Gap_Analysis_Round2.md` 3.1 / `Merge2_Reference_Blueprint.md`
 §5, which had all three dailies share one anchor goal so finishing one leaves the
@@ -437,6 +452,54 @@ The existing all-three-complete bonus (`coinsPerAllDailyChallenges` 400,
 `xpDailyComplete` 30, streak dog tags, `carePointsPerDailySweep`) is unchanged,
 but now fires when the third task is **claimed** rather than when the third
 counter fills.
+
+## 9. On-device correction (4 Sep 2026)
+
+Both changes here came from playing the shipped build rather than reading it, and
+one of them corrects a claim I made when the feature landed.
+
+### The board highlight was shipped, verified, and still not working
+
+I confirmed the highlight on device when the feature landed — but only in its
+**`.stocked`** state, on a board where three cells were simultaneously bright
+blue. `.wanted` was never looked at, and `.wanted` is the state a player actually
+spends the day in: a task is short of something almost all of the time.
+
+At `opacity(0.22)` with no ring, `.wanted` is not distinguishable from an empty
+cell at arm's length, and the gold spotlight ring on the same cell wins outright.
+So the honest description of what shipped is *"the highlight is implemented and
+invisible"*, which is worse than not shipping it, because the code reads as done.
+
+Retuned, and both states verified on device side by side this time:
+
+| | fill | ring |
+|---|---|---|
+| `.wanted` | 0.38 | 2pt |
+| `.stocked` | 0.62 | 3pt |
+
+Two mechanical fixes went with the colour change:
+
+- **The ring is drawn for both states**, and *after* the spotlight ring, so it
+  wins the cell when they collide.
+- **`strokeBorder`, not `stroke`.** The background group is clipped to its own
+  rounded rect, and a centred stroke loses its outer half to that clip — which is
+  why the first pass's "2.5pt" ring rendered at about one point. `strokeBorder`
+  insets instead, so the width asked for is the width drawn.
+
+**Deliberately no pulse or glow.** A `repeatForever` animation here would run on
+every highlighted cell at once, which is exactly the shape of the real-device OOM
+`TODO.md` records against the producer shimmer. Colour and edge do the work.
+
+Selection still outranks the task tint in `cellBackground`, so a selected cell
+shows yellow rather than blue. That is correct — selection is transient and the
+player just caused it.
+
+### Claimed cards stay on screen for no reason
+
+Second issue, same session: a claimed card sat in the horizontal lane for the
+rest of the day showing "Handed in". With three dailies plus five order cards in
+one scroll, that is a third of the band spent on cards nothing can be done with.
+See D-F.
 
 ## 6. Claim
 
