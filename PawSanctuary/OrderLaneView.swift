@@ -247,7 +247,11 @@ struct OrderLaneView: View {
                 // Daily tasks lead. They expire at midnight and are the only
                 // cards here that take pieces off the board, so they are the
                 // ones worth planning the session around.
-                ForEach(viewModel.dailyChallenges) { task in
+                //
+                // Claimed tasks drop out of the lane entirely
+                // (`unclaimedDailyTasks`) — see that property for why. The
+                // sheet still shows the whole day.
+                ForEach(viewModel.unclaimedDailyTasks) { task in
                     DailyTaskLaneCard(
                         task: task,
                         census: taskCensus,

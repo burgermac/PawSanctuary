@@ -754,6 +754,18 @@ class MergeBoardViewModel {
         return result
     }
 
+    /// Daily tasks still awaiting a claim — what the horizontal lane shows.
+    ///
+    /// A claimed task has nothing left for the player to do with it: its
+    /// creatures are gone, its coins are paid, and the card can only say
+    /// "Handed in". Keeping it in the lane pushes the orders — the cards that
+    /// *do* still want something — further off screen for the rest of the day.
+    /// The day's full set, claimed ones included, stays in the sheet, and the
+    /// tray tile still shows the N/3 count.
+    var unclaimedDailyTasks: [DailyChallenge] {
+        dailyChallenges.filter { !$0.isClaimed }
+    }
+
     func isDailyTaskStocked(_ task: DailyChallenge) -> Bool {
         task.isStocked(census: boardTaskCensus)
     }
