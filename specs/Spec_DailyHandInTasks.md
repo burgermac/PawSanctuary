@@ -382,11 +382,56 @@ share, so it is visible rather than buried.
 they are not using, and the model's 15-on-board figure is the default, not a
 floor. Whether players *discover* that is a UX question this model cannot answer.
 
+### Validation (4 Sep 2026)
+
+The faucet's toolbox terms are the model's least directly observable:
+`buildToolboxLot` is private, rolls three chains independently, draws a random
+count per chain, and rolls each item's tier off a weighted distribution. A
+closed-form test would restate the model's own algebra and pass for whatever
+reason the model was wrong.
+
+`ToolboxDropRateTests` instead Monte-Carlo samples the **real**
+`claimQuest` → `placeToolbox` → `buildToolboxLot` path and compares:
+
+| Checked | Against |
+|---|---|
+| Lot value in tier-0 units, at L10 and L45 | `expectedToolboxUnits` |
+| Lot shape — three chains, 1–3 items each | the model's composition assumption |
+| No material above tier 5 at any level | `buildToolboxLot`'s `min(5, …)` clamp |
+| Toolboxes per claim: medium 1, hard 2, legendary 3 | `claimQuest`'s switch |
+| The easy quest's 1-in-4 drop | the one random arm |
+| Quest difficulty mix 45/30/20/5 | `generateQuest`'s d20 roll |
+| Toolboxes per claim under the real mix | `expectedToolboxesPerQuestClaim` |
+
+All seven pass against the live generator — no drift found. The suite was
+**mutation-tested** to confirm it is not vacuous: inflating the model's
+items-per-chain by 20% fails two of them.
+
+Two levels are sampled deliberately — L10 caps at tier 3, L45 at the chain top —
+so a model with the `toolboxMaxTier` cap wrong would pass at one and fail at the
+other.
+
 ### Still open
 
-Nothing this model can settle. The remaining question is behavioural: do players
-actually stash spawners, or do they sit on a 79%-full board and feel it? That
-needs playtesting, not arithmetic.
+**There is no PawSanctuary playtest data**, and that is the honest limit of every
+number in §5a–§5c. The only gameplay figure the app records is
+`commerce.wallEventsTotal`, a monetization gate counter; every "measured" value
+in these specs — `Economy_State_and_Variance.md` included — comes from
+reference-title *video capture*, not from this game. The live generator is
+therefore the ground truth these tests hold the model to, which catches
+model-vs-code drift but **cannot** catch a model that describes the code
+correctly and players incorrectly.
+
+Two things only real play can settle:
+
+1. **Do players stash spawners** (`familySpawnerStorage`), or sit on a 79%-full
+   board and feel it? §5c's congestion figure assumes the default of leaving all
+   15 out.
+2. **Is `questClaimsPerDay = 2.0` right?** It is inherited from the Phase 2c coin
+   model, and the material faucet scales linearly with it — a real figure of 1.0
+   or 4.0 would halve or double every day-count in §5c.
+
+Closing either needs instrumentation the game does not have.
 
 The existing all-three-complete bonus (`coinsPerAllDailyChallenges` 400,
 `xpDailyComplete` 30, streak dog tags, `carePointsPerDailySweep`) is unchanged,
