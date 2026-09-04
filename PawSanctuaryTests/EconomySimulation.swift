@@ -425,6 +425,131 @@ struct EconomySimulation {
         return expectedTier + 1.0
     }
 
+    // ============================================================
+    // MARK: - MATERIAL FAUCET
+    // ============================================================
+    //
+    // The open item `Spec_DailyHandInTasks.md` §5b left: the congestion model
+    // found a spawner-choke corner but could not say whether it is *reachable*,
+    // because family spawners come from map areas and map areas are bought with
+    // **materials** — a faucet nothing modelled.
+    //
+    // Materials are the third currency, alongside kibble and coins, and the only
+    // one that gates content rather than pace. `InventoryStore.absorbMaterialItems`
+    // auto-cascades the accumulator (two of tier N become one of tier N+1), so
+    // the whole economy collapses to a single scalar: **tier-0 equivalents**,
+    // where one tier-N material is worth 2^N of them. Everything below is
+    // denominated that way.
+
+    /// Tier-0 equivalents one material at `tier` is worth. Materials cascade
+    /// 2-for-1 without limit, so this is exact rather than an approximation.
+    /// Coincides numerically with `spawnCost(forTier:)` — both are 2^tier — but
+    /// they are different quantities and are kept separate deliberately.
+    static func materialUnits(tier: Int) -> Int { 1 << max(0, tier) }
+
+    /// Expected tier-0 equivalents in one item rolled by `weightedToolboxTier`,
+    /// whose weights run `maxTier + 1 - tier` (so tier 0 is likeliest).
+    static func expectedToolboxItemUnits(level: Int, chestTier: Int = 0) -> Double {
+        let maxTier = min(5, toolboxMaxTier(forPlayerLevel: level) + chestTier)
+        let weights = (0...maxTier).map { Double(maxTier + 1 - $0) }
+        let total   = weights.reduce(0, +)
+        guard total > 0 else { return 0 }
+        return zip(0...maxTier, weights).reduce(0.0) { running, pair in
+            running + pair.1 / total * Double(materialUnits(tier: pair.0))
+        }
+    }
+
+    /// Expected tier-0 equivalents in one whole toolbox.
+    ///
+    /// Mirrors `buildToolboxLot`: three chains, `Int.random(in: 1...3) + chestTier`
+    /// items each (expected 2 at chest tier 0), every item rolled independently.
+    static func expectedToolboxUnits(level: Int, chestTier: Int = 0) -> Double {
+        let itemsPerChain = 2.0 + Double(chestTier)
+        return 3.0 * itemsPerChain * expectedToolboxItemUnits(level: level, chestTier: chestTier)
+    }
+
+    /// Toolboxes dropped per quest claim, from `claimQuest`'s difficulty switch
+    /// (easy 1-in-4, medium 1, hard 2, legendary 3) weighted by `generateQuest`'s
+    /// actual d20 roll — 45/30/20/5 — with the same level capping it applies.
+    static func expectedToolboxesPerQuestClaim(level: Int) -> Double {
+        var weights: [QuestDifficulty: Double] = [:]
+        for (raw, p) in [(QuestDifficulty.easy, 0.45), (.medium, 0.30),
+                         (.hard, 0.20), (.legendary, 0.05)] {
+            let capped: QuestDifficulty
+            switch level {
+            case 1...2: capped = .easy
+            case 3...4: capped = (raw == .hard || raw == .legendary) ? .medium : raw
+            case 5...7: capped = (raw == .legendary) ? .hard : raw
+            default:    capped = raw
+            }
+            weights[capped, default: 0] += p
+        }
+        let perDifficulty: [QuestDifficulty: Double] = [
+            .easy: 0.25, .medium: 1, .hard: 2, .legendary: 3,
+        ]
+        return weights.reduce(0.0) { $0 + $1.value * (perDifficulty[$1.key] ?? 0) }
+    }
+
+    /// Hard-slot orders completed per day. `orderSlotDifficultyPattern` is
+    /// easy/medium/medium/hard, so one slot in four is hard; the urgent order is
+    /// always `.medium` and pays no material.
+    static func hardOrdersPerDay(level: Int) -> Double {
+        let hardSlots = (0..<slotCount(level: level))
+            .filter { AdoptionBoard.difficulty(forSlot: $0) == .hard }.count
+        return Double(hardSlots) * Double(orderCyclesPerDay)
+    }
+
+    /// Tier-0 material equivalents earned per day.
+    ///
+    /// Two faucets, both real code paths: quest-claim toolboxes (`claimQuest`)
+    /// and the hard order slot's guaranteed material (`generateOrder`, Task 5.3
+    /// — "a dedicated bottleneck beyond quest-driven Toolboxes"). The ambassador
+    /// -merge toolbox is deliberately **not** counted: it fires on a top-tier
+    /// merge, which is days of work, and counting it would flatter the faucet.
+    static func materialUnitsPerDay(level: Int) -> Double {
+        let fromToolboxes = questClaimsPerDay
+                          * expectedToolboxesPerQuestClaim(level: level)
+                          * expectedToolboxUnits(level: level)
+        let orderMaterialTier = max(0, toolboxMaxTier(forPlayerLevel: level) - materialRewardTierOffset)
+        let fromOrders = hardOrdersPerDay(level: level)
+                       * Double(materialRewardCount)
+                       * Double(materialUnits(tier: orderMaterialTier))
+        return fromToolboxes + fromOrders
+    }
+
+    /// Tier-0 equivalents to complete one area — the cost that grants its family
+    /// spawner. Upgrades are excluded: they cost coins and materials of their
+    /// own but grant no spawner, so they do not gate `familiesOwned`.
+    static func areaMaterialCost(_ area: SanctuaryArea) -> Int {
+        area.costs.reduce(0) { $0 + materialUnits(tier: $1.tier) * $1.count }
+    }
+
+    /// Running total to complete the first N areas, in order — `requiresPrevious`
+    /// makes the map strictly sequential, so a prefix sum is the real cost.
+    static var cumulativeAreaMaterialCost: [Int] {
+        var running = 0
+        return sanctuaryAreas.map { running += areaMaterialCost($0); return running }
+    }
+
+    /// Family spawners owned after `days` of play at `level`'s material income.
+    ///
+    /// This is what closes §5b's open item: `familiesOwned` stops being a free
+    /// input and becomes a derived quantity. +1 for the Canines spawner every
+    /// save starts with.
+    static func familiesOwned(level: Int, days: Double) -> Int {
+        let banked = materialUnitsPerDay(level: level) * days
+        let areasDone = cumulativeAreaMaterialCost.filter { Double($0) <= banked }.count
+        // The tutorial area grants no spawner; every later one does.
+        return min(totalFamilySpawners, 1 + max(0, areasDone - 1))
+    }
+
+    /// Days of play at `level`'s income to own every family.
+    static func daysToAllFamilies(level: Int) -> Double {
+        let total = cumulativeAreaMaterialCost.last ?? 0
+        let rate  = materialUnitsPerDay(level: level)
+        return rate <= 0 ? .infinity : Double(total) / rate
+    }
+
     struct CongestionRow {
         let level: Int
         let familiesOwned: Int
@@ -644,6 +769,28 @@ struct EconomySimulation {
             }
         }
         out += "\nworst corner: " + worstCaseCongestion().description + "\n"
+
+        out += "\nmaterial faucet — tier-0 equivalents; areas cost "
+        out += "\(cumulativeAreaMaterialCost.last ?? 0) to complete all \(sanctuaryAreas.count)\n"
+        out += "(one tier-5 material = 32 units; the accumulator cascades 2-for-1 without limit)\n\n"
+        for level in reportLevels {
+            let rate = materialUnitsPerDay(level: level)
+            out += String(format: "L%-3d  units/day %7.0f  |  families after 7d %2d · 30d %2d · 60d %2d  |  all 15 in %6.1f days\n",
+                          level, rate,
+                          familiesOwned(level: level, days: 7),
+                          familiesOwned(level: level, days: 30),
+                          familiesOwned(level: level, days: 60),
+                          daysToAllFamilies(level: level))
+        }
+
+        out += "\nis the spawner-choke corner reachable? (families derived, not swept)\n\n"
+        for level in reportLevels {
+            for days in [30.0, 60.0] {
+                let fam = familiesOwned(level: level, days: days)
+                out += String(format: "  %3.0fd  ", days)
+                out += congestionRow(level: level, familiesOwned: fam).description + "\n"
+            }
+        }
         return out
     }
 

@@ -346,6 +346,97 @@ final class EconomyTests: XCTestCase {
                           "worst corner occupancy \(worst.occupancy * 100)%")
     }
 
+    // MARK: The material faucet — the third currency
+
+    /// Materials cascade 2-for-1 without limit in `InventoryStore.absorbMaterialItems`,
+    /// which is what makes tier-0 equivalents an exact denomination rather than
+    /// an approximation.
+    func testMaterialUnitsMatchTheCascadeRatio() {
+        XCTAssertEqual(EconomySimulation.materialUnits(tier: 0), 1)
+        XCTAssertEqual(EconomySimulation.materialUnits(tier: 5), 32)
+        for tier in 1...5 {
+            XCTAssertEqual(EconomySimulation.materialUnits(tier: tier),
+                           EconomySimulation.materialUnits(tier: tier - 1) * 2,
+                           "two of tier \(tier - 1) must cascade into one of tier \(tier)")
+        }
+    }
+
+    /// Area costs are read off the live roster, so content edits move the model
+    /// rather than silently invalidating it. Anchored so a *accidental* content
+    /// change still fails loudly.
+    func testAreaMaterialCostsComeFromTheLiveRoster() {
+        let costs = EconomySimulation.cumulativeAreaMaterialCost
+        XCTAssertEqual(costs.count, sanctuaryAreas.count)
+        XCTAssertEqual(costs.last, 4_448, "total material cost of the whole map")
+        // Strictly increasing — the map is sequential (`requiresPrevious`).
+        for (a, b) in zip(costs, costs.dropFirst()) {
+            XCTAssertLessThan(a, b, "every area must add real cost")
+        }
+    }
+
+    /// **The headline finding.** `toolboxMaxTier` is `min(5, level / 5 + 1)`, so
+    /// it saturates at level 20 — and with it the whole material faucet. Board
+    /// capacity, meanwhile, is gated on deepest merge tier and does not open its
+    /// last row until tier 10, which `maxAchievableOrderTier` puts at level 41+.
+    ///
+    /// So the two progressions are mismatched *by construction*: a player owns
+    /// every family spawner long before the board grows to hold them. This test
+    /// exists to make that visible and to fail if either gate moves.
+    func testTheMaterialFaucetSaturatesLongBeforeTheBoardFinishesGrowing() {
+        XCTAssertEqual(toolboxMaxTier(forPlayerLevel: 20), 5)
+        XCTAssertEqual(toolboxMaxTier(forPlayerLevel: 60), 5, "the faucet stops growing at L20")
+        XCTAssertEqual(EconomySimulation.materialUnitsPerDay(level: 20),
+                       EconomySimulation.materialUnitsPerDay(level: 60),
+                       accuracy: 0.01,
+                       "material income is flat from L20 onward")
+
+        let cellsAtSaturation = EconomySimulation.unlockedCells(
+            deepestTier: EconomySimulation.assumedDeepestTier(level: 20))
+        XCTAssertLessThan(cellsAtSaturation, boardRows * 7,
+                          "the board is still growing when the material faucet has stopped")
+    }
+
+    /// §5b left open whether the spawner-choke corner is *reachable*. With the
+    /// faucet modelled it is: at L20's income the whole map's material cost is
+    /// ~34 days of play, while the board is still at 35 cells.
+    func testTheSpawnerChokeCornerIsReachable() {
+        XCTAssertEqual(EconomySimulation.familiesOwned(level: 20, days: 60),
+                       EconomySimulation.totalFamilySpawners,
+                       "two months at L20 income buys every spawner")
+        XCTAssertLessThan(EconomySimulation.daysToAllFamilies(level: 20), 40.0)
+
+        let row = EconomySimulation.congestionRow(
+            level: 20, familiesOwned: EconomySimulation.familiesOwned(level: 20, days: 60))
+        XCTAssertEqual(row.capacity, 35, "still three rows short of the full board")
+        XCTAssertGreaterThan(row.occupancy, 0.75, "reachable, and genuinely tight: \(row.description)")
+    }
+
+    /// Refines §5b. Daily tasks are not the *dominant* claim — spawners are —
+    /// but at the tightest reachable point they take the majority of whatever
+    /// the producers leave behind, which is the honest statement of their cost.
+    func testAtTheTightestPointDailyTasksTakeMostOfTheNonProducerSpace() {
+        let families = EconomySimulation.familiesOwned(level: 20, days: 60)
+        let row = EconomySimulation.congestionRow(level: 20, familiesOwned: families)
+        let nonProducer = Double(row.capacity - row.spawners - row.supplyProducers)
+        let taskClaim = row.hold + row.staging
+
+        XCTAssertGreaterThan(taskClaim / nonProducer, 0.50,
+                             "daily tasks take \(taskClaim) of the \(nonProducer) cells producers leave")
+        // But the board still works — a merge has somewhere to land.
+        XCTAssertGreaterThan(row.workingCells, 5.0, row.description)
+    }
+
+    /// The faucet must actually grow with level up to saturation, or the early
+    /// game would be a wall rather than a ramp.
+    func testMaterialIncomeRisesWithLevelUntilItSaturates() {
+        let ramp = [1, 5, 10, 15, 20].map { EconomySimulation.materialUnitsPerDay(level: $0) }
+        for (a, b) in zip(ramp, ramp.dropFirst()) {
+            XCTAssertLessThan(a, b, "material income should ramp through the early game")
+        }
+        XCTAssertGreaterThan(EconomySimulation.daysToAllFamilies(level: 1), 300.0,
+                             "a level-1 player is nowhere near the whole map")
+    }
+
     // MARK: Phase 2c — map build-out projection
 
     func testMapBuildOutLandsInTheTargetWindow() {

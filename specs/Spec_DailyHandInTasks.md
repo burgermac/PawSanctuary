@@ -307,13 +307,86 @@ forbids, so the report sweeps the range instead.
 
 ### Still open
 
-Whether the spawner-choke corner is actually reachable. It needs the material
-faucet modelled — hard-slot order rewards and toolbox drops against
-`toolboxMaxTier(forPlayerLevel:)` — which is its own piece of work and unrelated
-to this spec. Until then the corner is a shape the model can see, not a
-confirmed player experience. **Mitigations already in the game if it proves
-real:** spawners can be moved to `familySpawnerStorage`, which is per-species and
-uncapped.
+Nothing — §5c models the material faucet and answers it. **The corner is
+reachable, and it is not a corner.**
+
+## 5c. The material faucet (4 Sep 2026)
+
+Closes §5b's open item. Materials are the game's third currency, alongside kibble
+and coins, and the only one that gates *content* rather than pace — map areas,
+and therefore family spawners, and therefore how much of the board is permanently
+occupied.
+
+`InventoryStore.absorbMaterialItems` cascades the accumulator 2-for-1 without
+limit, so the whole economy collapses to one scalar: **tier-0 equivalents**,
+where a tier-N material is worth 2^N. That makes the denomination exact rather
+than an approximation.
+
+### The faucet
+
+Two real code paths, both counted:
+
+| Source | Rate |
+|---|---|
+| Quest-claim toolboxes (`claimQuest`: easy 1-in-4, medium 1, hard 2, legendary 3) | weighted by `generateQuest`'s actual d20 roll (45/30/20/5), with its level capping |
+| Hard order slot's guaranteed material (`generateOrder`, Task 5.3) | 1 per hard order at `toolboxMaxTier − 2` |
+
+The ambassador-merge toolbox is deliberately **not** counted — it fires on a
+top-tier merge, which is days of work, and counting it would flatter the faucet.
+
+### The whole map costs 4,448 units. Here is how long that takes:
+
+```
+L1    units/day  12  |  families after 30d  3 · 60d  5  |  all 15 in 370.7 days
+L10   units/day  46  |  families after 30d  7 · 60d 11  |  all 15 in  96.6 days
+L15   units/day  76  |  families after 30d 10 · 60d 15  |  all 15 in  58.6 days
+L20   units/day 130  |  families after 30d 14 · 60d 15  |  all 15 in  34.2 days
+L60   units/day 130  |  families after 30d 14 · 60d 15  |  all 15 in  34.2 days
+```
+
+### The finding: the two progressions are mismatched by construction
+
+`toolboxMaxTier(forPlayerLevel:)` is `min(5, level / 5 + 1)` — it **saturates at
+level 20**, and with it the entire material faucet, which is flat at 130
+units/day from L20 to L60. Board capacity, meanwhile, is gated on deepest merge
+tier and does not open its last row until tier 10, which `maxAchievableOrderTier`
+puts at **level 41+**.
+
+So a player finishes the map — and owns all 15 permanent spawner tiles — roughly
+34 days after L20, while the board is still 35 cells. **This is not a corner
+case a determined player can contrive; it is the default path.** A test asserts
+the mismatch so it fails loudly if either gate moves.
+
+Worst reachable point, L20 at 60 days:
+
+```
+L20  fam 15  cap 35  spawners 15  supply 2  hold 5.0  staging 5.6  |  working 7.4  occupancy 79%
+```
+
+### This refines §5b's conclusion
+
+§5b said daily tasks are not the congestion problem. That is still true of the
+*dominant* claim — spawners are, and they predate v40. But at the tightest
+reachable point the honest statement is sharper:
+
+> Producers leave **18** cells. Daily tasks claim **10.6** of them — 59%.
+> A pre-v40 player at that same point had 18 working cells; a v40 player has 7.4.
+
+So v40 does not create the squeeze, but it more than halves the working space at
+the point where the board is already tightest. A test asserts that majority
+share, so it is visible rather than buried.
+
+### Mitigation that already exists
+
+`familySpawnerStorage` is per-species and uncapped — a player can stash spawners
+they are not using, and the model's 15-on-board figure is the default, not a
+floor. Whether players *discover* that is a UX question this model cannot answer.
+
+### Still open
+
+Nothing this model can settle. The remaining question is behavioural: do players
+actually stash spawners, or do they sit on a 79%-full board and feel it? That
+needs playtesting, not arithmetic.
 
 The existing all-three-complete bonus (`coinsPerAllDailyChallenges` 400,
 `xpDailyComplete` 30, streak dog tags, `carePointsPerDailySweep`) is unchanged,
