@@ -232,10 +232,88 @@ checks the model's expected cost against it, so the two cannot drift.
 
 ### Still open
 
-Nothing on the coin side. The stock-drain effect — how much faster the board
-clears now that three baskets a day are consumed off it — is not modelled, and a
-flow model cannot express it. If board congestion ever needs tuning, that is the
-gap to close.
+Nothing.
+
+## 5b. Board congestion — the stock model (4 Sep 2026)
+
+Closes §5a's one remaining gap. The coin model is a **flow** model and a hand-in
+drains a **stock**: cells. `EconomySimulation` now carries a second model beside
+the ratio curve that asks how much of the board is spoken for and how much is
+left to play in.
+
+### Why v40 is when this became worth modelling
+
+Before v40 nothing made the player *hold* anything. Orders credit on merge and
+never consume, so an item's job was done the instant it existed — and merging is
+a strict sink (two cells become one), so the board tended to **drain**. A hand-in
+task is the first mechanic in the game that requires specific creatures standing
+on the board *simultaneously*. That is a genuine claim on cells.
+
+### What the board actually is
+
+| | |
+|---|---|
+| Capacity | 9×7 = 63 cells; rows 0–2 (21) open from the start, rows 3–8 on `boardRowUnlockTiers` (deepest tier 2/4/6/8/9/10) |
+| Family spawners | **15**, one per rewarding map area plus the day-one Canines spawner — derived from `sanctuaryAreas`, not hardcoded |
+| Spawner lifetime | **Permanent.** The `chargesRemaining` decrement in `activateProducer` is on the legacy rescue-tier and supply-producer branches; `MergeBoardViewModel.swift:1599` says the family-spawner branch is unlimited. They auto-place on area completion and overflow to storage only if the board is already full |
+| Supply producers | 3, auto-placed at L15/20/25, 6 charges then gone — intermittent, counted as an upper bound |
+| Off-board stash | 18 item slots (6 + 6 + 6), which the hold requirement cannot use — a task needs the creature *on the board* |
+
+### What daily tasks claim
+
+**Hold: 5.0 cells.** The three baskets' expected line counts (1 + 1.5 + 2.5).
+Counted as *items*, so the duplicate-collapse in `generateDailyTask` — two
+identical lines becoming one line of count 2 — leaves it unchanged. A test
+samples the real generator against this.
+
+**Staging: 3.0 → 6.3 cells** by level. Building one tier-N creature from tier-0
+spawns needs at most **N+1** cells at any instant, not 2^N — merging greedily
+frees a cell as it goes, the binary-counter bound. Taken over the hard slot only:
+a player stages one deep build at a time and the shallower asks sit inside its
+shadow.
+
+Together **8.0 → 11.3 cells**: 18% of the endgame board, 29–32% of the 28-cell
+early board. Under 40% at every level, and a test holds that line — it is what
+regresses if anyone widens `orderBasketLineCounts` or the hard tier band.
+
+### The finding: the tight board is not the daily tasks' fault
+
+Sweeping families owned against capacity finds the squeeze, and it predates v40:
+
+```
+L20  fam  7  cap 35  spawners  7  hold 5.0  staging 5.6  |  working 15.4  occupancy 56%
+L20  fam 15  cap 35  spawners 15  hold 5.0  staging 5.6  |  working  7.4  occupancy 79%
+L5   fam 15  cap 28  spawners 15  hold 5.0  staging 4.0  |  working  4.0  occupancy 86%
+```
+
+**Capacity is gated on deepest merge tier; spawner count on map areas bought with
+materials.** Those are different currencies, so they can drift apart — and a save
+that has pushed the map without deepening its chains is *spawner*-choked, with 15
+permanent tiles on a 28-cell board. Daily tasks make that corner tighter by ~9
+cells; they do not create it.
+
+A test asserts the **shape** rather than a comfort level: in the worst corner the
+spawner claim must exceed the daily-task claim. If daily tasks ever become the
+dominant term, that is a v40 regression rather than a pre-existing progression
+quirk, and it should fail loudly.
+
+### Deliberately not derived
+
+`familiesOwned` is an **input, not a per-level curve.** Map areas cost
+`SanctuaryArea.costs` — *materials*, not coins — and this model does not model the
+material faucet. Inventing a families-per-level curve to make the table look
+tidier would be exactly the tuning-to-taste the supply model's own header
+forbids, so the report sweeps the range instead.
+
+### Still open
+
+Whether the spawner-choke corner is actually reachable. It needs the material
+faucet modelled — hard-slot order rewards and toolbox drops against
+`toolboxMaxTier(forPlayerLevel:)` — which is its own piece of work and unrelated
+to this spec. Until then the corner is a shape the model can see, not a
+confirmed player experience. **Mitigations already in the game if it proves
+real:** spawners can be moved to `familySpawnerStorage`, which is per-species and
+uncapped.
 
 The existing all-three-complete bonus (`coinsPerAllDailyChallenges` 400,
 `xpDailyComplete` 30, streak dog tags, `carePointsPerDailySweep`) is unchanged,

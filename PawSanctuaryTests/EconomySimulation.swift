@@ -322,6 +322,159 @@ struct EconomySimulation {
         return fromOrders + fromGrants + fromSmiles + weeklyChests + monthlyChest
     }
 
+    // ============================================================
+    // MARK: - BOARD CONGESTION (schema v40)
+    // ============================================================
+    //
+    // The gap `Spec_DailyHandInTasks.md` §5a left open. The coin model above is
+    // a **flow** model — kibble per day in against kibble per day asked for —
+    // and a daily hand-in drains a **stock**: cells on the board. There is
+    // nowhere in `Row`/`ratio` to express that, which is why the sweep
+    // deliberately added no demand-side term. This section is the stock model
+    // that belongs beside it.
+    //
+    // It asks one question: **how much of the board is spoken for, and how much
+    // is left to actually play in?**
+    //
+    // Why this became worth modelling at v40. Before v40 nothing made the player
+    // *hold* anything. Orders credit on merge and never consume, so an item's
+    // job was done the instant it existed and the board tended to drain —
+    // merging is a strict sink (two cells become one). A hand-in task is the
+    // first mechanic in the game that requires specific creatures to be standing
+    // on the board *simultaneously*, and that is a genuine claim on cells.
+    //
+    // Everything here is derived from live content and code except where a
+    // comment says otherwise.
+
+    /// Board cells unlocked at `deepestTier`.
+    ///
+    /// Rows 0-2 are open from the start; rows 3-8 unlock on
+    /// `boardRowUnlockTiers` (2/4/6/8/9/10). Deliberately keyed to deepest tier
+    /// rather than level, because that is what the game itself gates on
+    /// (Gap_Analysis_Round2 §2, C-1: "deeper tiers need more staging space, so
+    /// the reward should arrive with the need").
+    static func unlockedCells(deepestTier: Int) -> Int {
+        let columns = 7
+        let unlockedRows = 3 + boardRowUnlockTiers.values.filter { $0 <= deepestTier }.count
+        return min(boardRows, unlockedRows) * columns
+    }
+
+    /// Every family spawner the game can ever grant: one per map area that
+    /// rewards one, plus the Canines spawner every save starts with
+    /// (`MergeBoardViewModel.freshStart`). Read from the live area roster so it
+    /// cannot drift from the content, the same way `mapTotalCoinCost` is.
+    static var totalFamilySpawners: Int {
+        sanctuaryAreas.filter { $0.reward.newFamilySpawner != nil }.count + 1
+    }
+
+    /// Cells permanently consumed by family spawners.
+    ///
+    /// **Permanent is the operative word.** Family spawners are unlimited — the
+    /// charge decrement in `activateProducer` is on the legacy rescue-tier and
+    /// supply-producer branches, not theirs (`MergeBoardViewModel.swift:1599`
+    /// says so explicitly). They auto-place on completing a map area and only
+    /// overflow to storage if the board is already full, so the default state of
+    /// a progressing save is every spawner it owns sitting on the board forever.
+    ///
+    /// `familiesOwned` is an **input, not a derived value**: map areas are
+    /// gated on *materials* (`SanctuaryArea.costs`), not coins, and this model
+    /// does not model the material faucet. Deriving a families-per-level curve
+    /// would mean inventing one, so the report sweeps the range instead.
+    static func spawnerCells(familiesOwned: Int) -> Int {
+        max(0, min(familiesOwned, totalFamilySpawners))
+    }
+
+    /// Supply producers (grooming/feed/shelter box) auto-place on level-up at
+    /// L15/20/25 (`levelUpReward`). Unlike family spawners these *are* consumed
+    /// — 6 charges, then the tile is removed — so they occupy cells only
+    /// intermittently. Counted at their unlocked count as an upper bound.
+    static func supplyProducerCells(level: Int) -> Int {
+        (level >= 15 ? 1 : 0) + (level >= 20 ? 1 : 0) + (level >= 25 ? 1 : 0)
+    }
+
+    /// Expected creatures the three daily tasks require standing on the board at
+    /// once, if the player is working toward all three.
+    ///
+    /// This is a count of *items*, not kibble — the duplicate-collapse in
+    /// `generateDailyTask` turns two identical lines into one line of count 2,
+    /// which leaves the item total unchanged, so the basket's line count is the
+    /// cell count.
+    static func dailyTaskHoldCells() -> Double {
+        dailyTaskSlotDifficulties.reduce(0.0) { total, difficulty in
+            let sizes = Array(orderBasketLineCounts[difficulty.dailyTaskOrderBand] ?? 1...1)
+            guard !sizes.isEmpty else { return total }
+            return total + Double(sizes.reduce(0, +)) / Double(sizes.count)
+        }
+    }
+
+    /// Peak extra cells needed *while building* the deepest creature a daily
+    /// task asks for, on top of what is already being held.
+    ///
+    /// Merging greedily, building one tier-N item from tier-0 spawns needs at
+    /// most N+1 cells at any instant — one partial per tier, the binary-counter
+    /// bound — not the 2^N inputs, because each merge frees a cell as it goes.
+    /// Taken over the hard slot only: a player stages one deep build at a time
+    /// and the easy/medium asks are shallow enough to sit inside its shadow.
+    static func dailyTaskStagingCells(level: Int) -> Double {
+        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        var expectedTier = 0.0
+        for (bandProbability, tiers) in orderDifficultyBands[.hard] ?? [] {
+            let each = bandProbability / Double(tiers.count)
+            for t in tiers { expectedTier += each * Double(min(t, maxTier)) }
+        }
+        return expectedTier + 1.0
+    }
+
+    struct CongestionRow {
+        let level: Int
+        let familiesOwned: Int
+        let capacity: Int
+        let spawners: Int
+        let supplyProducers: Int
+        let hold: Double
+        let staging: Double
+
+        /// Cells left to merge in once everything with a claim on the board has
+        /// taken its share.
+        var workingCells: Double {
+            Double(capacity - spawners - supplyProducers) - hold - staging
+        }
+        var occupancy: Double {
+            capacity == 0 ? 1 : (Double(spawners + supplyProducers) + hold + staging) / Double(capacity)
+        }
+
+        var description: String {
+            String(format: "L%-3d fam %2d  cap %2d  spawners %2d  supply %d  hold %4.1f  staging %4.1f  |  working %5.1f  occupancy %3.0f%%",
+                   level, familiesOwned, capacity, spawners, supplyProducers,
+                   hold, staging, workingCells, occupancy * 100)
+        }
+    }
+
+    static func congestionRow(level: Int, familiesOwned: Int) -> CongestionRow {
+        CongestionRow(level: level,
+                      familiesOwned: familiesOwned,
+                      capacity: unlockedCells(deepestTier: assumedDeepestTier(level: level)),
+                      spawners: spawnerCells(familiesOwned: familiesOwned),
+                      supplyProducers: supplyProducerCells(level: level),
+                      hold: dailyTaskHoldCells(),
+                      staging: dailyTaskStagingCells(level: level))
+    }
+
+    /// The corner this model exists to find: capacity is gated on **deepest
+    /// merge tier**, spawner count on **map areas bought with materials**. They
+    /// are different currencies, so they can drift apart — and a save that has
+    /// bought a lot of map without deepening its chains is spawner-choked.
+    static func worstCaseCongestion() -> CongestionRow {
+        var worst = congestionRow(level: 1, familiesOwned: 1)
+        for level in reportLevels {
+            for families in 1...totalFamilySpawners {
+                let row = congestionRow(level: level, familiesOwned: families)
+                if row.workingCells < worst.workingCells { worst = row }
+            }
+        }
+        return worst
+    }
+
     // MARK: Report
 
     /// Deepest tier a player at `level` is assumed to have reached. Recirculation
@@ -480,6 +633,17 @@ struct EconomySimulation {
                 coinsPerAllDailyChallenges, total + Double(coinsPerAllDailyChallenges),
                 total == 0 ? 0 : hard / total * 100)
         }
+        out += "\nboard congestion — \(totalFamilySpawners) spawners exist; "
+        out += "hold \(String(format: "%.1f", dailyTaskHoldCells())) cells\n"
+        out += "capacity is gated on deepest merge tier; spawners on map areas (materials) — different currencies\n\n"
+        for level in reportLevels {
+            // Sweep the plausible span of families owned at this level rather
+            // than inventing a families-per-level curve (see `spawnerCells`).
+            for families in [1, totalFamilySpawners / 2, totalFamilySpawners] {
+                out += congestionRow(level: level, familiesOwned: families).description + "\n"
+            }
+        }
+        out += "\nworst corner: " + worstCaseCongestion().description + "\n"
         return out
     }
 
