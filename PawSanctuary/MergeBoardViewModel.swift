@@ -707,6 +707,57 @@ class MergeBoardViewModel {
     /// the adoption panel is open. Recomputing the scan per access from a
     /// rarely-open panel is cheaper than keeping a cache honest against two
     /// independent sources of invalidation.
+    /// Every creature standing in an unlocked board cell, counted by
+    /// (chain, stage) — the live source of truth for daily hand-in tasks
+    /// (`Spec_DailyHandInTasks.md` §3).
+    ///
+    /// Inventory is deliberately excluded, unlike `mergeReadyKeys`: a hand-in
+    /// task asks the player to hold the creature *on the board*, and that
+    /// board-space pressure is the mechanic. Bubbled items are excluded too —
+    /// a creature still encased is not yet the player's to give.
+    var boardTaskCensus: [ChainTierKey: Int] {
+        var counts: [ChainTierKey: Int] = [:]
+        for cell in flatBoard where cell.isUnlocked {
+            guard let item = cell.item, item.bubbledAt == nil else { continue }
+            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
+        }
+        return counts
+    }
+
+    /// How a board cell should be tinted for the daily tasks
+    /// (`Spec_DailyHandInTasks.md` D-B — one colour, two intensities).
+    enum DailyTaskHighlight {
+        /// No unclaimed task wants what is in this cell.
+        case none
+        /// A task wants this creature but is still short of something.
+        case wanted
+        /// Every line of a task this cell serves is stocked — press Claim.
+        case stocked
+    }
+
+    /// Computed once per render pass for the whole board rather than per cell:
+    /// each cell would otherwise re-run the census and rescan all three tasks
+    /// for itself. Same reasoning as `mergeReadyKeys`.
+    var dailyTaskHighlights: [ChainTierKey: DailyTaskHighlight] {
+        let census = boardTaskCensus
+        var result: [ChainTierKey: DailyTaskHighlight] = [:]
+        for task in dailyChallenges where !task.isClaimed {
+            let stocked = task.isStocked(census: census)
+            for line in task.lines {
+                // `.stocked` wins: a creature serving one finished task and one
+                // unfinished one should read as "this is ready to hand in."
+                if stocked || result[line.key] == nil {
+                    result[line.key] = stocked ? .stocked : .wanted
+                }
+            }
+        }
+        return result
+    }
+
+    func isDailyTaskStocked(_ task: DailyChallenge) -> Bool {
+        task.isStocked(census: boardTaskCensus)
+    }
+
     var mergeReadyKeys: Set<ChainTierKey> {
         var counts: [ChainTierKey: Int] = [:]
         for cell in flatBoard where cell.isUnlocked {
@@ -2774,16 +2825,16 @@ class MergeBoardViewModel {
             if deepestUnlockedTier > wasDeepest { checkTierUnlock() }
         }
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
-        quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)
-        // Memory (Pachyderms .hedgehog): quest/challenge progress counts double.
+        // Memory (Pachyderms .hedgehog): quest progress counts double.
+        //
+        // Daily tasks are no longer advanced here. Since v40 they are hand-in
+        // baskets whose fulfilment is read live off the board
+        // (`boardTaskCensus`), so a merge that produces a wanted creature is
+        // reflected the instant it lands — there is nothing to increment, and
+        // nothing for the doubling to apply to.
         let hedgehogChain = ContentRegistry.animalChainID(.hedgehog)
         if chainID == hedgehogChain && unlockedSuperpowerSpecies.contains(AnimalSpecies.hedgehog.rawValue) {
             quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
-            quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)
-        }
-        if let rewards = quests.checkAllDailyChallengesComplete(
-            coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
-            applyQuestRewards(rewards)
         }
         updateOrdersAfterMerge(chainID: chainID, tier: tier)
         if let rewards = quests.recordSpotlightMerge(chainID: chainID) {
@@ -2794,11 +2845,6 @@ class MergeBoardViewModel {
 
     func updateAllAfterRescue() {
         quests.updateQuestsAfterRescue()
-        quests.updateDailyChallengesAfterRescue()
-        if let rewards = quests.checkAllDailyChallengesComplete(
-            coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
-            applyQuestRewards(rewards)
-        }
     }
 
     /// D6 (Spec_SpendQuotaDailies.md, Task 3.2) — the chokepoint every real
@@ -2808,11 +2854,6 @@ class MergeBoardViewModel {
     /// updateAllAfterMerge/Rescue above.
     func updateAllAfterSpend(kind: RewardKind, amount: Int) {
         quests.updateQuestsAfterSpend(kind: kind, amount: amount)
-        quests.updateDailyChallengesAfterSpend(kind: kind, amount: amount)
-        if let rewards = quests.checkAllDailyChallengesComplete(
-            coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
-            applyQuestRewards(rewards)
-        }
     }
 
     // MARK: Superpower System
@@ -3265,19 +3306,65 @@ class MergeBoardViewModel {
     // MARK: Daily challenges wrappers
 
     func checkDailyChallengeReset() {
-        quests.checkDailyChallengeReset(unlockedChainIDs: progression.unlockedChainIDs)
+        quests.checkDailyChallengeReset(
+            unlockedAnimalChainIDs: progression.unlockedAnimalChainIDs,
+            playerLevel: playerLevel)
     }
 
     func generateDailyChallenges() {
-        quests.generateDailyChallenges(unlockedChainIDs: progression.unlockedChainIDs)
+        quests.generateDailyChallenges(
+            unlockedAnimalChainIDs: progression.unlockedAnimalChainIDs,
+            playerLevel: playerLevel)
+    }
+
+    /// Surrenders the creatures a daily task asks for and pays its coins
+    /// (`Spec_DailyHandInTasks.md` §6). The stock check re-runs against the
+    /// live census inside `claimDailyTask`, so a card left on screen while the
+    /// board changed underneath it cannot be claimed on stale state.
+    func claimDailyTask(id: UUID) {
+        guard let task = quests.claimDailyTask(id: id, census: boardTaskCensus) else {
+            enqueueToast(Toast(kind: .info("Not everything is on the board yet.")))
+            return
+        }
+        surrenderBoardItems(for: task.lines)
+        earnCoins(task.coinReward)
+        grantXP(task.difficulty.xpReward)
+        awardCarePoints(carePoints(forQuest: task.difficulty))
+        recalcBoardIsFull()
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        enqueueToast(Toast(kind: .info("Task complete! +\(task.coinReward) Coins")))
+        if let rewards = quests.checkAllDailyChallengesComplete(
+            coinsPerDailyComplete: cachedActiveBonuses.coinsPerDailyComplete) {
+            applyQuestRewards(rewards)
+        }
+        persist()
+    }
+
+    /// Clears exactly `count` matching creatures per line, in row-major scan
+    /// order, skipping bubbled ones for the same reason `boardTaskCensus` does
+    /// not count them. Mirrors `claimAmbassadorQuest()`, this codebase's
+    /// existing precedent for surrendering board pieces for coins.
+    private func surrenderBoardItems(for lines: [DailyTaskLine]) {
+        for line in lines {
+            var removed = 0
+            outer: for r in 0..<rows {
+                for c in 0..<cols {
+                    guard removed < line.count else { break outer }
+                    let pos = GridPosition(row: r, col: c)
+                    guard let item = boardState.item(at: pos),
+                          item.bubbledAt == nil,
+                          item.chainID == line.chainID,
+                          item.tier == line.tier else { continue }
+                    boardState.clearItem(at: pos)
+                    removed += 1
+                }
+            }
+        }
     }
 
     func updateQuestsAfterMerge(chainID: ChainID, tier: Int) {
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
-    }
-
-    func updateDailyChallengesAfterMerge(chainID: ChainID, tier: Int) {
-        quests.updateDailyChallengesAfterMerge(chainID: chainID, tier: tier)
     }
 
     // MARK: Daily login

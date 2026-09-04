@@ -507,7 +507,7 @@ struct DailyChallengePanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Daily Challenges", systemImage: "list.clipboard.fill")
+                Label("Daily Tasks", systemImage: "list.clipboard.fill")
                     .font(.headline)
                     .foregroundColor(Color(red: 0.2, green: 0.4, blue: 0.6))
                 Spacer()
@@ -523,8 +523,12 @@ struct DailyChallengePanelView: View {
                 }
             }
 
+            let census = viewModel.boardTaskCensus
             ForEach(viewModel.dailyChallenges) { challenge in
-                DailyChallengeCardView(challenge: challenge)
+                DailyChallengeCardView(
+                    challenge: challenge,
+                    census: census,
+                    onClaim: { viewModel.claimDailyTask(id: challenge.id) })
             }
 
             if viewModel.dailyChallengeBonusClaimed {
@@ -536,10 +540,10 @@ struct DailyChallengePanelView: View {
                 }
                 .padding(.top, 2)
             } else if !viewModel.dailyChallenges.isEmpty {
-                let remaining    = viewModel.dailyChallenges.filter { !$0.isComplete }.count
+                let remaining    = viewModel.dailyChallenges.filter { !$0.isClaimed }.count
                 let nextStreakDay = ((viewModel.dailyChallengeStreak) % 7) + 1
                 HStack {
-                    Text("\(remaining) challenge\(remaining == 1 ? "" : "s") remaining")
+                    Text("\(remaining) task\(remaining == 1 ? "" : "s") remaining")
                         .font(.system(size: 11)).foregroundColor(.secondary)
                     Spacer()
                     Text("Day \(nextStreakDay) of 7 streak")
@@ -555,46 +559,123 @@ struct DailyChallengePanelView: View {
     }
 }
 
+/// The full-size daily hand-in task card, shown in the sheet.
+///
+/// `DailyTaskLaneCard` is deliberately a separate component rather than this
+/// one shrunk: at 160pt a card cannot carry the stage names, the per-line count
+/// pills and the "this costs you the animals" line this one does, and sharing
+/// the geometry would have made both worse. Same call the order lane made
+/// between `OrderLineSlot` and `CompactOrderSlot`.
 struct DailyChallengeCardView: View {
     let challenge: DailyChallenge
+    let census: [ChainTierKey: Int]
+    let onClaim: () -> Void
+
+    private var isStocked: Bool { challenge.isStocked(census: census) }
+    private var isClaimable: Bool { isStocked && !challenge.isClaimed }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: challenge.goal.icon)
-                .font(.system(size: 22))
-                .foregroundColor(challenge.goal.iconColor)
-                .frame(width: 36, height: 36)
-                .background(RoundedRectangle(cornerRadius: 8).fill(challenge.difficulty.color.opacity(0.15)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(challenge.goal.description).font(.system(size: 12, weight: .semibold))
-                    Spacer()
-                    Text(challenge.difficulty.rawValue)
-                        .font(.system(size: 9, weight: .bold)).foregroundColor(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(challenge.difficulty.color))
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.2))
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(challenge.isComplete ? Color.green : challenge.difficulty.color.opacity(0.7))
-                            .frame(width: geo.size.width * challenge.progressFraction)
-                            .animation(.easeInOut(duration: 0.3), value: challenge.progressFraction)
-                    }
-                }.frame(height: 5)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(challenge.isClaimed ? "Handed in" : "Bring these to the shelter")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(challenge.isClaimed ? .green : .primary)
+                Spacer()
+                Text(challenge.difficulty.rawValue)
+                    .font(.system(size: 9, weight: .bold)).foregroundColor(.white)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(challenge.difficulty.color))
             }
 
-            Text(challenge.isComplete ? "✓" : challenge.progressText)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(challenge.isComplete ? .green : .secondary)
-                .frame(width: 32)
+            HStack(spacing: 8) {
+                ForEach(challenge.lines.indices, id: \.self) { i in
+                    DailyTaskSheetSlot(line: challenge.lines[i],
+                                       held: challenge.held(challenge.lines[i], census: census))
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "dollarsign.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(red: 0.85, green: 0.65, blue: 0.10))
+                Text("\(challenge.coinReward) Coins")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(red: 0.55, green: 0.40, blue: 0.05))
+                Spacer()
+                if challenge.isClaimed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18)).foregroundColor(.green)
+                } else {
+                    Button(action: onClaim) {
+                        Text(isClaimable ? "Claim" : "Keep merging")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(isClaimable ? .white : .secondary)
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(RoundedRectangle(cornerRadius: 8)
+                                .fill(isClaimable
+                                      ? Color(red: 0.10, green: 0.55, blue: 0.98)
+                                      : Color.gray.opacity(0.15)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!isClaimable)
+                }
+            }
+
+            // The one thing the lane card has no room to say, and the thing
+            // that surprises a player used to adoption orders — which pay
+            // without taking anything.
+            if !challenge.isClaimed {
+                Text("Claiming gives up these animals from your board.")
+                    .font(.system(size: 9)).foregroundColor(.secondary)
+            }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12)
             .fill(Color.white.opacity(0.75))
             .shadow(color: .black.opacity(0.04), radius: 3))
+        .opacity(challenge.isClaimed ? 0.7 : 1.0)
+    }
+}
+
+/// Sheet-size version of one requested creature: art, stage name, and how many
+/// of it the board holds right now.
+private struct DailyTaskSheetSlot: View {
+    let line: DailyTaskLine
+    let held: Int
+
+    private var isFilled: Bool { held >= line.count }
+
+    var body: some View {
+        VStack(spacing: 3) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(isFilled ? Color.blue.opacity(0.18) : Color.gray.opacity(0.10))
+                    .overlay(RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(isFilled ? Color.blue.opacity(0.65)
+                                               : Color.gray.opacity(0.25),
+                                      lineWidth: isFilled ? 1.5 : 1))
+                if let art = line.artImage {
+                    art.resizable().scaledToFit().frame(width: 38, height: 38)
+                        .saturation(isFilled ? 1.0 : 0.35)
+                        .opacity(isFilled ? 1.0 : 0.55)
+                } else {
+                    Image(systemName: line.symbol)
+                        .font(.system(size: 20))
+                        .foregroundColor(isFilled ? line.tint : line.tint.opacity(0.45))
+                }
+            }
+            .frame(width: 48, height: 48)
+
+            Text(line.tierName)
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundColor(.primary)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(width: 54)
+            Text("\(held)/\(line.count)")
+                .font(.system(size: 9, weight: isFilled ? .bold : .regular))
+                .foregroundColor(isFilled ? Color(red: 0.05, green: 0.45, blue: 0.85) : .secondary)
+        }
     }
 }
 
@@ -1209,7 +1290,7 @@ enum TaskSheet: Identifiable, Equatable {
     var title: String {
         switch self {
         case .adoptionOrders:  return "Adoption Board"
-        case .dailyChallenges: return "Daily Challenges"
+        case .dailyChallenges: return "Daily Tasks"
         case .quests:          return "Active Quests"
         case .loyalty:         return "Loyalty Club"
         case .invite:          return "Invite Friends"

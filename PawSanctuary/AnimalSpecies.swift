@@ -832,14 +832,74 @@ struct Quest: Identifiable, Codable {
     var progressText: String     { "\(min(progress, goal.targetCount))/\(goal.targetCount)" }
 }
 
+/// One creature a daily task asks for — a specific chain at a specific merge
+/// stage, and how many copies of it.
+///
+/// Deliberately **not** `OrderLine`. That type carries `fulfilled`, a
+/// credit-on-merge counter incremented when the player *makes* the item;
+/// daily tasks are credit-on-possession, satisfied by what is standing on the
+/// board right now (see `Spec_DailyHandInTasks.md` §2/§3). Carrying a field
+/// whose semantics are the opposite of this system's is how two systems drift
+/// into each other.
+struct DailyTaskLine: Codable, Equatable, Hashable {
+    var chainID: ChainID
+    var tier: Int
+    /// Copies of this creature the task wants.
+    var count: Int
+
+    var key: ChainTierKey { ChainTierKey(chainID: chainID, tier: tier) }
+
+    // Registry-backed display helpers, same pattern as `OrderLine`.
+    var symbol: String   { ContentRegistry.shared.tier(chainID, tier)?.symbol ?? "pawprint.fill" }
+    var tint: Color      { ContentRegistry.shared.tier(chainID, tier)?.tint ?? .brown }
+    var color: Color     { ContentRegistry.shared.tier(chainID, tier)?.color ?? .gray }
+    var tierName: String { ContentRegistry.shared.tier(chainID, tier)?.name ?? "animal" }
+    var stageLabel: String { QuestGoal.animalTierLabel(tier) }
+
+    /// The real illustrated art for this creature at this exact stage — the
+    /// whole point of the redesign. `nil` only for a chain with no delivered
+    /// art, in which case the card falls back to `symbol`.
+    var artImage: Image? { ContentRegistry.shared.chain(chainID)?.artImage(forTier: tier) }
+}
+
+/// One of the three daily hand-in tasks (`Spec_DailyHandInTasks.md`).
+///
+/// Holds no `progress`: fulfilment is derived from a live board census every
+/// render (`MergeBoardViewModel.boardTaskCensus`), never accumulated. That is
+/// what keeps the card and the board highlight correct when pieces are merged
+/// away, sold, stashed in inventory, or eaten by another task's claim — a
+/// stored counter drifts on every one of those.
 struct DailyChallenge: Identifiable, Codable {
     var id = UUID()
-    var goal: QuestGoal
+    var lines: [DailyTaskLine]
     var difficulty: QuestDifficulty
-    var progress: Int = 0
-    var isComplete: Bool         { progress >= goal.targetCount }
-    var progressFraction: Double { min(Double(progress) / Double(goal.targetCount), 1.0) }
-    var progressText: String     { "\(min(progress, goal.targetCount))/\(goal.targetCount)" }
+    /// Coins paid when the player presses Claim and surrenders the pieces.
+    /// Rolled once at generation so the card can show a stable number.
+    var coinReward: Int
+    var isClaimed: Bool = false
+
+    /// Total creatures asked for, across every line.
+    var wantedCount: Int { lines.reduce(0) { $0 + $1.count } }
+
+    /// An empty basket is never stocked — it would otherwise read as instantly
+    /// claimable if one ever slipped through generation or migration.
+    func isStocked(census: [ChainTierKey: Int]) -> Bool {
+        !lines.isEmpty && lines.allSatisfy { (census[$0.key] ?? 0) >= $0.count }
+    }
+
+    func held(_ line: DailyTaskLine, census: [ChainTierKey: Int]) -> Int {
+        min(census[line.key] ?? 0, line.count)
+    }
+
+    func heldTotal(census: [ChainTierKey: Int]) -> Int {
+        lines.reduce(0) { $0 + held($1, census: census) }
+    }
+
+    func progressFraction(census: [ChainTierKey: Int]) -> Double {
+        let wanted = wantedCount
+        guard wanted > 0 else { return 0 }
+        return min(Double(heldTotal(census: census)) / Double(wanted), 1.0)
+    }
 }
 
 // ============================================================
@@ -1744,6 +1804,61 @@ func orderCoinPayout(lines: [OrderLine], spreadFactor: Double = 1.0) -> Int {
 /// What the whole basket would fetch if its items were sold outright instead.
 /// The payout must always beat this, or filling orders is a trap.
 func orderSellValue(lines: [OrderLine]) -> Int {
+    lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
+}
+
+// ── Daily hand-in tasks (Spec_DailyHandInTasks.md) ────────────
+//
+// Deliberately derived from the order tables above rather than given their own
+// bands. Daily tasks and adoption orders are the game's two item-demand
+// channels; giving each its own tier distribution is how the two drift apart
+// in `EconomySimulation` and stop being comparable.
+
+/// The fixed per-slot difficulty of the three daily tasks. Fixed for the same
+/// reason `orderSlotDifficultyPattern` is: a day must never roll three easy
+/// tasks (or three hard ones) by chance.
+let dailyTaskSlotDifficulties: [QuestDifficulty] = [.easy, .medium, .hard]
+
+extension QuestDifficulty {
+    /// The order difficulty band a daily task of this difficulty draws its
+    /// tiers and line count from. `.legendary` never reaches a daily slot
+    /// (`dailyTaskSlotDifficulties` tops out at `.hard`) but maps to `.hard`
+    /// so the mapping is total.
+    var dailyTaskOrderBand: OrderDifficulty {
+        switch self {
+        case .easy:                 return .easy
+        case .medium:               return .medium
+        case .hard, .legendary:     return .hard
+        }
+    }
+}
+
+/// Multiplier on the order-rate payout for a daily task's basket.
+///
+/// **The one dial for the daily-task faucet.** 1.0 means a daily task pays
+/// exactly what an adoption order asking for the same basket would — which is
+/// already 2.36x what selling those creatures outright fetches
+/// (`coinsPerKibbleOfOrder` 6.5 vs `coinsPerKibbleOfSale` 2.75), so handing in
+/// is never a trap.
+///
+/// Unlike every other coin faucet in the game this one *consumes built board
+/// value*, so it raises the demand/supply ratio rather than lowering it — the
+/// opposite of the failure mode `Spec_OrdersAndTasks_Draft.md` §2a records for
+/// Smile Points. **Not yet swept through `EconomySimulation`** — see
+/// `Spec_DailyHandInTasks.md` §5.
+let dailyTaskCoinMultiplier = 1.0
+
+/// Coins a daily task pays for surrendering its whole basket.
+func dailyTaskCoinPayout(lines: [DailyTaskLine], spreadFactor: Double = 1.0) -> Int {
+    let kibble = lines.reduce(0) { $0 + buildCost(tier: $1.tier, count: $1.count) }
+    return max(1, Int((Double(kibble) * coinsPerKibbleOfOrder
+                       * dailyTaskCoinMultiplier * spreadFactor).rounded()))
+}
+
+/// What a daily task's basket would fetch if sold outright. The payout must
+/// always beat this — same invariant `orderSellValue` enforces for orders, and
+/// it bites harder here because a daily task genuinely takes the creatures.
+func dailyTaskSellValue(lines: [DailyTaskLine]) -> Int {
     lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
 }
 

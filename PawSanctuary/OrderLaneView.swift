@@ -222,7 +222,13 @@ private struct OrderLaneCard: View {
 // MARK: - LANE
 // ============================================================
 
-/// Horizontal lane of adoption orders, right of the task tray.
+/// Horizontal lane of daily hand-in tasks and adoption orders, right of the
+/// task tray.
+///
+/// One scroll rather than two lanes (`Spec_DailyHandInTasks.md` D-D): the band
+/// has no vertical slack to split, and both card types are things the player
+/// acts on rather than glances at, which is exactly what this half of the band
+/// is for.
 struct OrderLaneView: View {
     var viewModel: MergeBoardViewModel
     @Binding var activeSheet: TaskSheet?
@@ -231,14 +237,25 @@ struct OrderLaneView: View {
     /// otherwise rescan the board and inventory for itself. Same reasoning as
     /// `AdoptionOrderPanelView`.
     private var mergeReadyKeys: Set<ChainTierKey> { viewModel.mergeReadyKeys }
+    private var taskCensus: [ChainTierKey: Int] { viewModel.boardTaskCensus }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             // Lazy for the same reason the strip was: the lane grows with
             // Sanctuary Map upgrades, and only two cards are visible at once.
             LazyHStack(spacing: 8) {
-                // The urgent order leads, because it is the only one that can
-                // be lost by not looking at it.
+                // Daily tasks lead. They expire at midnight and are the only
+                // cards here that take pieces off the board, so they are the
+                // ones worth planning the session around.
+                ForEach(viewModel.dailyChallenges) { task in
+                    DailyTaskLaneCard(
+                        task: task,
+                        census: taskCensus,
+                        onClaim: { viewModel.claimDailyTask(id: task.id) },
+                        onOpenSheet: { activeSheet = .dailyChallenges })
+                }
+                // The urgent order leads the orders, because it is the only one
+                // that can be lost by not looking at it.
                 if let urgent = viewModel.urgentOrder {
                     OrderLaneCard(order: urgent,
                                   mergeReadyKeys: mergeReadyKeys,

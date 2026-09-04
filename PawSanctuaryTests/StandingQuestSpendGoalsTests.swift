@@ -165,20 +165,25 @@ final class StandingQuestSpendGoalsChokepointTests: XCTestCase {
         XCTAssertTrue(vm.quests.activeQuests[0].isComplete)
     }
 
-    func testStillAdvancesAMatchingDailyChallengeAlongsideTheQuest() {
+    /// Replaces `testStillAdvancesAMatchingDailyChallengeAlongsideTheQuest`.
+    /// Daily challenges stopped being counted-event goals in
+    /// Spec_DailyHandInTasks.md, so there is no longer a daily line in
+    /// `updateAllAfterSpend` for the quest line to coexist with. What the
+    /// original test was really guarding — that the quest line is reached
+    /// through the chokepoint rather than only in the coordinator — is kept.
+    func testTheQuestLineIsReachedThroughTheViewModelChokepointNotOnlyTheCoordinator() {
         let vm = makeViewModel()
         vm.quests.activeQuests = [
             Quest(goal: .spendCurrency(.kibble, count: 70), difficulty: .medium,
                   dogTagReward: 3, kibbleReward: 4),
-        ]
-        vm.quests.dailyChallenges = [
-            DailyChallenge(goal: .spendCurrency(.kibble, count: 40), difficulty: .easy),
+            Quest(goal: .spendCurrency(.dogTags, count: 14), difficulty: .medium,
+                  dogTagReward: 3, kibbleReward: 4),
         ]
 
         vm.updateAllAfterSpend(kind: .kibble, amount: 40)
 
         XCTAssertEqual(vm.quests.activeQuests[0].progress, 40)
-        XCTAssertTrue(vm.quests.dailyChallenges[0].isComplete,
-                      "the pre-existing daily-challenge chokepoint line must be unaffected by the new quest line")
+        XCTAssertEqual(vm.quests.activeQuests[1].progress, 0,
+                       "a kibble spend must not advance a dog-tag goal")
     }
 }

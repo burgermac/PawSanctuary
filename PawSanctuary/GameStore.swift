@@ -341,7 +341,7 @@ enum GameStore {
     /// v39: smilePointsBanked added (specs/Spec_OrdersAndTasks_Draft.md §2).
     ///      Purely additive; non-Optional, so it needs an
     ///      `additiveDefaultsSinceV8` entry.
-    static let currentVersion = 39
+    static let currentVersion = 40
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -655,6 +655,7 @@ enum GameStore {
         if version == 36 { return migrateByInjecting(from: 36, defaults: [:], into: data) }   // order baskets: rewrite runs in finishMigration for every sourceVersion < 37
         if version == 37 { return migrateByInjecting(from: 37, defaults: [:], into: data) }   // carePointsThisWeek/claimedCarePointTiers covered by additiveDefaultsSinceV8
         if version == 38 { return migrateByInjecting(from: 38, defaults: [:], into: data) }   // smilePointsBanked covered by additiveDefaultsSinceV8
+        if version == 39 { return migrateByInjecting(from: 39, defaults: [:], into: data) }   // daily hand-in tasks: reset runs in finishMigration for every sourceVersion < 40
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -761,10 +762,38 @@ enum GameStore {
         // on the old flat shape, so collapsing to `lines` first would hide the
         // key it looks for and strand pre-v28 saves on 15-tier indices.
         if sourceVersion < 37 { collapseOrdersIntoBaskets(&json) }
+        if sourceVersion < 40 { resetDailyChallengesForHandIn(&json) }
         json["version"] = currentVersion
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migration decode failed — \(error)"); return nil }
+    }
+
+    // MARK: v40 — daily challenges become hand-in tasks
+
+    /// Empties the persisted `dailyChallenges` array for every save predating
+    /// v40 (`Spec_DailyHandInTasks.md` §7).
+    ///
+    /// The shape changed incompatibly: a pre-v40 entry is
+    /// `{goal: QuestGoal, difficulty, progress}` — a counted-event target — and
+    /// a v40 entry is `{lines: [DailyTaskLine], difficulty, coinReward,
+    /// isClaimed}`, a basket of specific creatures to hand in. There is no
+    /// faithful rewrite: "Complete 6 merges" has no basket that means the same
+    /// thing, and fabricating one would either hand the player a free payout or
+    /// an unreachable ask. Emptying is safe because
+    /// `QuestCoordinator.checkDailyChallengeReset` regenerates whenever the
+    /// array is empty, so a migrated save gets a fresh set the moment it loads.
+    ///
+    /// `dailyChallengeBonusClaimed` is deliberately left alone: a player who
+    /// already swept today must not be able to sweep again after upgrading.
+    /// It clears on its own at the next midnight reset.
+    ///
+    /// Runs for every save predating v40 regardless of dispatch path — the
+    /// migration table is flat, so a v19 save reaches `finishMigration` without
+    /// passing through a v39→v40 step. Same reasoning as
+    /// `collapseOrdersIntoBaskets`.
+    private static func resetDailyChallengesForHandIn(_ json: inout [String: Any]) {
+        json["dailyChallenges"] = [Any]()
     }
 
     // MARK: v37 — adoption orders become baskets

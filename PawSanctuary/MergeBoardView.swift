@@ -786,7 +786,11 @@ struct MergeBoardView: View {
 
     /// Renders the merge board at the given cell size (computed dynamically from available space).
     func boardGridView(cellSize: CGFloat) -> some View {
-        VStack(spacing: cellSpacing) {
+        // Computed once for the whole board rather than per cell: each cell
+        // would otherwise re-census the board and rescan all three daily tasks
+        // for itself. Same reasoning as `OrderLaneView`'s `mergeReadyKeys`.
+        let taskHighlights = viewModel.dailyTaskHighlights
+        return VStack(spacing: cellSpacing) {
             ForEach(0..<viewModel.rows, id: \.self) { row in
                 // A cell's own .zIndex below only wins against its *same-row*
                 // neighbours — SwiftUI scopes zIndex to siblings sharing an
@@ -825,7 +829,10 @@ struct MergeBoardView: View {
                                 unlockedSuperpowerSpecies: viewModel.unlockedSuperpowerSpecies,
                                 isLeapSource: viewModel.leapSourceCell == pos,
                                 mergeHintOffset: mergeHintOffset,
-                                isFamilySpawnerAffordable: isSpawnerAffordable
+                                isFamilySpawnerAffordable: isSpawnerAffordable,
+                                dailyTaskHighlight: cell.item.flatMap {
+                                    taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
+                                } ?? .none
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             // Drag ghost — animal or producer icon follows the finger
