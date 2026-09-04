@@ -1490,10 +1490,27 @@ let carePointsGold   = 520
 /// itself is worth (5,632 sold, 13,312 to an order). Was 10 — pure noise.
 let coinsPerAmbassadorMerge = 500
 
-/// Coins for clearing all three daily challenges.
-/// Rationale: a day's engagement, worth about one average order (~400) — a real
-/// top-up that doesn't compete with the main faucet. Was 15.
-let coinsPerAllDailyChallenges = 400
+/// Flat coin bonus for clearing all three daily tasks, on top of what each task
+/// pays individually.
+///
+/// **Zero since schema v40, and that is a rebalance, not a removal.** This was
+/// 400 (Phase 2c: "a day's engagement, worth about one average order") in a
+/// world where the three daily slots paid *no per-slot coins at all* — it was
+/// the entire daily coin channel. Schema v40's hand-in tasks pay per task, so
+/// leaving 400 on top put the channel ~40% over its budget and dropped the
+/// Sanctuary Map projection to 52.9 days against a 55-70 target
+/// (`Spec_DailyHandInTasks.md` §5a).
+///
+/// The money moved rather than vanished: it now funds `dailyTaskCoinFloor`,
+/// where it reaches the player as three visible per-card payouts instead of one
+/// invisible lump that only landed on a perfect day. The sweep still pays its
+/// dog tags, XP and Care Points — only the coin rider is zero.
+///
+/// Kept as a live dial rather than deleted: the sweep's coin path
+/// (`checkAllDailyChallengesComplete`) still carries the event-bonus rider
+/// `coinsPerDailyComplete`, and re-funding this line is a one-number change if
+/// the streak ever needs its own coin reward back.
+let coinsPerAllDailyChallenges = 0
 
 /// Multiplier applied to the combined sell value when three top-tier tiles of one
 /// species are exchanged together.
@@ -1835,24 +1852,43 @@ extension QuestDifficulty {
 
 /// Multiplier on the order-rate payout for a daily task's basket.
 ///
-/// **The one dial for the daily-task faucet.** 1.0 means a daily task pays
-/// exactly what an adoption order asking for the same basket would — which is
-/// already 2.36x what selling those creatures outright fetches
-/// (`coinsPerKibbleOfOrder` 6.5 vs `coinsPerKibbleOfSale` 2.75), so handing in
-/// is never a trap.
+/// **Swept through `EconomySimulation` 4 Sep 2026** (see `Spec_DailyHandInTasks.md`
+/// §5a), which is how it moved off its unswept 1.0. The sweep found the channel
+/// ~40% over its coin budget: at 1.0 the Phase 2c map projection fell to 52.9
+/// days against a 55-70 day target, because PawSanctuary's orders credit on
+/// *merge* and never consume, so the same kibble earns twice — once as order
+/// coins when the creature is built, once again as task coins when it is handed
+/// in. Nothing offsets it.
 ///
-/// Unlike every other coin faucet in the game this one *consumes built board
-/// value*, so it raises the demand/supply ratio rather than lowering it — the
-/// opposite of the failure mode `Spec_OrdersAndTasks_Draft.md` §2a records for
-/// Smile Points. **Not yet swept through `EconomySimulation`** — see
-/// `Spec_DailyHandInTasks.md` §5.
-let dailyTaskCoinMultiplier = 1.0
+/// 0.75 with `dailyTaskCoinFloor` lands the whole curve back inside the band
+/// (L45 56.1 days, L60 55.1). It is lower than 1.0 while the *cards pay more* —
+/// the floor below is where the money went.
+let dailyTaskCoinMultiplier = 0.75
+
+/// Minimum coins one daily task pays, before the ±`orderCoinSpread` jitter.
+///
+/// **Deliberately breaks the strict build-cost proportionality orders use**, and
+/// that is the point. A task's cost is `2^tier`, so under pure proportionality
+/// the easy slot — which always draws tiers 0-1, at every player level — paid 10
+/// coins at level 60, the medium slot 44, and the hard slot took 93% of the
+/// channel. Two of the three cards were never worth pressing, and no multiplier
+/// fixes that: doubling it makes the easy card pay 20.
+///
+/// The floor is what makes every card worth pressing at every level, and it
+/// costs the endgame nothing — at L45 the hard slot's proportional payout is
+/// ~3.4x the floor, so the floor never binds where the map projection is
+/// anchored. It binds hardest at L1-30, exactly where the old numbers looked
+/// derisory. Hard's share of the channel drops from 93% to ~66%.
+let dailyTaskCoinFloor = 150
 
 /// Coins a daily task pays for surrendering its whole basket.
+///
+/// The floor is applied *before* the spread, so a floored task still jitters
+/// like any other rather than reading as a suspiciously exact 150 on every card.
 func dailyTaskCoinPayout(lines: [DailyTaskLine], spreadFactor: Double = 1.0) -> Int {
     let kibble = lines.reduce(0) { $0 + buildCost(tier: $1.tier, count: $1.count) }
-    return max(1, Int((Double(kibble) * coinsPerKibbleOfOrder
-                       * dailyTaskCoinMultiplier * spreadFactor).rounded()))
+    let proportional = Double(kibble) * coinsPerKibbleOfOrder * dailyTaskCoinMultiplier
+    return max(1, Int((max(Double(dailyTaskCoinFloor), proportional) * spreadFactor).rounded()))
 }
 
 /// What a daily task's basket would fetch if sold outright. The payout must

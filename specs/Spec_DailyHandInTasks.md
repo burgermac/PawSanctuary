@@ -125,24 +125,117 @@ higher `count`, so a task never lists the same creature twice.
 
 ## 5. Reward
 
-`coinReward = orderCoinPayout(lines:) × dailyTaskCoinMultiplier`, priced off the
-same `coinsPerKibbleOfOrder` rate, with the same ±`orderCoinSpread` jitter.
+**As shipped (post-sweep, §5a):**
 
-`dailyTaskCoinMultiplier` starts at **1.0** — one dial, deliberately not a
-hand-authored table.
+```
+coinReward = max(dailyTaskCoinFloor, buildCost × coinsPerKibbleOfOrder
+                                                × dailyTaskCoinMultiplier)
+             × spread          // ±orderCoinSpread, as orders use
+```
 
-Why this is defensible, and what still needs checking:
+with `dailyTaskCoinFloor = 150` and `dailyTaskCoinMultiplier = 0.75`.
+
+**As first written**, this section specified pure proportionality
+(`orderCoinPayout(lines:) × dailyTaskCoinMultiplier`) at a multiplier of 1.0 —
+one dial, deliberately not a hand-authored table. Both halves of that turned out
+to be wrong, for reasons §5a records: 1.0 was over budget, and pure
+proportionality is what made the easy card pay 10 coins at level 60. The floor is
+the hand-authored piece this section wanted to avoid, and it earns its place.
+
+The original reasoning, which still holds:
 
 - It beats selling outright by 2.36× (`coinsPerKibbleOfOrder` 6.5 vs
   `coinsPerKibbleOfSale` 2.75), so handing in is never a trap — the same test
   `orderSellValue` exists to enforce for orders.
 - Unlike every other coin faucet in the game, this one **consumes built board
-  value**. It raises the demand/supply ratio rather than lowering it, which is
-  the opposite of the failure mode `Spec_OrdersAndTasks_Draft.md` §2a records
-  for Smile Points (a board-item faucet that erased the Phase 3 wall).
-- **Open:** the multiplier has not been swept through `EconomySimulation`. It is
-  one constant in `AnimalSpecies.swift` with the other tuning numbers; §4 of the
-  Kibble Drive spec's method applies here too. Playtesting, not guesswork.
+  value** rather than adding to it — the opposite of the failure mode
+  `Spec_OrdersAndTasks_Draft.md` §2a records for Smile Points, a board-item
+  faucet that erased the Phase 3 wall. **Corrected by §5a:** this section
+  originally claimed it "raises the demand/supply ratio," which is wrong. The
+  ratio is a *flow* (kibble per day asked for ÷ kibble per day earned) and a
+  hand-in drains a *stock*. It cannot move that ratio at all, in either
+  direction, and the model has no term for it.
+- **Swept 4 Sep 2026 — see §5a. The multiplier moved off 1.0, and not upward.**
+
+## 5a. The sweep (4 Sep 2026)
+
+`EconomySimulation` did not model daily tasks at all, so §5's numbers above were
+never checked against anything. Modelling them produced two findings, one of
+which reverses §5's own recommendation.
+
+### The channel was ~40% over budget at multiplier 1.0
+
+At the projection level (L45) the Phase 2c coin budget has **523 coins/day** of
+room before the Sanctuary Map falls through its 55-day floor. The daily channel
+was spending **1,135** — 735 in per-task payouts plus the 400-coin sweep bonus.
+The map projection dropped to **52.9 days**, failing
+`testMapBuildOutLandsInTheTargetWindow`. There was no headroom to raise the
+multiplier; the honest reading was that 1.0 was already too generous.
+
+**Why nothing offsets it.** The model deliberately has **no demand-side term**
+for daily tasks. A hand-in destroys board items, which looks like kibble demand,
+but PawSanctuary's orders credit on *merge* and never consume: the order pays out
+when the item is built, and the item stays on the board. `grossDemand` already
+counted that build. Counting it again would double-count and report a wall the
+game does not have. The consequence is worth stating plainly, because it is a
+property the reference titles do **not** share (their orders consume): **the same
+kibble earns twice here** — once as order coins, once as hand-in coins. That is
+what makes this faucet pure addition.
+
+What a hand-in really is in this economy is a **sink on the item stock** — a
+reason for the board to clear. `Row`/`ratio` is a flow model, so it has nowhere
+to express a stock drain, and inventing an overlap fraction to smuggle one in
+would be tuning the ratio to taste, which the supply model's own header forbids.
+
+### Strict proportionality made two of the three cards worthless
+
+A task's cost is `2^tier`, and the easy slot always draws tiers 0–1 and the medium
+slot tiers 2–3 *regardless of player level*. So under pure build-cost
+proportionality:
+
+| | easy | medium | hard | hard's share |
+|---|---|---|---|---|
+| L1 | 10 | 31 | 65 | 62% |
+| L30 | 10 | 44 | 280 | 84% |
+| L60 | 10 | 44 | 781 | 94% |
+
+The easy card paid 10 coins at level 60. No multiplier fixes that — doubling it
+pays 20. This is structural, not a tuning miss.
+
+### What shipped
+
+`dailyTaskCoinFloor = 150` (a per-task minimum, applied before the spread jitter),
+`dailyTaskCoinMultiplier` 1.0 → **0.75**, and `coinsPerAllDailyChallenges`
+400 → **0**. The money moved from one invisible lump that only landed on a perfect
+day into three visible per-card payouts. The sweep still pays its dog tags, XP and
+Care Points.
+
+| | easy | medium | hard | total | hard's share | map (sell-20%) |
+|---|---|---|---|---|---|---|
+| L1 | 150 | 150 | 150 | 450 | 33% | — |
+| L30 | 150 | 150 | 220 | 520 | 42% | — |
+| L45 | 150 | 150 | 522 | 822 | 63% | **56.1 days** |
+| L60 | 150 | 150 | 596 | 896 | 67% | **55.1 days** |
+
+0.75 rather than the 0.85 first considered: 0.85 lands L45 at 55.4 but pushes
+L55–60 to 54.3, under the floor. 0.75 keeps the whole curve inside 55–70.
+
+The floor deliberately **does not bind at the endgame** — at L45 the hard slot's
+proportional payout is ~3.5× the floor — so it rescues the early game without
+spending budget where the projection is anchored. A test asserts this.
+
+`dailyTaskCostDistribution` enumerates the basket outcomes rather than averaging
+them, because the floor binds on *individual* baskets: `E[max(floor, cost)]` is
+strictly greater than `max(floor, E[cost])`, and the cheaper approximation would
+understate a faucet — the unsafe direction. A test samples the real generator and
+checks the model's expected cost against it, so the two cannot drift.
+
+### Still open
+
+Nothing on the coin side. The stock-drain effect — how much faster the board
+clears now that three baskets a day are consumed off it — is not modelled, and a
+flow model cannot express it. If board congestion ever needs tuning, that is the
+gap to close.
 
 The existing all-three-complete bonus (`coinsPerAllDailyChallenges` 400,
 `xpDailyComplete` 30, streak dog tags, `carePointsPerDailySweep`) is unchanged,
