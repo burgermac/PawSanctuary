@@ -1548,6 +1548,61 @@ final class PersistenceTests: XCTestCase {
                        "the v37 basket collapse still runs on the same pass")
     }
 
+    // MARK: v41 — local play instrumentation
+
+    /// `playtestMetrics` is non-Optional, so a pre-v41 save can only decode if
+    /// `additiveDefaultsSinceV8` carries it — the trap that doc comment exists
+    /// to warn about, and the reason `commerce` had to be added there.
+    func testAPreV41SaveDecodesWithZeroedMetricsRatherThanBeingDiscarded() throws {
+        var state = makeSampleState()
+        state.playtestMetrics = PlaytestMetrics()
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "playtestMetrics")
+        obj["version"] = 40
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(),
+                                   "a v40 save must migrate, not be discarded, for a missing metrics field")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.playtestMetrics.activeDayCount, 0)
+        XCTAssertEqual(loaded.playtestMetrics.totalQuestClaims, 0)
+        XCTAssertNil(loaded.playtestMetrics.firstActiveDay)
+    }
+
+    /// Same trap, from a save far older than v40 — the migration table is flat,
+    /// so a v36 save reaches `finishMigration` without passing a v40→v41 step.
+    func testAnOldSaveAlsoGetsTheMetricsDefault() throws {
+        var obj = try makeV36BlobWithFlatOrders()
+        obj.removeValue(forKey: "playtestMetrics")
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.playtestMetrics.activeDayCount, 0)
+        XCTAssertEqual(loaded.adoptionOrders.first?.lines.count, 1,
+                       "the v37 basket collapse still runs on the same pass")
+    }
+
+    func testPlaytestMetricsRoundTripOnAFreshSave() throws {
+        var state = makeSampleState()
+        var metrics = PlaytestMetrics()
+        metrics.recordQuestClaim(.legendary)
+        metrics.recordToolboxPlaced()
+        metrics.recordMaterialUnits(48)
+        metrics.recordDailyTaskClaim(sweptAll: true)
+        metrics.recordBoardSample(spawnersOnBoard: 7, spawnersStashed: 2,
+                                  occupiedCells: 30, unlockedCells: 42)
+        state.playtestMetrics = metrics
+
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.playtestMetrics, metrics,
+                       "every counter must survive a round trip, including the day stamps")
+        XCTAssertEqual(decoded.playtestMetrics.questClaimsLegendary, 1)
+        XCTAssertEqual(decoded.playtestMetrics.materialUnitsAbsorbed, 48)
+        XCTAssertEqual(decoded.playtestMetrics.dailyTaskDaysFullySwept, 1)
+        XCTAssertEqual(decoded.playtestMetrics.spawnersOnBoardTotal, 7)
+    }
+
     func testDailyHandInTaskRoundTripsOnAFreshSave() throws {
         let dog = ContentRegistry.animalChainID(.dog)
         let cat = ContentRegistry.animalChainID(.cat)

@@ -54,10 +54,99 @@ struct ProfileView: View {
                     .fill(Color(red: 0.6, green: 0.2, blue: 0.8).opacity(0.10)))
             }
 
+            #if DEBUG
+            playtestMetricsPanel
+            #endif
+
             Spacer(minLength: 0)
         }
         .padding()
     }
+
+    #if DEBUG
+    /// Measured play against what `EconomySimulation` assumes
+    /// (`Spec_DailyHandInTasks.md` §5c). Debug-only: *recording* runs in every
+    /// build so a TestFlight playtest gathers data, but the readout is a
+    /// developer tool and has no place in a shipped Profile screen.
+    private var playtestMetricsPanel: some View {
+        let m = viewModel.playtestMetrics
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 12))
+                Text("Playtest metrics")
+                    .font(.system(size: 12, weight: .bold))
+                Spacer()
+                Text("\(m.activeDayCount) active day\(m.activeDayCount == 1 ? "" : "s")")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .foregroundColor(Color(red: 0.35, green: 0.30, blue: 0.55))
+
+            if !m.hasEnoughDataToInterpret {
+                // Below a week, one unusual session dominates every average, and
+                // a number on screen invites a retune it cannot support.
+                Text("Gathering — rates shown from 7 active days.")
+                    .font(.system(size: 10)).foregroundColor(.secondary)
+            }
+
+            metricRow("Quest claims / day",
+                      m.measuredQuestClaimsPerDay, PlaytestBaseline.questClaimsPerDay)
+            metricRow("Toolboxes / claim",
+                      m.measuredToolboxesPerQuestClaim, PlaytestBaseline.toolboxesPerQuestClaim)
+            metricRow("Material units / day",
+                      m.measuredMaterialUnitsPerDay, PlaytestBaseline.materialUnitsPerDaySaturated)
+            metricRow("Daily tasks claimed / day",
+                      m.measuredDailyTaskClaimsPerDay, PlaytestBaseline.dailyTaskClaimsPerDay)
+            metricRow("Spawners stashed",
+                      m.measuredStashRate, PlaytestBaseline.spawnerStashRate)
+
+            if let occupancy = m.measuredBoardOccupancy {
+                Text(String(format: "Board occupancy %.0f%% · %.1f spawners out, %.1f stashed",
+                            occupancy * 100,
+                            m.measuredSpawnersOnBoard ?? 0,
+                            m.measuredSpawnersStashed ?? 0))
+                    .font(.system(size: 9)).foregroundColor(.secondary)
+            }
+            if let first = m.firstActiveDay, let last = m.lastActiveDay {
+                Text("\(first) → \(last) · \(m.boardSampleCount) board sample\(m.boardSampleCount == 1 ? "" : "s")")
+                    .font(.system(size: 9)).foregroundColor(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14)
+            .fill(Color(red: 0.35, green: 0.30, blue: 0.55).opacity(0.08)))
+    }
+
+    /// One measured-vs-assumed line. A `nil` measurement reads as "—", never as
+    /// 0.0 — an absent measurement is not a measurement of zero, and showing it
+    /// as one would look like play contradicting the model.
+    @ViewBuilder
+    private func metricRow(_ label: String, _ measured: Double?, _ assumed: Double) -> some View {
+        HStack(spacing: 6) {
+            Text(label).font(.system(size: 10))
+            Spacer(minLength: 4)
+            if let measured {
+                Text(String(format: "%.2f", measured))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(divergence(measured, assumed) ? .orange : .primary)
+            } else {
+                Text("—").font(.system(size: 10, weight: .bold)).foregroundColor(.secondary)
+            }
+            Text(String(format: "vs %.2f", assumed))
+                .font(.system(size: 9)).foregroundColor(.secondary)
+        }
+    }
+
+    /// Flags a measurement far enough from the assumption to be worth acting on.
+    /// Only once there is enough data to mean anything.
+    private func divergence(_ measured: Double, _ assumed: Double) -> Bool {
+        guard viewModel.playtestMetrics.hasEnoughDataToInterpret else { return false }
+        if assumed == 0 { return measured > 0.05 }
+        return abs(measured - assumed) / assumed > 0.25
+    }
+    #endif
 
     // MARK: Level header
 

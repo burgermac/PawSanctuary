@@ -446,7 +446,75 @@ Two things only real play can settle:
    model, and the material faucet scales linearly with it — a real figure of 1.0
    or 4.0 would halve or double every day-count in §5c.
 
-Closing either needs instrumentation the game does not have.
+**Closed 4 Sep 2026 — see §5d.** The instrumentation now exists.
+
+## 5d. Instrumentation (schema v41)
+
+`PlaytestMetrics` records what the model has to assume. Local counters on the
+save file, read back through a debug panel in `ProfileView`.
+
+**Local only. Nothing is transmitted.** Plain integers, no network, no
+identifiers, no third-party SDK — so no `PrivacyInfo.xcprivacy` change is
+required. If this ever grows a reporting backend, that is a decision to take
+explicitly, with the privacy manifest revisited alongside it.
+
+**Recording runs in every build**, so a TestFlight playtest gathers data without
+a special build; only the *readout* is `#if DEBUG`, because a metrics panel has
+no place on a shipped Profile screen.
+
+### Every counter names the assumption it tests
+
+| Counter | Checks |
+|---|---|
+| Quest claims, by difficulty | `questClaimsPerDay` = 2.0, and the 45/30/20/5 mix |
+| Toolboxes placed | `expectedToolboxesPerQuestClaim` |
+| Material units absorbed (tier-0 equivalents) | `materialUnitsPerDay` |
+| Daily task claims, days fully swept | `dailyTaskKibbleHandedIn`'s "clears all three" |
+| Spawners on board vs stashed | §5c's "assumes all 15 left out" |
+| Occupied vs unlocked cells | `CongestionRow.occupancy` |
+| Distinct active days | the denominator under every rate above |
+
+A counter that cannot name the assumption it tests does not belong here —
+collecting "everything, just in case" is how a save file grows fields nobody
+reads.
+
+### Three decisions worth recording
+
+**An absent rate is `nil`, not `0.0`.** The panel shows `—`. Reporting zero for
+"no data yet" would read as play *contradicting* the model, which is the exact
+wrong conclusion to invite.
+
+**Rates are withheld below 7 active days.** Not a statistical threshold — a floor
+below which one unusual session dominates every average, and a number on screen
+invites a retune it cannot support.
+
+**Board sampling is capped at one per calendar day**, and taken at load rather
+than at a gameplay moment. Sampling on claim or merge would catch the board at
+its most stocked and report an occupancy the player never sits at; sampling
+per-launch would weight a ten-launch day ten times over.
+
+`PlaytestBaseline` restates the model's assumptions app-side so the panel can
+show measured-against-assumed without the app depending on the test target.
+Those are copies, and copies drift — `PlaytestBaselineAgreementTests` asserts
+each one still equals the real figure in `EconomySimulation`, including the
+tier-0 conversion duplicated across the target boundary.
+
+### One bug, caught by looking rather than by testing
+
+The first version sampled the board inside `freshStart` — *before*
+`buildEmptyBoard`. It recorded an empty board (zero unlocked cells) and then
+marked the day sampled, so the real sample never landed. Every test passed,
+because they all called `recordBoardSample()` directly on a board they had
+prepared themselves. It was visible immediately on device as a missing occupancy
+line. The sample now runs in `loadGame` after both paths have a populated board,
+and `testLoadingAGameSamplesAPopulatedBoardNotAnEmptyOne` drives the real load
+path.
+
+### Still open
+
+Nothing to build — only time. The rates need real days of play behind them
+before they can settle any of §5c's questions, and the panel deliberately says
+"Gathering" until there are seven.
 
 The existing all-three-complete bonus (`coinsPerAllDailyChallenges` 400,
 `xpDailyComplete` 30, streak dog tags, `carePointsPerDailySweep`) is unchanged,
