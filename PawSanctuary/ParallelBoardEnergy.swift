@@ -17,6 +17,21 @@ final class ParallelBoardEnergy {
     var balance: Int = parallelBoardEnergyCap
     var secondsUntilNext: Int = parallelBoardEnergyRegenSecs
 
+    /// True once the pool is topped up and `tick()` has nothing left to do —
+    /// the gate for hiding the countdown, since `secondsUntilNext` stops
+    /// moving here.
+    var isFull: Bool { balance >= parallelBoardEnergyCap }
+
+    /// Countdown to the next regen tick, `m:ss`. Same shape and the same home
+    /// on the pool type as `KibbleEngine.kibbleStatusText`, which the main
+    /// board's HUD reads for the identical job. Meaningless while `isFull`
+    /// (it sits frozen at a whole regen interval), so don't show it then.
+    var statusText: String {
+        let m = secondsUntilNext / 60
+        let s = secondsUntilNext % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
     func tick() {
         guard balance < parallelBoardEnergyCap else { return }
         secondsUntilNext -= 1

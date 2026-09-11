@@ -74,4 +74,36 @@ final class ParallelBoardEnergyTests: XCTestCase {
         XCTAssertTrue(succeeded)
         XCTAssertEqual(energy.balance, 0)
     }
+
+    // MARK: - Countdown display (11 Sep 2026)
+
+    func testIsFullTracksTheCap() {
+        let energy = ParallelBoardEnergy()
+        XCTAssertTrue(energy.isFull, "a fresh pool starts at the cap")
+        energy.spend(1)
+        XCTAssertFalse(energy.isFull)
+    }
+
+    func testStatusTextFormatsMinutesAndZeroPaddedSeconds() {
+        let energy = ParallelBoardEnergy()
+        energy.secondsUntilNext = 90
+        XCTAssertEqual(energy.statusText, "1:30")
+        energy.secondsUntilNext = 65
+        XCTAssertEqual(energy.statusText, "1:05")
+        energy.secondsUntilNext = 9
+        XCTAssertEqual(energy.statusText, "0:09")
+        energy.secondsUntilNext = 0
+        XCTAssertEqual(energy.statusText, "0:00")
+    }
+
+    /// The countdown is hidden at the cap because `tick()` returns early
+    /// there — so the value it would show must still be a whole interval,
+    /// not a stale fraction left over from the tick that filled the pool.
+    func testCountdownIsAWholeIntervalOnceThePoolRefills() {
+        let energy = ParallelBoardEnergy()
+        energy.spend(1)
+        for _ in 0..<parallelBoardEnergyRegenSecs { energy.tick() }
+        XCTAssertTrue(energy.isFull)
+        XCTAssertEqual(energy.secondsUntilNext, parallelBoardEnergyRegenSecs)
+    }
 }
