@@ -172,6 +172,10 @@ struct GameState: Codable {
     // Player commerce state (v26) — offer targeting / difficulty scaling / Phase 3 first-purchase gate.
     var commerce: PlayerCommerceState = PlayerCommerceState()
 
+    // Local play instrumentation (v41) — closes the "no playtest data" gap
+    // `Spec_DailyHandInTasks.md` §5c records. Record-only, never transmitted.
+    var playtestMetrics: PlaytestMetrics = PlaytestMetrics()
+
     // Economy correction (v27, Phase 2)
     /// Deepest animal tier ever reached by merging. Scales every recirculation channel.
     var deepestUnlockedTier: Int = 0
@@ -341,7 +345,7 @@ enum GameStore {
     /// v39: smilePointsBanked added (specs/Spec_OrdersAndTasks_Draft.md §2).
     ///      Purely additive; non-Optional, so it needs an
     ///      `additiveDefaultsSinceV8` entry.
-    static let currentVersion = 40
+    static let currentVersion = 41
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -656,6 +660,7 @@ enum GameStore {
         if version == 37 { return migrateByInjecting(from: 37, defaults: [:], into: data) }   // carePointsThisWeek/claimedCarePointTiers covered by additiveDefaultsSinceV8
         if version == 38 { return migrateByInjecting(from: 38, defaults: [:], into: data) }   // smilePointsBanked covered by additiveDefaultsSinceV8
         if version == 39 { return migrateByInjecting(from: 39, defaults: [:], into: data) }   // daily hand-in tasks: reset runs in finishMigration for every sourceVersion < 40
+        if version == 40 { return migrateByInjecting(from: 40, defaults: [:], into: data) }   // playtestMetrics covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -715,6 +720,17 @@ enum GameStore {
         // v26 — commerce
         "commerce": ["purchaseCount": 0, "totalSpendMicros": 0,
                      "wallEventsTotal": 0, "hasReachedFirstWall": false],
+        // v41 — local play instrumentation. Non-Optional, so it needs an entry
+        // here or every pre-v41 save fails to decode; only the non-Optional
+        // fields are listed, exactly as `commerce` above does.
+        "playtestMetrics": ["activeDayCount": 0,
+                            "questClaimsEasy": 0, "questClaimsMedium": 0,
+                            "questClaimsHard": 0, "questClaimsLegendary": 0,
+                            "toolboxesPlaced": 0, "materialUnitsAbsorbed": 0,
+                            "dailyTaskClaims": 0, "dailyTaskDaysFullySwept": 0,
+                            "boardSampleCount": 0, "spawnersOnBoardTotal": 0,
+                            "spawnersStashedTotal": 0, "occupiedCellsTotal": 0,
+                            "unlockedCellsTotal": 0],
         // v27 — economy correction
         "deepestUnlockedTier": 0, "dogTagExchangesToday": 0,
         "dogTagStoreSlots": [Any](),

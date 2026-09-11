@@ -362,6 +362,11 @@ class MergeBoardViewModel {
     // Phase 3 uses this to gate monetization surfaces.
     var commerce: PlayerCommerceState = PlayerCommerceState()
 
+    /// Local play instrumentation (v41). Record-only, never transmitted — see
+    /// `PlaytestMetrics`. Every counter exists to check one number
+    /// `EconomySimulation` currently has to assume.
+    var playtestMetrics: PlaytestMetrics = PlaytestMetrics()
+
     /// D7 / Phase 3, Task 3.4: gates every monetization surface (the Shop button,
     /// the kibble-refill ladder's ad/exchange/bundle rungs) until the player has
     /// both felt a genuine wall and reached `monetizationUnlockLevel`.
@@ -969,6 +974,12 @@ class MergeBoardViewModel {
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
         checkEventLifecycle(at: date)
+        // Playtest instrumentation (v41). Placed here rather than beside the
+        // restore, because at that point a fresh game has no board yet — the
+        // first version of this sampled `freshStart` before `buildEmptyBoard`
+        // and recorded an empty board, then marked the day sampled so the real
+        // one never landed. By this line the board is populated on both paths.
+        recordBoardSample()
         startTimer()
         isLoaded = true
         // Game Center auth is opt-in, triggered only from the Card Album (see
@@ -1234,6 +1245,7 @@ class MergeBoardViewModel {
         s.pouchItems                = pouchItems
         s.pouchExpiryTimestamp      = pouchExpiryTimestamp
         s.commerce                  = commerce
+        s.playtestMetrics           = playtestMetrics
         s.passUnlockedEventIDs      = passUnlockedEventIDs
         s.claimedTradeIDs           = claimedTradeIDs
         s.piggyBankCoins            = piggyBankCoins
@@ -1311,6 +1323,7 @@ class MergeBoardViewModel {
         pouchItems                = s.pouchItems
         pouchExpiryTimestamp      = s.pouchExpiryTimestamp
         commerce                  = s.commerce
+        playtestMetrics           = s.playtestMetrics
         passUnlockedEventIDs      = s.passUnlockedEventIDs
         claimedTradeIDs           = s.claimedTradeIDs
         piggyBankCoins            = s.piggyBankCoins
@@ -1527,6 +1540,29 @@ class MergeBoardViewModel {
     /// Task 1.4 (Phase 1) — records a kibble-wall event (hit zero kibble while
     /// trying to act). `hasReachedFirstWall` gates `isMonetizationUnlocked`
     /// (Phase 3, Task 3.4) together with player level.
+    /// One board snapshot for `PlaytestMetrics`, capped at one a day by the
+    /// metrics struct itself.
+    ///
+    /// Taken at load rather than at a gameplay moment on purpose: sampling on
+    /// claim or merge would catch the board at its most stocked and report an
+    /// occupancy the player never actually sits at. Load is the closest thing
+    /// to an arbitrary moment the game has.
+    func recordBoardSample() {
+        var spawnersOnBoard = 0
+        var occupied = 0
+        var unlocked = 0
+        for cell in flatBoard where cell.isUnlocked {
+            unlocked += 1
+            if !cell.isEmpty { occupied += 1 }
+            if cell.producer?.level == .familySpawner { spawnersOnBoard += 1 }
+        }
+        playtestMetrics.recordBoardSample(
+            spawnersOnBoard: spawnersOnBoard,
+            spawnersStashed: inventoryStore.familySpawnerStorage.count,
+            occupiedCells: occupied,
+            unlockedCells: unlocked)
+    }
+
     private func recordWallEvent(chainID: String?, tier: Int?) {
         commerce.wallEventsTotal += 1
         commerce.lastWallDate = Date()
@@ -3185,6 +3221,7 @@ class MergeBoardViewModel {
         if quest.difficulty == .legendary { coinEarned += cachedActiveBonuses.legendaryQuestCoinBonus }
         earnCoins(coinEarned)
         awardCarePoints(carePoints(forQuest: quest.difficulty))
+        playtestMetrics.recordQuestClaim(quest.difficulty)
 
         // Rescue-tier producers replaced by family spawners (earned via map).
         // Award bonus Dog Tags instead for hard/legendary quests.
@@ -3205,6 +3242,7 @@ class MergeBoardViewModel {
 
     private func placeToolbox() {
         let lot = buildToolboxLot()
+        playtestMetrics.recordToolboxPlaced()
         let empty = emptyUnlockedCells
         if let target = empty.randomElement() {
             pendingMaterialLots.append(lot)
@@ -3212,6 +3250,7 @@ class MergeBoardViewModel {
             recalcBoardIsFull()
         } else {
             // Board full — absorb materials immediately; no tile placed.
+            playtestMetrics.recordMaterialUnits(PlaytestMetrics.materialUnits(in: lot))
             inventoryStore.absorbMaterialItems(lot)
             enqueueToast(Toast(kind: .info("Materials collected! (\(lot.count) items)")))
         }
@@ -3229,6 +3268,7 @@ class MergeBoardViewModel {
         let lot = item.tier == 0
             ? (pendingMaterialLots.isEmpty ? [] : pendingMaterialLots.removeFirst())
             : buildToolboxLot(chestTier: item.tier)
+        playtestMetrics.recordMaterialUnits(PlaytestMetrics.materialUnits(in: lot))
         inventoryStore.absorbMaterialItems(lot)
         boardState.clearItem(at: pos)
         selectedCell = nil
@@ -3343,6 +3383,8 @@ class MergeBoardViewModel {
         grantXP(task.difficulty.xpReward)
         awardCarePoints(carePoints(forQuest: task.difficulty))
         recalcBoardIsFull()
+        playtestMetrics.recordDailyTaskClaim(
+            sweptAll: quests.dailyChallenges.allSatisfy(\.isClaimed))
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
         enqueueToast(Toast(kind: .info("Task complete! +\(task.coinReward) Coins")))
