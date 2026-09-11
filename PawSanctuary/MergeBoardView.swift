@@ -466,14 +466,20 @@ struct MergeBoardView: View {
                 .foregroundColor(viewModel.kibble == 0
                                  ? Color(red: 0.75, green: 0.15, blue: 0.10)
                                  : Color(red: 0.15, green: 0.15, blue: 0.15))
-            if viewModel.kibble < kibbleRegenCap {
+            // One named boundary, not a comparison rewritten here: this used
+            // to test against the flat `kibbleRegenCap` constant while regen
+            // actually runs to `effectiveRegenCap` (150 from level 10), which
+            // hid the countdown for every level-10+ player holding 100–149 —
+            // exactly the window where the bar is still filling and the
+            // player most wants to know how long it takes.
+            if viewModel.isKibbleRegenerating {
                 Text(viewModel.kibbleStatusText)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.kibble < kibbleRegenCap)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isKibbleRegenerating)
         .lineLimit(1)
         .padding(.horizontal, 9)
         .frame(height: hudPillHeight)

@@ -42,6 +42,14 @@ class KibbleEngine {
     /// At level 10+ the regen cap rises from 100 to 150, rewarding progression.
     var effectiveRegenCap: Int { playerLevel >= 10 ? 150 : kibbleRegenCap }
 
+    /// Whether the bag is still filling — the single boundary the HUD
+    /// countdown, `tick(bonusPerRegen:)` and `secondsUntilKibbleFull` must
+    /// all agree on. Named rather than left as an inline comparison because
+    /// the HUD used to spell it out for itself against the flat
+    /// `kibbleRegenCap` constant and silently disagreed with regen for every
+    /// level-10+ player holding 100-149 (found 11 Sep 2026).
+    var isRegenerating: Bool { kibble < effectiveRegenCap }
+
     /// Countdown string shown next to the kibble icon.
     var kibbleStatusText: String {
         let m = secondsUntilNextKibble / 60

@@ -434,6 +434,13 @@ class MergeBoardViewModel {
         set { kibbleEngine.showKibbleSheet = newValue }
     }
     var kibbleStatusText: String { kibbleEngine.kibbleStatusText }
+    /// The cap regen actually stops at — 150 from level 10, not the flat
+    /// `kibbleRegenCap`.
+    var effectiveRegenCap: Int { kibbleEngine.effectiveRegenCap }
+    /// Whether the kibble bag is still filling. The HUD countdown's only
+    /// gate — see `KibbleEngine.isRegenerating` for why it is a named
+    /// property rather than a comparison written out at the call site.
+    var isKibbleRegenerating: Bool { kibbleEngine.isRegenerating }
     var kibbleDisplayText: String { kibbleEngine.kibbleDisplayText }
     var remainingAdWatches: Int  { kibbleEngine.remainingAdWatches }
 
