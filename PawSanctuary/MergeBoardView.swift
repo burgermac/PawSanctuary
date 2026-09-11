@@ -380,7 +380,13 @@ struct MergeBoardView: View {
         let kibblePerTick = 1 + viewModel.activeBonuses.kibblePerRegen
         NotificationManager.shared.scheduleKibbleFull(
             currentKibble:  viewModel.kibble,
-            regenCap:       kibbleRegenCap,
+            // `effectiveRegenCap`, not the flat constant: a level-10+ player
+            // fills to 150, so scheduling against 100 fired "your kibble is
+            // full" while a third of the bar was still regenerating. The
+            // other call site (`KibbleEngine.tick`, via
+            // `secondsUntilKibbleFull`) already had this right, which is
+            // why only the backgrounding path was wrong.
+            regenCap:       viewModel.effectiveRegenCap,
             secsUntilNext:  viewModel.secondsUntilNextKibble,
             regenSecs:      kibbleRegenSecs,
             kibblePerTick:  kibblePerTick)
@@ -466,14 +472,20 @@ struct MergeBoardView: View {
                 .foregroundColor(viewModel.kibble == 0
                                  ? Color(red: 0.75, green: 0.15, blue: 0.10)
                                  : Color(red: 0.15, green: 0.15, blue: 0.15))
-            if viewModel.kibble < kibbleRegenCap {
+            // One named boundary, not a comparison rewritten here: this used
+            // to test against the flat `kibbleRegenCap` constant while regen
+            // actually runs to `effectiveRegenCap` (150 from level 10), which
+            // hid the countdown for every level-10+ player holding 100–149 —
+            // exactly the window where the bar is still filling and the
+            // player most wants to know how long it takes.
+            if viewModel.isKibbleRegenerating {
                 Text(viewModel.kibbleStatusText)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(Color(red: 0.40, green: 0.22, blue: 0.02))
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.kibble < kibbleRegenCap)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isKibbleRegenerating)
         .lineLimit(1)
         .padding(.horizontal, 9)
         .frame(height: hudPillHeight)
@@ -1235,7 +1247,7 @@ private struct KibbleRefillSheet: View {
                 Text("You're out of kibble")
                     .font(.headline)
                     .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
-                Text("\(viewModel.kibble) / \(kibbleRegenCap) — refills 1 every 2 min")
+                Text("\(viewModel.kibble) / \(viewModel.effectiveRegenCap) — refills \(KibbleEngine.regenRateDescription)")
                     .font(.caption)
                     .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
             }
