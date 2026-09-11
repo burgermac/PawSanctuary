@@ -42,6 +42,18 @@ class KibbleEngine {
     /// At level 10+ the regen cap rises from 100 to 150, rewarding progression.
     var effectiveRegenCap: Int { playerLevel >= 10 ? 150 : kibbleRegenCap }
 
+    /// How the regen rate is described to the player, derived from
+    /// `kibbleRegenSecs` rather than written out. The Shop blurb said
+    /// "1/min" and the refill sheet said "1 every 2 min" for the same
+    /// 120-second constant — one of them had to be wrong, and it was the
+    /// Shop (found 11 Sep 2026). Deriving it means they cannot disagree
+    /// with each other or with the constant again.
+    static var regenRateDescription: String {
+        guard kibbleRegenSecs % 60 == 0 else { return "1 every \(kibbleRegenSecs)s" }
+        let minutes = kibbleRegenSecs / 60
+        return minutes == 1 ? "1 every minute" : "1 every \(minutes) min"
+    }
+
     /// Whether the bag is still filling — the single boundary the HUD
     /// countdown, `tick(bonusPerRegen:)` and `secondsUntilKibbleFull` must
     /// all agree on. Named rather than left as an inline comparison because

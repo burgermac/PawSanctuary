@@ -380,7 +380,13 @@ struct MergeBoardView: View {
         let kibblePerTick = 1 + viewModel.activeBonuses.kibblePerRegen
         NotificationManager.shared.scheduleKibbleFull(
             currentKibble:  viewModel.kibble,
-            regenCap:       kibbleRegenCap,
+            // `effectiveRegenCap`, not the flat constant: a level-10+ player
+            // fills to 150, so scheduling against 100 fired "your kibble is
+            // full" while a third of the bar was still regenerating. The
+            // other call site (`KibbleEngine.tick`, via
+            // `secondsUntilKibbleFull`) already had this right, which is
+            // why only the backgrounding path was wrong.
+            regenCap:       viewModel.effectiveRegenCap,
             secsUntilNext:  viewModel.secondsUntilNextKibble,
             regenSecs:      kibbleRegenSecs,
             kibblePerTick:  kibblePerTick)
@@ -1241,7 +1247,7 @@ private struct KibbleRefillSheet: View {
                 Text("You're out of kibble")
                     .font(.headline)
                     .foregroundColor(Color(red: 0.25, green: 0.25, blue: 0.25))
-                Text("\(viewModel.kibble) / \(kibbleRegenCap) — refills 1 every 2 min")
+                Text("\(viewModel.kibble) / \(viewModel.effectiveRegenCap) — refills \(KibbleEngine.regenRateDescription)")
                     .font(.caption)
                     .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
             }

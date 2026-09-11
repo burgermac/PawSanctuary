@@ -82,7 +82,9 @@ final class NotificationManager: NSObject {
     /// Schedules a notification for when the kibble bar will hit the regen cap.
     /// - Parameters:
     ///   - currentKibble:  Current kibble amount.
-    ///   - regenCap:       The cap at which regen stops (kibbleRegenCap).
+    ///   - regenCap:       The cap at which regen stops — pass
+    ///                      `KibbleEngine.effectiveRegenCap`, which rises to
+    ///                      150 at level 10, not the flat `kibbleRegenCap`.
     ///   - secsUntilNext:  Seconds until the very next regen tick.
     ///   - regenSecs:      Seconds per tick (kibbleRegenSecs).
     ///   - kibblePerTick:  How much kibble each tick grants (1 + map bonus).

@@ -24,7 +24,7 @@ struct ShopView: View {
                             .font(.subheadline.bold()).padding().frame(maxWidth: .infinity)
                             .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.7)))
 
-                        Text("Kibble regenerates 1/min up to \(kibbleRegenCap). Purchases and quest rewards can exceed the cap.")
+                        Text("Kibble regenerates \(KibbleEngine.regenRateDescription) up to \(viewModel.effectiveRegenCap). Purchases and quest rewards can exceed the cap.")
                             .font(.caption).multilineTextAlignment(.center).foregroundColor(.secondary).padding(.horizontal)
 
                         // Sound toggle

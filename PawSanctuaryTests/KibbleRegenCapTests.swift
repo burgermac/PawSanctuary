@@ -84,6 +84,14 @@ final class KibbleRegenCapTests: XCTestCase {
     /// pinning it would mean widening access for one line). A
     /// test that set `viewModel.playerLevel` directly would be exercising a
     /// path the app never takes, and would fail for the wrong reason.
+    /// The Shop blurb and the refill sheet both render this, so it has to
+    /// track `kibbleRegenSecs` rather than a number someone typed. They
+    /// disagreed with each other and with the constant before it existed.
+    func testRegenRateDescriptionTracksTheConstant() {
+        XCTAssertEqual(kibbleRegenSecs, 120, "if this changes, the expectation below moves with it")
+        XCTAssertEqual(KibbleEngine.regenRateDescription, "1 every 2 min")
+    }
+
     func testViewModelForwardsTheSameCapTheEngineUses() {
         let viewModel = MergeBoardViewModel()
         viewModel.kibbleEngine.playerLevel = 12
