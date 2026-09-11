@@ -92,6 +92,33 @@ final class KibbleRegenCapTests: XCTestCase {
         XCTAssertEqual(KibbleEngine.regenRateDescription, "1 every 2 min")
     }
 
+    /// `secondsUntilKibbleFull` is now the single computation of time-to-full
+    /// — `NotificationManager`'s own copy of the arithmetic, which took the
+    /// cap as a parameter, is gone. This pins that it targets the effective
+    /// cap, which is the thing the deleted copy got wrong.
+    func testTimeToFullTargetsTheEffectiveCapNotTheFlatConstant() {
+        let engine = makeEngine(level: 12, kibble: 149)
+        engine.secondsUntilNextKibble = kibbleRegenSecs
+        XCTAssertEqual(engine.secondsUntilKibbleFull(bonusPerRegen: 0),
+                       TimeInterval(kibbleRegenSecs),
+                       "one tick from 149 to the real cap of 150")
+
+        // Against the flat constant this balance is already 'full', which is
+        // precisely the early fire: nil here would mean no notification at
+        // all, and a shorter interval would mean firing while still filling.
+        let atFlatCap = makeEngine(level: 12, kibble: kibbleRegenCap)
+        atFlatCap.secondsUntilNextKibble = kibbleRegenSecs
+        let secs = atFlatCap.secondsUntilKibbleFull(bonusPerRegen: 0)
+        XCTAssertNotNil(secs, "still 50 kibble from full, so it must schedule")
+        XCTAssertEqual(secs, TimeInterval(kibbleRegenSecs + 49 * kibbleRegenSecs))
+    }
+
+    /// Full means full: nothing to schedule.
+    func testTimeToFullIsNilAtTheEffectiveCap() {
+        XCTAssertNil(makeEngine(level: 12, kibble: 150).secondsUntilKibbleFull(bonusPerRegen: 0))
+        XCTAssertNil(makeEngine(level: 1, kibble: kibbleRegenCap).secondsUntilKibbleFull(bonusPerRegen: 0))
+    }
+
     func testViewModelForwardsTheSameCapTheEngineUses() {
         let viewModel = MergeBoardViewModel()
         viewModel.kibbleEngine.playerLevel = 12
