@@ -377,19 +377,7 @@ struct MergeBoardView: View {
         guard NotificationManager.shared.isAuthorised else { return }
 
         // 1. Kibble full
-        let kibblePerTick = 1 + viewModel.activeBonuses.kibblePerRegen
-        NotificationManager.shared.scheduleKibbleFull(
-            currentKibble:  viewModel.kibble,
-            // `effectiveRegenCap`, not the flat constant: a level-10+ player
-            // fills to 150, so scheduling against 100 fired "your kibble is
-            // full" while a third of the bar was still regenerating. The
-            // other call site (`KibbleEngine.tick`, via
-            // `secondsUntilKibbleFull`) already had this right, which is
-            // why only the backgrounding path was wrong.
-            regenCap:       viewModel.effectiveRegenCap,
-            secsUntilNext:  viewModel.secondsUntilNextKibble,
-            regenSecs:      kibbleRegenSecs,
-            kibblePerTick:  kibblePerTick)
+        viewModel.rescheduleKibbleFullNotification()
 
         // 2. Daily rewards (persistent daily — schedule once, keeps firing)
         NotificationManager.shared.scheduleDailyRewards()

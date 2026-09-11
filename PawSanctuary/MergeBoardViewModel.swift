@@ -1511,9 +1511,7 @@ class MergeBoardViewModel {
         boardState.setItem(item, at: target.position)
         kibbleEngine.kibble -= cost
         updateAllAfterSpend(kind: .kibble, amount: cost)
-        if let secs = kibbleEngine.secondsUntilKibbleFull(bonusPerRegen: cachedActiveBonuses.kibblePerRegen) {
-            NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
-        }
+        rescheduleKibbleFullNotification()
         rescueCount += 1
         recalcBoardIsFull()
         grantXP(xpPerRescue)
@@ -2476,6 +2474,19 @@ class MergeBoardViewModel {
             // at load time via restore(from:).
             kibbleEngine.playerLevel = progression.playerLevel
         }
+    }
+
+    /// Re-points the kibble-full notification at the current time-to-full, or
+    /// leaves it cancelled when the bag is already full. The only way the
+    /// board layer schedules this — `MergeBoardView`'s backgrounding pass and
+    /// `finishSpawn` both call it rather than repeating the two-line dance,
+    /// which is how one of them came to be computing it against the wrong
+    /// cap. `KibbleEngine.tick` schedules its own from inside the engine, off
+    /// the same `secondsUntilKibbleFull`.
+    func rescheduleKibbleFullNotification() {
+        guard let secs = kibbleEngine.secondsUntilKibbleFull(
+            bonusPerRegen: cachedActiveBonuses.kibblePerRegen) else { return }
+        NotificationManager.shared.scheduleKibbleFull(secondsUntilFull: secs)
     }
 
     // MARK: Inventory wrappers (board-side of cross-boundary operations)

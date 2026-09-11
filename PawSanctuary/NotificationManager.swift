@@ -79,42 +79,20 @@ final class NotificationManager: NSObject {
 
     // MARK: Schedule — kibble full
 
-    /// Schedules a notification for when the kibble bar will hit the regen cap.
-    /// - Parameters:
-    ///   - currentKibble:  Current kibble amount.
-    ///   - regenCap:       The cap at which regen stops — pass
-    ///                      `KibbleEngine.effectiveRegenCap`, which rises to
-    ///                      150 at level 10, not the flat `kibbleRegenCap`.
-    ///   - secsUntilNext:  Seconds until the very next regen tick.
-    ///   - regenSecs:      Seconds per tick (kibbleRegenSecs).
-    ///   - kibblePerTick:  How much kibble each tick grants (1 + map bonus).
-    func scheduleKibbleFull(currentKibble: Int,
-                            regenCap: Int,
-                            secsUntilNext: Int,
-                            regenSecs: Int,
-                            kibblePerTick: Int) {
-        guard isAuthorised, currentKibble < regenCap else { return }
-        let needed      = regenCap - currentKibble
-        let ticks       = Int(ceil(Double(needed) / Double(max(1, kibblePerTick))))
-        let totalSecs   = secsUntilNext + max(0, ticks - 1) * regenSecs
-        guard totalSecs > 0 else { return }
-
-        let content           = UNMutableNotificationContent()
-        content.title         = "Kibble bar is full!"
-        content.body          = "Your sanctuary is ready. Come back and keep merging!"
-        content.sound         = .default
-        content.badge         = 1
-
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: TimeInterval(totalSecs), repeats: false)
-        let request = UNNotificationRequest(
-            identifier: NotificationID.kibbleFull, content: content, trigger: trigger)
-
-        cancel(ids: [NotificationID.kibbleFull])
-        UNUserNotificationCenter.current().add(request)
-    }
-
-    /// Simple variant: fires after `secondsUntilFull` seconds.
+    /// Schedules the kibble-full notification.
+    ///
+    /// There used to be a second overload here taking
+    /// `(currentKibble, regenCap, secsUntilNext, regenSecs, kibblePerTick)`
+    /// and doing the time-to-full arithmetic itself. It was a verbatim copy
+    /// of `KibbleEngine.secondsUntilKibbleFull(bonusPerRegen:)` that also
+    /// asked its caller which cap to use — and one of the two callers passed
+    /// the flat `kibbleRegenCap`, so level-10+ players were told the bag was
+    /// full with a third of it still regenerating. Correcting that argument
+    /// left the same mistake available to the next caller, so the parameter
+    /// is gone instead: there is now exactly one place that knows how to
+    /// compute time-to-full, and no way to schedule this against the wrong
+    /// cap. (Removed 11 Sep 2026.)
+    ///
     /// Cancel the old one and replace whenever the time-to-full changes.
     func scheduleKibbleFull(secondsUntilFull: TimeInterval) {
         guard isAuthorised, secondsUntilFull > 0 else { return }
