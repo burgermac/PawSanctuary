@@ -106,6 +106,43 @@ final class ParallelBoardCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.boardState.item(at: to)?.tier, 2)
     }
 
+    /// The generator's cell is not a parking space. `collectFromGenerator`
+    /// already never places there, but once the board grew a drag gesture
+    /// (ParallelBoardView, 11 Sep 2026) a player could drop an item onto it
+    /// in one careless flick and hide the generator behind it, stalling the
+    /// board until they worked out what had happened.
+    func testAttemptMergeRefusesToMoveAnItemOntoTheClearGeneratorCell() {
+        let coordinator = makeCoordinator(chainID: catChain)
+        let from = GridPosition(row: 1, col: 1)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: 2), at: from)
+        coordinator.boardState.recalc()
+
+        coordinator.attemptMerge(from: from, to: coordinator.generatorPosition)
+
+        XCTAssertNil(coordinator.boardState.item(at: coordinator.generatorPosition),
+                     "the generator cell must stay clear")
+        XCTAssertEqual(coordinator.boardState.item(at: from)?.tier, 2,
+                       "the refused move must leave the item where it was, not consume it")
+    }
+
+    /// The refusal above is specific to *moving into* a clear generator cell.
+    /// A restored save can still have an item standing there (older builds
+    /// allowed the move), and merging it away is exactly how the player
+    /// clears it — so that path must keep working.
+    func testAttemptMergeOntoAnOccupiedGeneratorCellStillMerges() {
+        let coordinator = makeCoordinator(chainID: catChain)
+        let from = GridPosition(row: 1, col: 1)
+        let gen = coordinator.generatorPosition
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: 1), at: from)
+        coordinator.boardState.setItem(BoardItem(chainID: catChain, tier: 1), at: gen)
+        coordinator.boardState.recalc()
+
+        coordinator.attemptMerge(from: from, to: gen)
+
+        XCTAssertNil(coordinator.boardState.item(at: from))
+        XCTAssertEqual(coordinator.boardState.item(at: gen)?.tier, 2)
+    }
+
     func testAttemptMergeOfMatchingPairAdvancesTierAndClearsSource() {
         let coordinator = makeCoordinator(chainID: catChain)
         let from = GridPosition(row: 1, col: 1)

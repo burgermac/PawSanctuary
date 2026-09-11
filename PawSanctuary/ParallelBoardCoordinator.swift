@@ -97,6 +97,16 @@ final class ParallelBoardCoordinator {
               boardState.isUnlocked(at: from), boardState.isUnlocked(at: to),
               let srcItem = boardState.item(at: from) else { return }
         guard let dstItem = boardState.item(at: to) else {
+            // The generator's own cell is not a parking space. Nothing this
+            // class does can fill it (`collectFromGenerator` always places
+            // elsewhere), but a player move can — and an item left standing
+            // there hides the generator and stalls the whole board until
+            // they work out to move it off again. Refusing the move is the
+            // cheap fix: the tile snaps back, exactly as it does when a drag
+            // lands on an occupied cell it can't merge with. Added with the
+            // drag gesture (11 Sep 2026), which made this far easier to do
+            // by accident than tap-to-move ever was.
+            guard to != generatorPosition else { return }
             boardState.setItem(srcItem, at: to)
             boardState.clearItem(at: from)
             boardState.recalc()
