@@ -84,7 +84,22 @@ struct ParallelBoardView: View {
             Image(systemName: "bolt.fill").foregroundColor(.yellow)
             Text("\(coordinator.energy.balance)/\(parallelBoardEnergyCap)")
                 .font(.system(size: 14, weight: .semibold))
+            // Regen is 90s a point, so an empty bar is three quarters of an
+            // hour from full and a single generator tap is three minutes
+            // away — long enough that a bare balance tells the player
+            // nothing about when they can play again. Same treatment the
+            // main board's kibble pill already gives the same problem
+            // (`MergeBoardView.kibblePill`): smaller, muted, and gone once
+            // there is nothing left to wait for.
+            if !coordinator.energy.isFull {
+                Text(coordinator.energy.statusText)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: coordinator.energy.isFull)
+        .lineLimit(1)
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(Capsule().fill(Color.white.opacity(0.7)))
     }
