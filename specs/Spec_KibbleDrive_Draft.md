@@ -1,6 +1,6 @@
 # PawSanctuary — Kibble Drive (paid activity-gated ladder)
 
-**Draft. No code written. Not yet entered in the Alignment Plan's D1–D8 log.**
+**§6 step 1 IMPLEMENTED 12 Sep 2026 (schema only — see §6a, which also corrects §5's `additiveDefaultsSinceV8` instruction). Steps 2–7 not started. Not yet entered in the Alignment Plan's D1–D8 log.**
 
 **Self-contained brief.** Assumes no prior conversation. Written cold 4 September 2026 from `Capture_Log.md`'s 4 Sep entry — three Tasty Travels recordings (`ScreenRecording_09-04-2026 10-51-52 / 10-53-16 / 10-54-47_1.MP4`, L105) of a **$4.99 "Charge Challenge"** the user purchased and played through. Catalogue rows in `Capture_Catalogue.md`; contact sheets in the run's outputs.
 
@@ -241,6 +241,22 @@ Not atomic. Separate commits, verify each on screen, stop if one resists.
 7. **On-screen acceptance** — purchase, earn past a rung, claim it, watch kibble land.
 
 ---
+
+### 6a. Step 1 IMPLEMENTED (12 Sep 2026) — schema only
+
+`KibbleDriveState` + `GameState.kibbleDrive` + schema **v41 → v42** + migration + three `PersistenceTests` cases. New file `PawSanctuary/KibbleDrive.swift`; the project uses `PBXFileSystemSynchronizedRootGroup` (`objectVersion 77`), so it needed no `project.pbxproj` edit. **No UI, no view-model change, no behaviour.** `awardCarePoints` is untouched — §6 deliberately puts that in step 2 alongside the thing it feeds rather than landing a no-op commit of its own.
+
+**One correction to §5, found by reading the code rather than trusting this spec.** §5 says the field "should ride `additiveDefaultsSinceV8` the way `carePointsThisWeek` did at v37→v38." That is wrong: `carePointsThisWeek` is a **non-Optional `Int`**, which is *why* it needed an entry — `GameStore.swift`'s own v38 history note says so ("both are non-Optional, so they need `additiveDefaultsSinceV8` entries or older saves fail to decode"). An Optional decodes to `nil` on its own. The correct precedent is `parallelBoardState` at v36, whose declaration states the rule directly: *"Optional, so no `additiveDefaultsSinceV8` entry is needed."* Built that way — the v41 dispatch entry injects no defaults, matching v35's.
+
+**Schema was at v41, not the v39 this spec was written against.** Two versions landed between 4 and 11 Sep (v40 daily hand-in tasks, v41 `playtestMetrics`). Neither had been added to `GameStore`'s version-history doc comment, which left it ending at v39 while `currentVersion` read 41. Both entries were reconstructed from the dispatch table and `Spec_DailyHandInTasks.md` and written in alongside v42's, rather than leaving the history jumping v39 → v42. Flagged in the commit as incidental, not silent.
+
+**Every line number this spec cites had drifted** — `awardCarePoints` is at `MergeBoardViewModel.swift:4018`, not `:3946`, and its five call sites are at `:3212`/`:3241`/`:3402`/`:3526`/`:3552`, not `:3146`/`:3175`/`:3332`/`:3454`/`:3480`. The structure §1 describes is otherwise exactly as recorded: one method, five callers, one hardcoded destination. Step 2 remains a two-line widening.
+
+**Tests — three, not one.** The migration case (`testV41toV42MigrationLeavesKibbleDriveNil`) and a round-trip follow the v35→v36 and v38→v39 shapes verbatim. The third, `testKibbleDrivePointsArePersistedIndependentlyOfTheWeeklyCarePointBar`, pins §1's weekly-reset trap at the only level this step can reach it: that the Drive's points are a field of their own and not an alias of `carePointsThisWeek`, so a weekly reset cannot reach the ladder. Nothing writes either field yet, so it asserts the *shape* — step 2 is where it becomes behavioural, and the assertion is there now so that step starts against a standing guard rather than adding its own.
+
+**Verified on screen, on a real migration rather than a synthetic one.** The Simulator's live save was genuinely at v41, so installing the new build migrated it in place: version 41 → 42, `kibbleDrive` absent from the JSON (Optional `nil` encodes as omitted, as intended), board intact at 63 occupied cells, kibble and coins unchanged, and **84 of 88 top-level keys byte-identical** — the four that moved are ordinary live-state churn (`lastActiveDate`, `parallelBoardState` ticking on the still-active Second Chances event, `urgentOrderCooldownRemaining`, `version`). The save was backed up first. Then played: dragged two Level 1 pups into a Level 2, which flipped the Easy daily task 0/1 → 1/1 with its Claim button, filled Medium's second line, and advanced the row-unlock bar from "2 levels away" to "1" — so the migrated save is not merely loadable but fully playable, which is working rule 2's actual bar. 588/588 tests green (585 + 3).
+
+**Still ahead:** steps 2–7, one per session. Step 2 (widen `awardCarePoints`) is the one carrying §1's trap, and §7's four open questions — unpurchased accrual, forfeit-on-close, refund exposure, and the reference's unexplained "Challenges complete!" banner — are all still Tim's to decide. §3.4's `energyLarge` reposition remains unwritten and is a live-SKU revenue change, separable on purpose.
 
 ## 7. Open questions
 

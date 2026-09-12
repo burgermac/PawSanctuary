@@ -1362,6 +1362,50 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(loaded.parallelBoardState, "no parallel-board event existed pre-v36 — the field must migrate to nil, not a default board")
     }
 
+    // MARK: v41 → v42 (Kibble Drive)
+
+    func testV41toV42MigrationLeavesKibbleDriveNil() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "kibbleDrive")
+        obj["version"] = 41
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v41 save should migrate to v42")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertNil(loaded.kibbleDrive,
+                     "no Kibble Drive existed pre-v42 — the field must migrate to nil, not an empty Drive a player could see a ladder for")
+    }
+
+    func testKibbleDriveRoundTripsWithItsPointsAndClaims() throws {
+        var state = makeSampleState()
+        state.kibbleDrive = KibbleDriveState(eventID: "kibble_drive_test",
+                                             points: 147,
+                                             claimedRungs: [0, 1, 2],
+                                             purchased: true)
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.kibbleDrive?.eventID, "kibble_drive_test")
+        XCTAssertEqual(decoded.kibbleDrive?.points, 147)
+        XCTAssertEqual(decoded.kibbleDrive?.claimedRungs, [0, 1, 2])
+        XCTAssertEqual(decoded.kibbleDrive?.purchased, true)
+    }
+
+    /// The weekly-reset trap (`Spec_KibbleDrive_Draft.md` §1) at the only level
+    /// this step can assert it: the Drive's points are a field of their own, not
+    /// an alias of `carePointsThisWeek`. Nothing writes either one yet, so this
+    /// pins the *shape* — that a weekly reset cannot reach the Drive's ladder —
+    /// before §6 step 2 adds the writer that makes it behavioural.
+    func testKibbleDrivePointsArePersistedIndependentlyOfTheWeeklyCarePointBar() throws {
+        var state = makeSampleState()
+        state.carePointsThisWeek = 0
+        state.kibbleDrive = KibbleDriveState(eventID: "kibble_drive_test", points: 260)
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.carePointsThisWeek, 0,
+                       "a zeroed weekly bar is exactly the post-reset state")
+        XCTAssertEqual(decoded.kibbleDrive?.points, 260,
+                       "the Drive's ladder must survive a weekly reset that zeroes carePointsThisWeek — straddling that boundary would otherwise destroy a purchase")
+    }
+
     // MARK: v38 → v39 (Smile Points)
 
     func testV38toV39DefaultsSmilePointsToAnEmptyBundle() throws {
