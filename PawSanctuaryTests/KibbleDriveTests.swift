@@ -135,36 +135,19 @@ final class KibbleDriveTests: XCTestCase {
         XCTAssertEqual(vm.kibbleDrive?.points, 150, "the ladder accumulates straight through the boundary")
     }
 
-    // MARK: Persistence of the new view-model wiring
-
-    /// Through the real save path — `persistNow()` on one view model,
-    /// `loadGame()` on a fresh other — rather than the capture/apply pair,
-    /// which is private. Step 1's `PersistenceTests` already prove
-    /// `GameState.kibbleDrive` encodes and migrates; what this proves is the
-    /// view-model wiring added in step 2, which those cannot see.
-    func testDrivePointsSurviveAForceQuitAndRelaunch() throws {
-        let vm = makeViewModel(drive: drive(purchased: true))
-        vm.awardCarePoints(147)
-        vm.persistNow()
-
-        let relaunched = MergeBoardViewModel()
-        relaunched.loadGame()
-
-        XCTAssertEqual(relaunched.kibbleDrive?.points, 147,
-                       "points banked before a force-quit must not be lost — they are what a purchase releases")
-        XCTAssertEqual(relaunched.kibbleDrive?.purchased, true)
-        XCTAssertEqual(relaunched.kibbleDrive?.eventID, "kibble_drive_test")
-    }
-
-    func testNoDriveRoundTripsAsNoDrive() throws {
-        let vm = makeViewModel(drive: nil)
-        vm.awardCarePoints(20)
-        vm.persistNow()
-
-        let relaunched = MergeBoardViewModel()
-        relaunched.loadGame()
-
-        XCTAssertNil(relaunched.kibbleDrive,
-                     "a save written with no Drive scheduled must come back with none")
-    }
+    // MARK: Persistence
+    //
+    // Step 2 originally carried two save/reload cases here. Step 3a made both
+    // untestable *as written* — and that is the right outcome rather than a
+    // regression. They seeded a `kibbleDrive` whose `eventID` was not in
+    // `KibbleDriveRegistry`, then asserted it survived `loadGame()`. Once
+    // lifecycle exists, `checkEventLifecycle` is the sole author of that field:
+    // a Drive whose ID is not a scheduled event cannot survive a load, by
+    // construction, because that is exactly the stale-state leak forfeit-on-close
+    // is there to prevent. The real coverage now lives in
+    // `KibbleDriveLifecycleTests` — `testPointsSurviveARelaunchInsideTheSameWindow`
+    // and `testASaveFromAFinishedDriveIsDroppedOnRelaunch` — against genuine
+    // registry events and fixed dates. Recorded here rather than deleted
+    // silently, since "a test disappeared" and "a test was superseded" look
+    // identical in a diff.
 }

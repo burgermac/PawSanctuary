@@ -3903,6 +3903,39 @@ class MergeBoardViewModel {
         } else {
             activeParallelBoardEvent = nil
         }
+        // Kibble Drive (specs/Spec_KibbleDrive_Draft.md §6 step 3a) — its own
+        // registry again, for the same reason Parallel Board has one: a Drive
+        // never participates in the rider-provider bookkeeping above. Same
+        // launch-only posture as both blocks before it; a Drive that ends
+        // while the app is open is torn down on the next launch, not by a
+        // mid-session poll.
+        if let drive = KibbleDriveRegistry.activeEvent(at: date) {
+            // Only when the ID differs, so a relaunch *inside* a running
+            // window keeps the points already banked. `apply(_:)` has already
+            // restored `kibbleDrive` from the save by the time this runs
+            // (loadGame: apply -> ... -> checkEventLifecycle), so the
+            // comparison is against real restored state, not a blank.
+            if kibbleDrive?.eventID != drive.id {
+                kibbleDrive = KibbleDriveState(eventID: drive.id)
+            }
+        } else {
+            // **Forfeit on close** (§2, and §7's open question 4, decided
+            // 12 Sep 2026). Unclaimed rungs are lost and points do not roll
+            // over, so the state is dropped outright rather than kept for a
+            // later Drive to inherit. Note this is the *opposite* posture to
+            // the Reward Ladder, which deliberately never expires
+            // (`Spec_Phase6b_RewardLadder.md` §0) — the two differ because the
+            // Ladder sells rungs directly, where the Drive sells a window in
+            // which to earn them, and a window that does not close is not a
+            // window. Deliberate divergence, not an inconsistency.
+            //
+            // This is also what makes the ID comparison above sufficient
+            // rather than merely convenient: stale state from a finished Drive
+            // can never reach a later one, because it does not survive the gap
+            // between them.
+            kibbleDrive = nil
+        }
+
         // Unconditional, not just on the branch that used it: this is a
         // one-shot seed for whichever coordinator gets created on THIS call,
         // not state kept valid across calls. Safe today because production
