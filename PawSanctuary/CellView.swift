@@ -587,34 +587,74 @@ struct ProducerTileContent: View {
 // MARK: - PRODUCER AFFORDANCE SHIMMER
 // ============================================================
 
-/// One rising fluff mote in a family spawner's affordance shimmer
+/// One rising mote in a family spawner's affordance shimmer
 /// (`Spec_BoardAnimation_Draft.md` §5) — the pet-themed stand-in for the
-/// reference title's white star twinkle. Its geometry is fixed at spawn so
-/// `SpawnerPuffView` can animate purely from a `Bool`, the same idiom
+/// reference title's twinkle. Its geometry is fixed at spawn so
+/// `SpawnerPuffView` can animate purely from two `Bool`s, the same idiom
 /// `MergeSparkle`/`MergeSparkleView` use above.
+///
+/// The numbers here are measured off the reference recording rather than
+/// chosen (`Spec_BoardAnimation_Draft.md` §5c). Particle tracks were isolated
+/// by subtracting a per-pixel temporal-minimum background plate from each
+/// frame, then linked across frames: the reference's travelling motes cover
+/// **0.13–0.45 cell heights** at **0.10–0.49 cell/s**, clustered near
+/// 0.22 cell/s, and they rise — 12 of 13 tracked motes move up, which is the
+/// opposite of the "mostly down-left" §4 recorded by eye.
 private struct SpawnerPuff: Identifiable {
     let id = UUID()
-    /// Origin within the tile, as a fraction of `size` from centre.
-    let originX = CGFloat.random(in: -0.28...0.28)
-    let originY = CGFloat.random(in: -0.22...0.22)
-    /// Upward drift and slight horizontal wander, in points at `size == 62`
-    /// (the cell default); scaled by `size / 62` at render time.
-    let drift = CGFloat.random(in: 14...22)
-    let wander = CGFloat.random(in: -5...5)
-    /// Slow on purpose. At the original 0.5–0.8s a mote completed its whole
-    /// rise in about half a second, which the eye reads as a blink rather than
-    /// as something drifting — the motion was over before it registered as
-    /// motion. A ~3s cycle over a slightly longer travel is what makes it
-    /// legible as drift.
-    let duration = Double.random(in: 2.6...3.6)
-    /// Spread wide enough that three motes never pulse together; at the old
-    /// 0–0.6s against a 0.65s cycle they were effectively in phase, so the
-    /// tile brightened and dimmed as a unit.
-    let delay = Double.random(in: 0...2.4)
+    /// Origin within the tile, as a fraction of `size` from centre. Biased
+    /// low, since a mote that starts high and then rises leaves the tile —
+    /// §4's own reading of the reference is that motes stay inside it.
+    let originX: CGFloat
+    let originY: CGFloat
+    /// Travel and slight horizontal wander, in points at `size == 62` (the
+    /// cell default); scaled by `size / 62` at render time. 16–24pt is
+    /// 0.26–0.39 cell heights, inside the measured band.
+    let drift: CGFloat
+    let wander: CGFloat
+    /// Exact 1/count of the tile's shared period — no jitter, deliberately.
+    /// Each mote is at half brightness or better for half of the period,
+    /// centred on its midpoint, so three motes at exact thirds cover the
+    /// whole period between them with overlap to spare: the tile can never
+    /// fall quiet. Jitter breaks that guarantee for no visible gain, and
+    /// per-mote random periods break it badly — see `SpawnerShimmerView`.
+    let phase: Double
+
+    init(index: Int, of count: Int, period: Double) {
+        originX = .random(in: -0.28...0.28)
+        originY = .random(in: -0.05...0.26)
+        drift = .random(in: 16...24)
+        wander = .random(in: -4...4)
+        phase = (Double(index) / Double(count)) * period
+    }
+}
+
+/// The three motes on one tile and the period they share.
+///
+/// **Sharing the period is load-bearing.** Motes originally carried their own
+/// random 1.1–1.7s duration and were phased at thirds *of their own* duration,
+/// which staggers them only at t=0: from there the periods beat against each
+/// other and the motes drift into and out of phase. Measured off a screen
+/// recording of the running app, that left a **0.6s window with the tile
+/// almost empty** — long enough to read as the shimmer having stopped, which
+/// is the complaint this whole pass exists to fix. One period per tile makes
+/// the stagger permanent. The period is still randomised per tile, so two
+/// spawners side by side don't pulse in lockstep.
+private struct ShimmerCycle {
+    let period: Double
+    let puffs: [SpawnerPuff]
+
+    init(count: Int) {
+        /// With `drift` at 16–24pt this yields 0.16–0.32 cell/s, sitting
+        /// inside the 0.10–0.49 cell/s measured off the reference.
+        let p = Double.random(in: 1.2...1.6)
+        period = p
+        puffs = (0..<count).map { SpawnerPuff(index: $0, of: count, period: p) }
+    }
 }
 
 /// Continuous "you can afford to tap this" shimmer over a family spawner —
-/// three soft, rising fluff motes tinted with the family's own colour.
+/// three soft, rising motes tinted with the family's own colour.
 /// Driven entirely by `.repeatForever` animations (`Spec_BoardAnimation_Draft.md`
 /// §6): this cell type is deliberately never wrapped in a `TimelineView` or
 /// any other per-frame/per-second timer, since family spawners are the most
@@ -624,12 +664,12 @@ private struct SpawnerPuff: Identifiable {
 private struct SpawnerShimmerView: View {
     let tint: Color
     let size: CGFloat
-    @State private var puffs: [SpawnerPuff] = (0..<3).map { _ in SpawnerPuff() }
+    @State private var cycle = ShimmerCycle(count: 3)
 
     var body: some View {
         ZStack {
-            ForEach(puffs) { puff in
-                SpawnerPuffView(puff: puff, tint: tint, size: size)
+            ForEach(cycle.puffs) { puff in
+                SpawnerPuffView(puff: puff, period: cycle.period, tint: tint, size: size)
             }
         }
         .allowsHitTesting(false)
@@ -650,11 +690,31 @@ private struct SpawnerShimmerView: View {
 /// opacity — the fur/fluff look this asks for — blends invisibly into real
 /// board art (a doghouse's own browns and oranges, say). White-plus-glow
 /// reads against any tile colour underneath it.
+///
+/// **Travel and brightness ride separate animations on purpose, and that is
+/// the whole fix** (`Spec_BoardAnimation_Draft.md` §5c). Both used to hang off
+/// one `risen` flag, so opacity was pinned to position: the mote was at full
+/// 0.9 opacity exactly at its resting origin and fully transparent exactly at
+/// the far end of its travel. Under `easeInOut` a mote is slowest at both
+/// endpoints, so the only part of the cycle the eye could actually see was the
+/// part where the mote was barely moving, and the travel itself happened while
+/// it was faded out. It read as a light pulsing in place rather than as drift.
+///
+/// So: position runs `.linear` and one-way, which means the mote is never not
+/// moving and never changes speed; brightness and scale run a separate
+/// half-period `autoreverses` cycle, peaking at mid-life where the reference's
+/// own motes peak (measured at 0.4–1.0 of life). The two share a period, so
+/// opacity is 0 at exactly the instant position sawtooths back to its origin —
+/// which is what makes the loop seamless without `autoreverses` on the travel.
+/// Reversing the travel instead, as this did before, buys a smooth seam at the
+/// cost of making the mote hover at both ends.
 private struct SpawnerPuffView: View {
     let puff: SpawnerPuff
+    let period: Double
     let tint: Color
     let size: CGFloat
-    @State private var risen = false
+    @State private var rise = false
+    @State private var bloom = false
 
     var body: some View {
         let scale = size / 62
@@ -662,27 +722,26 @@ private struct SpawnerPuffView: View {
             .font(.system(size: size * 0.16))
             .foregroundColor(.white)
             .shadow(color: tint.opacity(0.95), radius: 3)
-            .opacity(risen ? 0 : 0.9)
-            .scaleEffect(risen ? 1.15 : 0.7)
+            .opacity(bloom ? 0.9 : 0)
+            .scaleEffect(bloom ? 1.15 : 0.65)
             .offset(
-                x: size * puff.originX + (risen ? puff.wander * scale : 0),
-                y: size * puff.originY - (risen ? puff.drift * scale : 0)
+                x: size * puff.originX + (rise ? puff.wander * scale : 0),
+                y: size * puff.originY - (rise ? puff.drift * scale : 0)
             )
             .onAppear {
-                // autoreverses, where this used to hard-cut. With
-                // `autoreverses: false` the mote snapped from fully risen and
-                // invisible back to its origin at 0.9 opacity between cycles,
-                // with no interpolation across that boundary — an instant
-                // bright pop every cycle. That discontinuity, not the speed
-                // alone, is what made the effect flash. Reversing means the
-                // mote settles back down as gently as it rose and there is no
-                // seam anywhere in the loop.
                 withAnimation(
-                    .easeInOut(duration: puff.duration)
-                        .repeatForever(autoreverses: true)
-                        .delay(puff.delay)
+                    .linear(duration: period)
+                        .repeatForever(autoreverses: false)
+                        .delay(puff.phase)
                 ) {
-                    risen = true
+                    rise = true
+                }
+                withAnimation(
+                    .easeInOut(duration: period / 2)
+                        .repeatForever(autoreverses: true)
+                        .delay(puff.phase)
+                ) {
+                    bloom = true
                 }
             }
     }

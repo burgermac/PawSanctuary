@@ -1,6 +1,6 @@
 # PawSanctuary — Board Animation (draft)
 
-**Status: §3 Tier A IMPLEMENTED (29 Aug 2026) and CI-screenshot-confirmed, including its §3a-correction cross-row `zIndex` fix's underlying burst/bloom mechanism (30 Aug 2026, after one false-negative run — see §3a). §5 (producer shimmer, 30 Aug 2026) IS CI-screenshot-confirmed for its core function (see §5a/§5b) — rising motion itself unconfirmed. A suspected real-device OOM traced to the shimmer's rendering was mitigated same-day, not yet retested (see §5a).** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
+**Status: §3 Tier A IMPLEMENTED (29 Aug 2026) and CI-screenshot-confirmed, including its §3a-correction cross-row `zIndex` fix's underlying burst/bloom mechanism (30 Aug 2026, after one false-negative run — see §3a). §5 (producer shimmer, 30 Aug 2026) was CI-screenshot-confirmed for its core function (see §5a/§5b), then **retimed 11 Sep 2026 against measured reference motion and confirmed moving on screen (see §5c)** — the earlier 0.5–0.8s and 2.6–3.6s timings were one structural bug at two speeds, and §5c also corrects §4's own reading of the reference's drift direction and lifetimes. A suspected real-device OOM traced to the shimmer's rendering was mitigated same-day, not yet retested (see §5a).** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
 
 ## 0. Source material
 
@@ -139,6 +139,43 @@ No Simulator existed anywhere in this session, so rather than ship §5a unverifi
 6. **The first real screenshots that came back were entirely blank white** — a `UIWindow(frame:)` with no `windowScene` attached never gets composited on iOS 13+, so `drawHierarchy` had nothing to draw. Fixed by grabbing the host app's own foreground-active `UIWindowScene` (the test bundle is `TEST_HOST`-hosted inside the real running app, so one always exists) and using `UIWindow(windowScene:)`.
 
 Once all six were fixed, real content came back — see §5a's own verdict above and §3a's CI-screenshot note for what it did and didn't manage to confirm.
+
+### 5c. Retimed against measured reference motion (11 Sep 2026) — §5a's timing was wrong twice
+
+Shipped in `CellView.swift` only (`SpawnerPuff`, new `ShimmerCycle`, `SpawnerShimmerView`, `SpawnerPuffView`). No schema change, no view-model change, no new tuning constants outside the file — these are particle geometry, not game tuning.
+
+**Raised from play, not from the spec:** the shimmer "lacks smoothness and often appears as if no movement is taking place at all, even though sufficient kibble exists." That is a third distinct verdict on this effect's timing. §5a shipped 0.5–0.8s; that read as *flashing*, and was retimed to 2.6–3.6s with `autoreverses: true`; that reads as *static*. Both retunes moved one number by feel. This pass measured the reference instead.
+
+**Method — particle tracks recovered from the recording, not read off it.** The tile art is static, so a per-pixel temporal-minimum plate over a frame run is the tile *without* its particles; subtracting it isolates the shimmer. Connected components above a threshold were then centroided with **excess luminance as the weight** (a plain pixel count conflates "brighter" with "bigger", which is exactly the pair that needed separating), and linked frame to frame into tracks. Frames the capture repeated verbatim were dropped first — the source recording stalls, and a stalled span reads as a particle hovering. Scripts are throwaway, in the session scratchpad, but the method is the reusable part and `scripts/refvideo.swift crop` does the extraction.
+
+Sampled two producer tiles in `ScreenRecording_08-08-2026 17-38-42_1.MP4` (the coffee pot at source rect `1000,1580,180,180` and the grocery bag at `1007,1910,165,165`), every frame, cell pitch 162px.
+
+**Two findings correct §4, which was written by eye:**
+
+1. **The motes rise.** §4 records the stars drifting "a **short distance** (mostly down-left in the sample)", and §5 then proposed upward drift as a deliberate *departure* from the reference ("unlike the reference's downward-left"). Measured, **12 of 13 travelling tracks move up** — every one with `dy` negative and `dx` near zero. PawSanctuary's rising motes were already right; the spec's reason for them was wrong. Nothing in the code changes on this point, but the next person reading §4 would have been misled.
+2. **Lifetimes are longer than §4's 0.3–0.5s.** Travelling motes live **0.4–1.9s**; a second population lives 0.3–1.2s. §4 undersold this, which is part of how 0.5–0.8s got shipped in the first place.
+
+**And one finding §4 missed entirely: there are two particle classes, not one.** Alongside the four-pointed stars §4 describes, producer tiles carry **soft round glows** that travel much further — the clearest single example rises 48px (0.30 cell heights) up the coffee pot's body over ~0.66s, brightening then fading. Initially suspected to be baked-in steam, which §5a's own doghouse-chimney note warns about; ruled out by zooming the path at native resolution, where it is plainly a discrete round mote crossing the art rather than a plume. **Not built** — PawSanctuary has one class, and adding a second is a design change, not a retime. Recorded here as the next thing to consider if this effect is revisited.
+
+**The measured envelope, and what PawSanctuary was doing against it:**
+
+| | reference (measured) | shipped §5a (2.6–3.6s) | now |
+|---|---|---|---|
+| travel | 0.13–0.45 cell heights | 0.23–0.35 | 0.26–0.39 |
+| speed | 0.10–0.49 cell/s, clustered ~0.22 | **0.06–0.14** | 0.16–0.32 |
+| brightness peaks at | 0.41–1.00 of life | **0.0 — at rest, by construction** | 0.45–0.96 of life |
+
+Travel distance was never the problem. **Speed was two to three times below anything in the reference**, and the brightness row is the real defect.
+
+**The defect was structural, not a number.** Travel and opacity both hung off one `risen` flag, so opacity was pinned to position: full 0.9 at the resting origin, fully transparent at the far end of the travel. Under `easeInOut` a mote is slowest at both endpoints — so the only part of the cycle the eye could see was the part where the mote was barely moving, and the travel happened while it was faded out. No duration would have fixed that; at 0.5–0.8s the same coupling reads as a flash, at 2.6–3.6s as a light pulsing in place. Both prior verdicts were the same bug at two speeds.
+
+**The fix: two animations, one period.** Position runs `.linear` and one-way, so the mote is never not moving and never changes speed. Brightness and scale run a separate half-period `autoreverses` cycle peaking at mid-life, where the reference's own motes peak. The two share a period, so opacity is exactly 0 at the instant position sawtooths back to its origin — which is what makes a one-way loop seamless. §5a reached for `autoreverses: true` on the *travel* to kill that seam; it does, at the cost of making the mote hover at both ends. Still `.repeatForever` throughout, so §6's no-per-frame-timer constraint holds — `KeyframeAnimator` would have expressed the bell directly but re-evaluates its closure every frame on every affordable spawner, which is the cost §6 exists to prevent.
+
+**A second, separate defect found only by measuring the running app.** The first build phased the three motes at thirds *of their own* random 1.1–1.7s durations. That staggers them at t=0 and then lets the periods beat against each other: a screen recording of the running app showed a **0.6s window with the tile almost empty**, which is the original complaint surviving the fix. Motes now share one period per tile — randomised per tile, so neighbouring spawners don't pulse in lockstep — with phases at exact thirds and no jitter. Each mote is at half brightness or better for half the period, centred on its midpoint, so three at exact thirds cover the period with overlap to spare. This is now a property of the construction rather than something that happens to look right.
+
+**Verified on screen, measured rather than eyeballed.** iPhone 17 Pro Simulator (iOS 26.5), Debug build, the real save's dog family spawner at row 2 col 0 with 105 kibble (affordable). The Simulator screen was **recorded to video and run through the same tracker as the reference**, so both sides are in identical units — a filmstrip alone would not have caught the phase-beating gap, and the two prior verdicts on this effect were both eyeball calls. Longest window with the tile visually quiet: **0.19s before, 0.00s after**; share of frames quiet **15% → 0%**, against the reference tile's own 0%. Note the 0.19s is conservative — the visibility floor counts a barely-visible ghost as lit, so the gap actually visible was longer than that number suggests. Filmstrips at 0.083s steps across the previously-dead window show a clearly moving mote in every frame. 585/585 tests green.
+
+**Not addressed here:** the real-device OOM (`TODO.md`) is untouched — `.shadow` on a `repeatForever` animation still forces an offscreen pass per frame per mote, and this pass adds a second animation per mote without removing that. If the OOM retest still climbs, replacing `.shadow` with a `RadialGradient` circle is the obvious next move and would change the look, so it belongs with that investigation rather than here.
 
 ## 6. Implementation constraint — do not use a per-cell timer
 
