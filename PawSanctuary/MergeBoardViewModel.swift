@@ -238,6 +238,20 @@ class MergeBoardViewModel {
     /// specs/Spec_Phase6b_RewardLadder.md §3.1.
     var pendingRewardLadderRung: Int?
 
+    /// The Drive a Kibble Drive purchase was started for, captured when the
+    /// buy button was tapped — not persisted, lives only for one purchase
+    /// flow. The same time-of-check/time-of-use gap `pendingEventPassEventID`
+    /// exists to close, and it bites harder here: a Drive window is only three
+    /// days (§3.3) and **forfeits on close** (§6c), so a purchase-sheet
+    /// confirmation straddling the boundary would otherwise flip `purchased`
+    /// on whatever Drive came next — or on none at all, leaving the player
+    /// charged with nothing unlocked. `applyPurchase` prefers this captured
+    /// value and refuses the grant outright if it no longer matches the
+    /// running Drive, rather than falling back to "whatever is active now"
+    /// the way `eventPass` does: for a per-event unlock that expires, guessing
+    /// wrong means unlocking an event the player did not buy.
+    var pendingKibbleDriveEventID: String?
+
     /// Trade IDs already granted via `claimIncomingTrade` — see GameState.claimedTradeIDs.
     var claimedTradeIDs: [UUID] = []
     /// Cap for `claimedTradeIDs` (TODO.md PERF-05). Generous relative to the
@@ -1500,6 +1514,19 @@ class MergeBoardViewModel {
     func unlockMonetizationForTesting() {
         commerce.hasReachedFirstWall = true
         progression.playerLevel = max(progression.playerLevel, monetizationUnlockLevel)
+        save()
+    }
+
+    /// Drives the real `applyKibbleDrivePurchase` without StoreKit, so the
+    /// catch-up grant (§7 open question 5) can be watched on screen.
+    /// `simctl launch` attaches no StoreKit configuration, so a genuine
+    /// purchase cannot be made from a command-line-installed build — the same
+    /// gap `TODO.md` records for Reward Ladder rung 1, which still needs a real
+    /// Xcode Run to close. This exercises the grant and the purchase flip; it
+    /// does **not** exercise StoreKit, `grantIfNew`, or the transaction
+    /// listener, and is not a substitute for that outstanding check.
+    func simulateKibbleDrivePurchaseForTesting() {
+        applyKibbleDrivePurchase()
         save()
     }
     #endif
@@ -4099,6 +4126,56 @@ class MergeBoardViewModel {
         kibbleDrive?.points += amount
     }
 
+    // MARK: Kibble Drive (specs/Spec_KibbleDrive_Draft.md)
+
+    /// Points a late buyer is granted on purchase, to compensate for the slice
+    /// of the window that had already elapsed (§7 open question 5, decided
+    /// 12 Sep 2026 — a catch-up grant rather than a hard stop on late sales).
+    ///
+    /// **Accrue-always shrank this problem before the grant was written.** §7
+    /// posed the grievance assuming a day-3 buyer had nothing banked; since
+    /// §6b they keep every point earned from window open, so what a late
+    /// purchase actually costs is remaining *earning time*, not progress. The
+    /// grant therefore closes a gap against par rather than handing over a
+    /// ladder.
+    ///
+    /// Self-limiting by construction — see `kibbleDriveCatchUpCap` for why a
+    /// flat top-up to par is unsafe. Returns 0 for a buyer who never played,
+    /// and 0 for one already at or above par.
+    func kibbleDriveCatchUpGrant(at date: Date = Date()) -> Int {
+        guard let drive = kibbleDrive,
+              let event = KibbleDriveRegistry.activeEvent(at: date),
+              event.id == drive.eventID else { return 0 }
+        let elapsedDays = max(0, date.timeIntervalSince(event.startDate)) / 86400
+        let par = Double(kibbleDrivePointsPerDay) * elapsedDays
+        let shortfall = max(0, par - Double(drive.points))
+        let ceiling = Double(drive.points) * kibbleDriveCatchUpCap
+        return Int(min(shortfall, ceiling))
+    }
+
+    /// Flips the running Drive to purchased and applies the catch-up grant.
+    ///
+    /// Refuses outright when the captured event no longer matches the running
+    /// Drive — see `pendingKibbleDriveEventID`. That covers both halves of the
+    /// TOCTOU gap: a window that closed during the purchase sheet (no Drive at
+    /// all) and one that closed and was replaced (a *different* Drive). Both
+    /// leave the player charged with nothing unlocked, which is bad, but
+    /// silently unlocking a Drive they did not buy is worse and unrecoverable.
+    /// §7's open question 5 names the refund path as still missing either way.
+    ///
+    /// Idempotent: a redelivered transaction (StoreKit can replay one through
+    /// `listenForTransactions()` after a relaunch) must not grant twice, so an
+    /// already-purchased Drive is left alone.
+    func applyKibbleDrivePurchase(at date: Date = Date()) {
+        defer { pendingKibbleDriveEventID = nil }
+        guard var drive = kibbleDrive else { return }
+        if let captured = pendingKibbleDriveEventID, captured != drive.eventID { return }
+        guard !drive.purchased else { return }
+        drive.points += kibbleDriveCatchUpGrant(at: date)
+        drive.purchased = true
+        kibbleDrive = drive
+    }
+
     /// Highest tier reached, and whether each is claimable right now.
     var carePointTiersReached: [CarePointTier: Bool] {
         Dictionary(uniqueKeysWithValues: CarePointTier.allCases.map {
@@ -4270,6 +4347,9 @@ class MergeBoardViewModel {
             let paid = progressTrack.claim(trackID: rewardLadderTrackID, milestone: nextRung - 1, paidLane: true)
             let free = progressTrack.claim(trackID: rewardLadderTrackID, milestone: nextRung - 1, paidLane: false)
             applyRewards(paid + free)
+        }
+        if product == .kibbleDrive {
+            applyKibbleDrivePurchase()
         }
         // Task 1.4 (Phase 1) — record only, no behaviour change based on these values yet.
         //

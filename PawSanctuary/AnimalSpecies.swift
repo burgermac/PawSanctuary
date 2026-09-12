@@ -1145,6 +1145,12 @@ enum IAPProduct: String, CaseIterable {
     /// reasoning as eventPass above — no static kibbleAmount/dogTagAmount.
     /// See specs/Spec_Phase6b_RewardLadder.md §3.1.
     case rewardLadderRung = "com.pawsanctuary.rewardladder.rung"
+    /// One-time, per-Drive unlock (`specs/Spec_KibbleDrive_Draft.md` §5). Like
+    /// `eventPass` and unlike `rewardLadderRung`, it is bought **once per
+    /// event** and grants nothing directly — it makes already-earned rungs
+    /// claimable. So no static `kibbleAmount`/`dogTagAmount`: what the player
+    /// ends up with depends entirely on how far they push the ladder.
+    case kibbleDrive = "com.pawsanctuary.kibbledrive"
     // Energy Packs — bundle of kibble + dog tags + spawner + card pack
     case energySmall  = "com.pawsanctuary.energy.small"    // ~$0.99
     case energyMedium = "com.pawsanctuary.energy.medium"   // ~$2.99
@@ -1163,6 +1169,7 @@ enum IAPProduct: String, CaseIterable {
         case .sanctuaryPass: return "Sanctuary Pass (Monthly)"
         case .eventPass:     return "Event Pass"
         case .rewardLadderRung: return "Reward Ladder"
+        case .kibbleDrive:      return "Kibble Drive"
         case .energySmall:   return "Small Energy Pack"
         case .energyMedium:  return "Medium Energy Pack"
         case .energyLarge:   return "Large Energy Pack"
@@ -1177,6 +1184,7 @@ enum IAPProduct: String, CaseIterable {
         case .sanctuaryPass:                               return "medal.fill"
         case .eventPass:                                   return "star.circle.fill"
         case .rewardLadderRung:                            return "arrow.up.right.square.fill"
+        case .kibbleDrive:                                 return "shippingbox.fill"
         case .energySmall, .energyMedium,
              .energyLarge, .energyXL:                     return "bolt.circle.fill"
         }
@@ -1416,6 +1424,37 @@ let carePointsPerDailySweep = 25
 /// counter and drown out the quest and daily-challenge contributions this
 /// mechanic exists to surface.
 let carePointsPerOrder = 1
+
+// MARK: - Kibble Drive (specs/Spec_KibbleDrive_Draft.md)
+
+/// Drive Points an engaged player banks per day at the projection level,
+/// from `EconomySimulation`'s own constants rather than estimated — §3.2:
+/// 48.0 from orders + 21.4 from the daily sweep + 35.3 from quests. The spec's
+/// own first draft guessed 74 by scaling Care Points Gold and was wrong; if
+/// `carePointsPerOrder`, `orderCyclesPerDay` or the quest values are ever
+/// retuned, this must be re-derived rather than nudged.
+let kibbleDrivePointsPerDay = 105
+
+/// Ceiling on the late-purchase catch-up grant (§7 open question 5, decided
+/// 12 Sep 2026 — grant rather than a hard sales stop), as a fraction of the
+/// points the buyer has **already banked themselves**.
+///
+/// Keying the cap to the player's own points rather than to the shortfall is
+/// what keeps the grant from re-opening §3.5's ratio. A flat top-up to par
+/// would hand an inactive day-3 buyer the whole 300-point ladder — 540 kibble
+/// for $4.99 and no play at all — because granted points cost the buyer no
+/// kibble while paying 1.80 each. Self-limiting instead:
+///
+/// - banked 0 (never played) → grant 0. Nothing was lost, so nothing is owed.
+/// - banked at or above par → grant 0. No shortfall to close.
+/// - banked mid-window → topped up, by at most half again of their own work.
+///
+/// Worst case a buyer converts P points into 1.5P. Against §3.5's measured
+/// 7.1 kibble spent per point earned and 1.80 paid back, that moves the margin
+/// of safety from ~3.9× to ~2.6× — thinner, still comfortably not a net kibble
+/// source. `KibbleDrivePurchaseTests` asserts that bound so a later retune of
+/// this constant fails loudly instead of quietly opening the faucet.
+let kibbleDriveCatchUpCap = 0.5
 
 /// Weekly milestone tiers over the Care Points pool. Rewards are deliberately
 /// Dog Tags / XP / card packs only — **no kibble and no coins**.

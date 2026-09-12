@@ -1,6 +1,6 @@
 # PawSanctuary — Kibble Drive (paid activity-gated ladder)
 
-**§6 steps 1, 2 and 3a IMPLEMENTED 12 Sep 2026 — schema (§6a, which also corrects §5's `additiveDefaultsSinceV8` instruction), the `awardCarePoints` broadcast (§6b), and event lifecycle (§6c, a step this §6 did not have). §7's open questions 3 and 4 resolved: accrue always, forfeit on close. Steps 3–7 not started. Not yet entered in the Alignment Plan's D1–D8 log.**
+**§6 steps 1, 2, 3a and 3's purchase half IMPLEMENTED 12 Sep 2026 — schema (§6a, which also corrects §5's `additiveDefaultsSinceV8` instruction), the `awardCarePoints` broadcast (§6b), event lifecycle (§6c, a step this §6 did not have), and IAP + TOCTOU + catch-up grant (§6d). §7's open questions 3, 4 and 5 resolved: accrue always, forfeit on close, catch-up grant. Step 3's claim half moved to step 4, which owns the ladder it needs. Steps 4–7 not started. Not yet entered in the Alignment Plan's D1–D8 log.**
 
 **Self-contained brief.** Assumes no prior conversation. Written cold 4 September 2026 from `Capture_Log.md`'s 4 Sep entry — three Tasty Travels recordings (`ScreenRecording_09-04-2026 10-51-52 / 10-53-16 / 10-54-47_1.MP4`, L105) of a **$4.99 "Charge Challenge"** the user purchased and played through. Catalogue rows in `Capture_Catalogue.md`; contact sheets in the run's outputs.
 
@@ -236,7 +236,7 @@ Not atomic. Separate commits, verify each on screen, stop if one resists.
 2. **Second subscriber.** Widen `awardCarePoints` to credit the Drive accumulator alongside `carePointsThisWeek`. Existing `CarePointsTests` must stay green untouched — that is the proof the weekly bar is unaffected. Test the weekly-reset independence explicitly; §1's trap is the thing most likely to be got wrong.
 3a. **Event lifecycle** — registry, schedule, creation on window open, teardown on close. **Inserted 12 Sep 2026; this list originally went straight from 2 to 3.** Nothing created a `KibbleDriveState`, so step 2 shipped a field only tests could populate and step 6's tile would have had nothing to render. Kept separate from step 3 because purchase logic and lifecycle fail differently. See §6c.
 3. **IAP + purchase/claim logic**, `eventPass` pattern, including the TOCTOU guard.
-4. **Registry content** — §3.3's ladder, with a test asserting §3.5's ratio holds against `EconomySimulation` so a later retune of `carePointsPerOrder` or `orderCyclesPerDay` fails loudly instead of silently opening the faucet.
+4. **Registry content** — §3.3's ladder, with a test asserting §3.5's ratio holds against `EconomySimulation` so a later retune of `carePointsPerOrder` or `orderCyclesPerDay` fails loudly instead of silently opening the faucet. **Now also carries step 3's claim half** (12 Sep 2026, §6d): claiming a rung needs rungs, so a claim path written before the ladder exists cannot be verified against anything.
 5. **`energyLarge`/`energyXL` reposition** (§3.4) — separable from the rest and separately revertible, which matters because it is a live-revenue change.
 6. **UI** — tray tile, then the panel rung list.
 7. **On-screen acceptance** — purchase, earn past a rung, claim it, watch kibble land.
@@ -321,13 +321,43 @@ Forfeit also turns out to carry its weight structurally: because state never sur
 
 **Still ahead:** steps 3 (IAP + purchase/claim, with §5's TOCTOU guard), 4 (the ladder), 5 (`energyLarge` reposition), 6 (UI), 7 (acceptance). §7's questions 5 and 6 remain open. Note forfeit-on-close sharpens question 5 rather than settling it: a player buying late now loses both the window and anything unclaimed at close, which is the strongest form of the grievance that question names.
 
+### 6d. Step 3 (purchase half) IMPLEMENTED (12 Sep 2026) — IAP, TOCTOU guard, catch-up grant
+
+`IAPProduct.kibbleDrive`, `pendingKibbleDriveEventID`, `applyKibbleDrivePurchase`, `kibbleDriveCatchUpGrant`, two tuning constants, a `#if DEBUG` purchase seam, and `KibbleDrivePurchaseTests` (13 tests). 621/621 green.
+
+**Step 3's claim half is deliberately not here.** Claiming a rung needs rungs, and §3.3's table is step 4 — a claim path with no ladder to validate against cannot be verified, which is the trap `Spec_TaskTrayRedesign_Draft.md` recorded when its own 6.2/6.3 split produced "a tile primitive with nothing mounting it, and a container with nothing in it." Claim moves to sit with the content it needs. Purchase stands alone cleanly because the purchase flip and the grant are complete behaviours on their own.
+
+**§7's open question 5 is resolved: a late-purchase catch-up grant**, chosen by Tim over the hard-stop-on-late-sales alternative.
+
+**A finding that changed the size of the problem, worth recording before the design.** §7 framed the grievance — "a player who buys on day 3 of 3 and clears two rungs" — *before* §7's own question 3 was answered. Under accrue-always (§6b) a late buyer keeps every point earned since the window opened, so what a late purchase costs is remaining **earning time**, not progress. A day-3 buyer who has been playing sits near 210 of the 300 target with a day left and can still finish. The residual exposure is only a player who barely played early and buys late — who has the weakest claim of anyone.
+
+**The grant is therefore self-limiting, and that is not a refinement — it is the whole design.** The obvious implementation, topping a late buyer up to par, is unsafe: granted points cost the buyer no kibble while paying **1.80 each** (§3.3's 540 kibble over a 300-point ladder), so an inactive day-3 buyer would be handed the entire ladder — 540 kibble for $4.99 and no play at all. Keying the cap to the points the buyer **banked themselves** removes the exploit at the root rather than patching it:
+
+- banked 0 → grant 0. Nothing was lost, so nothing is owed.
+- banked at or above par → grant 0. No shortfall to close.
+- banked mid-window → topped up, by at most half again of their own work.
+
+`grant = min(par − banked, banked × kibbleDriveCatchUpCap)` with `kibbleDrivePointsPerDay` = 105 (§3.2's figure, from `EconomySimulation`, not the spec's discarded first-draft guess of 74) and `kibbleDriveCatchUpCap` = 0.5.
+
+**§3.5's margin was re-derived against the grant rather than assumed to survive it.** Worst case a buyer converts P banked points into 1.5P. Against §3.5's measured 7.1 kibble spent per point earned and 1.80 paid back, the margin of safety moves **3.9× → 2.6×** — thinner, still comfortably not a net kibble source, so the Drive remains unloopable. `testTheWorstCaseGrantLeavesTheDriveANetKibbleSink` asserts that bound directly, so a later retune of the cap fails loudly instead of quietly opening the faucet.
+
+**The TOCTOU guard is stricter than `eventPass`'s, on purpose.** `pendingKibbleDriveEventID` follows §5's inherited pattern, but where `applyPurchase`'s `eventPass` branch falls back to `activeEvents.first?.id` for a grant with no matching tap, this one **refuses outright** when the captured ID no longer matches the running Drive. A three-day window that forfeits on close (§6c) makes the gap bite harder: guessing wrong does not mean a missed unlock, it means unlocking a Drive the player never bought, on someone else's event, unrecoverably. Being charged with nothing unlocked is bad; §7's question 5 already names the missing refund path, and that is the lesser of the two. Also idempotent — a transaction StoreKit redelivers through `listenForTransactions()` after a relaunch must not run the grant twice.
+
+**Verified on screen, with the purchase driven through a `#if DEBUG` seam rather than StoreKit.** A `simctl`-installed build has no StoreKit configuration attached, which is the same gap `TODO.md` records still open for Reward Ladder rung 1 and which needs a real Xcode Run to close. A temporary DEBUG button sits in the HUD slot beside the existing monetization toggle — justified the same way that one was, as otherwise the grant has no reachable surface at all until step 6 builds the panel.
+
+With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into the window (par 161.6), one tap moved it to **60 points with `purchased: true`** — a grant of exactly 20, which is half of 40 rather than the 121-point shortfall, so the cap bound rather than the shortfall. The button then **disappeared on its own**, being gated on an unpurchased Drive. The save was restored from a backup afterwards, so no purchased-but-never-bought Drive is left behind.
+
+**What this does not verify:** StoreKit itself — `grantIfNew`, `tx.finish()`, the transaction listener, and the real product identifier all remain unexercised, and the TOCTOU guard is proven only in test, since reproducing a purchase sheet straddling a window boundary needs both StoreKit and a clock the Simulator does not offer. This belongs with the outstanding Reward Ladder StoreKit check rather than counting as done.
+
+**Still ahead:** step 4 (the §3.3 ladder, now carrying step 3's claim half with it), 5 (`energyLarge` reposition), 6 (UI, which retires the DEBUG button), 7 (acceptance). §7's question 6 — the reference's unexplained "Challenges complete!" banner — is the last one open.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
 2. ~~**§3.5's kibble-per-point ratio**~~ — **resolved 4 Sep 2026: computed, 7.1 spent vs 1.80 paid, ~3.9× margin.** Both blockers are clear; §3.3's numbers can be treated as final pending playtest.
 3. ~~**Does an unpurchased player accrue points?**~~ — **resolved 12 Sep 2026: yes, accrue always.** Confirmed by Tim rather than assumed, as this entry asked. Implemented and tested in §6b; the alternative was rejected both for being a materially weaker offer and for making a late purchaser structurally unable to finish, which is question 5 made worse.
 4. ~~**Forfeit on close**~~ — **resolved 12 Sep 2026: forfeit, as §2 proposed.** Confirmed by Tim, so the divergence from the Reward Ladder's no-expiry posture is deliberate rather than accidental — the Ladder sells rungs, the Drive sells a window in which to earn them. Implemented in §6c, where it also turns out to carry structural weight: state never surviving the gap between two Drives is what makes the `eventID` comparison sufficient to prevent stale-point leaks.
-5. **Refund exposure.** A player who buys on day 3 of 3 and clears two rungs has a legitimate grievance. There is no StoreKit revocation flow here (§0 of the Reward Ladder spec records the same gap). Options: hard-stop sales in the final 24h, or scale a late-purchase catch-up grant.
+5. ~~**Refund exposure.**~~ — **resolved 12 Sep 2026: a late-purchase catch-up grant**, chosen by Tim over the hard stop. Implemented in §6d, which also records that this question was **smaller than it looks once question 3 was answered** — under accrue-always a late buyer keeps everything they earned, so a late purchase costs remaining earning time rather than progress. The grant is capped by the buyer's own banked points, not topped up to par, because a flat top-up would hand an inactive day-3 buyer the whole ladder. **The underlying gap remains: there is still no StoreKit revocation flow**, same as the Reward Ladder.
 6. **What the reference's own completion banner meant** — `Capture_Log.md` 4 Sep finding 4 records the reference showing "Challenges complete!" over visibly unfilled bars. If that is a second, separate task set feeding the ladder, this spec's single-accumulator model is missing a layer. Unresolved from the capture; queued for deep dive.
 
 ---
