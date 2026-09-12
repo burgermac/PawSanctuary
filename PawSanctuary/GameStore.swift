@@ -241,6 +241,17 @@ struct GameState: Codable {
     /// in sync afterward; `captureState()` reads the live coordinator
     /// directly on every subsequent save.
     var parallelBoardState: ParallelBoardSaveState? = nil
+
+    /// The running Kibble Drive's points/claims/purchase state (v42,
+    /// `specs/Spec_KibbleDrive_Draft.md` §5). `nil` when no Drive is scheduled,
+    /// which is the normal state — the Drive runs on a ~4-week cadence, not
+    /// continuously. Optional, so no `additiveDefaultsSinceV8` entry is needed;
+    /// see `parallelBoardState` above for the same reasoning.
+    ///
+    /// Event-scoped by `KibbleDriveState.eventID` rather than global: a
+    /// finished Drive's points must not carry into the next one. Nothing reads
+    /// or writes this yet — §6 step 2 adds the first writer.
+    var kibbleDrive: KibbleDriveState? = nil
 }
 
 // ============================================================
@@ -345,7 +356,23 @@ enum GameStore {
     /// v39: smilePointsBanked added (specs/Spec_OrdersAndTasks_Draft.md §2).
     ///      Purely additive; non-Optional, so it needs an
     ///      `additiveDefaultsSinceV8` entry.
-    static let currentVersion = 41
+    /// v40: daily challenges become hand-in baskets (`Spec_DailyHandInTasks.md`).
+    ///      `DailyChallenge` loses `goal`/`progress` and gains
+    ///      `lines: [DailyTaskLine]` + `coinReward` + `isClaimed`. **Structural,
+    ///      not additive** — the day's challenges are regenerated in
+    ///      `finishMigration` for every sourceVersion < 40, since the old
+    ///      counted-event shape has no meaningful basket equivalent.
+    /// v41: playtestMetrics added (`#if DEBUG` instrumentation). Purely
+    ///      additive; non-Optional, so it needs an `additiveDefaultsSinceV8`
+    ///      entry.
+    /// v42: kibbleDrive added (`specs/Spec_KibbleDrive_Draft.md` §5, step 1 of
+    ///      §6). Optional — purely additive, no default needed, same as v36's
+    ///      parallelBoardState. Nothing writes to it yet.
+    ///
+    /// (The v40 and v41 entries above were reconstructed 12 Sep 2026 from the
+    /// dispatch table and `Spec_DailyHandInTasks.md`; they were never recorded
+    /// when those versions shipped, which left this history jumping v39 → v42.)
+    static let currentVersion = 42
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -661,6 +688,7 @@ enum GameStore {
         if version == 38 { return migrateByInjecting(from: 38, defaults: [:], into: data) }   // smilePointsBanked covered by additiveDefaultsSinceV8
         if version == 39 { return migrateByInjecting(from: 39, defaults: [:], into: data) }   // daily hand-in tasks: reset runs in finishMigration for every sourceVersion < 40
         if version == 40 { return migrateByInjecting(from: 40, defaults: [:], into: data) }   // playtestMetrics covered by additiveDefaultsSinceV8
+        if version == 41 { return migrateByInjecting(from: 41, defaults: [:], into: data) }   // kibbleDrive is Optional — no default needed
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
