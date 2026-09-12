@@ -308,6 +308,15 @@ class MergeBoardViewModel {
     /// Care Points banked this week — the task-completion pool (§4). Reset on
     /// the same weekly boundary as the coin goal, in `checkWeeklyGoalReset`.
     var carePointsThisWeek: Int = 0
+
+    /// The running Kibble Drive's state (`Spec_KibbleDrive_Draft.md`), or
+    /// `nil` when none is scheduled — which is the normal case, since the
+    /// Drive runs on a ~4-week cadence. Fed by `awardCarePoints`; see there
+    /// for why it is credited rather than transferred, and why accrual is not
+    /// gated on purchase.
+    ///
+    /// Deliberately **not** reset by `checkWeeklyGoalReset` — see that method.
+    var kibbleDrive: KibbleDriveState? = nil
     var claimedCarePointTiers: [Int] = []
     /// Smile points banked toward the next bundle (§2). Cycles on claim rather
     /// than resetting weekly, so it is untouched by `checkWeeklyGoalReset`.
@@ -1258,6 +1267,7 @@ class MergeBoardViewModel {
         s.piggyBankCoins            = piggyBankCoins
         s.freeChestReadyAt          = freeChestReadyAt
         s.parallelBoardState        = activeParallelBoardEvent?.makeSaveState()
+        s.kibbleDrive               = kibbleDrive
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -1336,6 +1346,7 @@ class MergeBoardViewModel {
         piggyBankCoins            = s.piggyBankCoins
         freeChestReadyAt          = s.freeChestReadyAt
         pendingParallelBoardRestore = s.parallelBoardState
+        kibbleDrive                 = s.kibbleDrive
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -1441,6 +1452,7 @@ class MergeBoardViewModel {
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
         carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0
+        kibbleDrive = nil
         cachedActiveBonuses = UpgradeBonus()
         selectedCell = nil; draggingFrom = nil
         quests.dailyChallengeStreak = 0; quests.dailyChallengeBonusClaimed = false
@@ -3944,6 +3956,15 @@ class MergeBoardViewModel {
         // Unclaimed tiers are forfeited with the points, same as the coin goal.
         carePointsThisWeek      = 0
         claimedCarePointTiers   = []
+        // `kibbleDrive` is deliberately NOT reset here, and adding it to this
+        // list would destroy a purchase. A Drive window can straddle the weekly
+        // boundary; its ladder is scoped to the event, not to the week, and is
+        // cleared on the Drive's own lifecycle instead. It is fed by the same
+        // chokepoint as the line above, which is exactly why it looks like it
+        // belongs here — `Spec_KibbleDrive_Draft.md` §1 names this the single
+        // most likely implementation error in the feature.
+        // `KibbleDriveTests.testAWeeklyResetZeroesTheCareBarButLeavesTheDriveLadderStanding`
+        // fails if this changes.
         lastWeeklyGoalReset     = thisWeekStart
     }
 
@@ -4009,7 +4030,31 @@ class MergeBoardViewModel {
 
     /// Banks Care Points for a completed task. The single chokepoint every
     /// award site routes through, so there is exactly one place to audit what
-    /// feeds the bar.
+    /// feeds the bar — and, since `Spec_KibbleDrive_Draft.md` §6 step 2, the
+    /// one place that broadcasts to everything reading player activity.
+    ///
+    /// **The subscribers are non-rivalrous: points are copied, never moved.**
+    /// A running Kibble Drive credits the same `amount` the weekly bar does,
+    /// and neither consumes the other. That is the whole architectural idea of
+    /// §1 — the player's activity produces exactly the points it produced
+    /// before this change, and more things read them. No new faucet, no new
+    /// earning site, no retune of `carePointsPerOrder` and friends (§8 puts
+    /// all three out of scope), so `EconomySimulation`'s faucet model is
+    /// untouched by the broadcast itself.
+    ///
+    /// **The Drive accrues whether or not it has been purchased** (§2, and
+    /// §7's open question 3, decided 12 Sep 2026). An unpurchased player
+    /// watches the ladder fill with every rung locked, and that
+    /// visible-but-locked accumulation *is* the offer — the same coercive
+    /// posture the Reward Ladder already adopted, applied to effort rather
+    /// than a padlock. Gating accrual on `purchased` would also make a late
+    /// buyer unable to finish, which is §7's open question 5 made worse.
+    ///
+    /// **`kibbleDrive` being non-nil means a Drive is running.** Accrual is
+    /// deliberately not window-checked here: scoping state to a live event is
+    /// the event lifecycle's job, and it must clear or replace this field at
+    /// the window boundary. Adding a second, redundant window test in the
+    /// chokepoint would let the two disagree.
     ///
     /// Does not `persist()` — every caller is already inside a flow that
     /// persists once at the end (claiming a quest, sweeping the dailies,
@@ -4018,6 +4063,7 @@ class MergeBoardViewModel {
     func awardCarePoints(_ amount: Int) {
         guard amount > 0 else { return }
         carePointsThisWeek += amount
+        kibbleDrive?.points += amount
     }
 
     /// Highest tier reached, and whether each is claimable right now.
