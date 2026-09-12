@@ -592,6 +592,23 @@ struct MergeBoardView: View {
                                     .fill(Color(red: 0.55, green: 0.25, blue: 0.75)))
                         }
                     }
+                    // Temporary, until §6 step 6 gives the Drive a panel of
+                    // its own with a real buy button. Same justification as the
+                    // monetization toggle above — without it the catch-up grant
+                    // has no reachable surface at all, since StoreKit is not
+                    // attached to a simctl-installed build. Shown only while an
+                    // unpurchased Drive is actually running, so it disappears
+                    // the moment it has nothing to do.
+                    if let drive = viewModel.kibbleDrive, !drive.purchased {
+                        Button(action: { viewModel.simulateKibbleDrivePurchaseForTesting() }) {
+                            Image(systemName: "shippingbox.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .frame(width: 30, height: 30)
+                                .background(RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(red: 0.85, green: 0.5, blue: 0.15)))
+                        }
+                    }
                     #endif
                 }
                 .padding(.horizontal)
