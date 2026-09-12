@@ -1,6 +1,6 @@
 # PawSanctuary — Kibble Drive (paid activity-gated ladder)
 
-**§6 step 1 IMPLEMENTED 12 Sep 2026 (schema only — see §6a, which also corrects §5's `additiveDefaultsSinceV8` instruction). Steps 2–7 not started. Not yet entered in the Alignment Plan's D1–D8 log.**
+**§6 steps 1–2 IMPLEMENTED 12 Sep 2026 — schema (§6a, which also corrects §5's `additiveDefaultsSinceV8` instruction) and the `awardCarePoints` broadcast (§6b). §7's open question 3 resolved: accrue always. Steps 3–7 not started. Not yet entered in the Alignment Plan's D1–D8 log.**
 
 **Self-contained brief.** Assumes no prior conversation. Written cold 4 September 2026 from `Capture_Log.md`'s 4 Sep entry — three Tasty Travels recordings (`ScreenRecording_09-04-2026 10-51-52 / 10-53-16 / 10-54-47_1.MP4`, L105) of a **$4.99 "Charge Challenge"** the user purchased and played through. Catalogue rows in `Capture_Catalogue.md`; contact sheets in the run's outputs.
 
@@ -258,11 +258,46 @@ Not atomic. Separate commits, verify each on screen, stop if one resists.
 
 **Still ahead:** steps 2–7, one per session. Step 2 (widen `awardCarePoints`) is the one carrying §1's trap, and §7's four open questions — unpurchased accrual, forfeit-on-close, refund exposure, and the reference's unexplained "Challenges complete!" banner — are all still Tim's to decide. §3.4's `energyLarge` reposition remains unwritten and is a live-SKU revenue change, separable on purpose.
 
+### 6b. Step 2 IMPLEMENTED (12 Sep 2026) — the second subscriber
+
+`awardCarePoints` widened, `MergeBoardViewModel.kibbleDrive` added and wired through capture/load/fresh-reset, `KibbleDriveTests.swift` added (10 tests). No UI, no IAP, no registry content. 598/598 green.
+
+**§1's claim held exactly.** The broadcast seam was already there — one method, five callers, one hardcoded destination — so this is the two-line widening §1 predicted, not new plumbing:
+
+```swift
+func awardCarePoints(_ amount: Int) {
+    guard amount > 0 else { return }
+    carePointsThisWeek += amount
+    kibbleDrive?.points += amount      // added
+}
+```
+
+The rest of the diff is the view-model's own state wiring (`captureState` / `apply` / `resetToFreshGame`), which §1 did not mention because it was describing the seam rather than the field behind it.
+
+**§7's open question 3 is resolved: accrue always.** Decided by Tim, 12 Sep 2026. An unpurchased player accrues points and watches the ladder fill with every rung locked — the D8 coercive posture §2 proposed. Gating accrual on `purchased` was rejected for the reason §2 already gives (the visible-but-locked accumulation *is* the offer) plus one §2 does not: it would make a late buyer structurally unable to finish, which is §7's open question 5 made worse rather than better. Two tests pin it, including one asserting a purchased and an unpurchased Drive accrue at an identical rate — purchase releases rungs, it does not change the rate points arrive at.
+
+**The weekly-reset trap is now guarded three ways**, because §1 calls it the most likely error in the feature and a doc comment alone does not fail a build:
+1. A comment sits in `checkWeeklyGoalReset` **at the exact line someone would add `kibbleDrive = nil` to**, saying why it must not go there and naming the test that catches it.
+2. `testAWeeklyResetZeroesTheCareBarButLeavesTheDriveLadderStanding` drives the real boundary check (by backdating `lastWeeklyGoalReset` a fortnight, no injectable date needed) and asserts the bar zeroes while the ladder stands.
+3. `testTheDriveKeepsAccruingNormallyAfterAWeeklyReset` covers the follow-on — the ladder must keep accumulating *through* the boundary, not merely survive it.
+
+Step 1's structural test on the same trap is now the weakest of the set and is deliberately left in place: it fails earlier, at the persisted shape, if the two fields are ever conflated.
+
+**Non-rivalrousness is asserted, not just described.** `testAddingTheDriveDoesNotReduceWhatTheWeeklyBarReceives` runs identical award sequences against a view model with a Drive and one without, and requires the weekly bar to land on the same total. That is the property §1 is actually about, and it would survive a future refactor that accidentally made the Drive consume from the bar rather than copy.
+
+**One deliberate non-guard.** Accrual is not window-checked in the chokepoint. `kibbleDrive` being non-nil *is* the "a Drive is running" signal, and scoping state to a live event belongs to the event lifecycle — which must clear or replace the field at the window boundary. A second, redundant window test here would let the two disagree. Recorded in the method's doc comment so whichever step adds lifecycle upholds the invariant rather than discovering it.
+
+**Tests live in a new `KibbleDriveTests.swift`, and `CarePointsTests` is untouched** — §6 step 2 asks for exactly that, and the existing suite passing unmodified is the proof the weekly bar's behaviour did not change.
+
+**Verified on screen, through the production chokepoint.** Nothing creates a Drive in the app yet, so a `kibbleDrive` was seeded directly into the Simulator's live v42 save and the app relaunched. Claiming the Easy daily task — the real `claimDailyTask` path, not a test harness — moved `carePointsThisWeek` **1 → 9** and `kibbleDrive.points` **0 → 8** in the same action: the same +8 copied to both, not split between them, with `purchased` staying `false` the whole time. Coins 0 → 159 confirm the claim genuinely fired rather than the numbers being written by something else. The seeded state was then removed and the app relaunched clean, so no manufactured Drive is left in the save — a state that looks like production but is not is exactly how a past session manufactured what read as a migration bug.
+
+**Still ahead:** steps 3–7. §7's questions 4 (forfeit on close), 5 (refund exposure) and 6 (the reference's unexplained "Challenges complete!" banner) are open, and 5 is now slightly sharper, since accrue-always means a late buyer's grievance is about the window they had, not about points they never earned.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
 2. ~~**§3.5's kibble-per-point ratio**~~ — **resolved 4 Sep 2026: computed, 7.1 spent vs 1.80 paid, ~3.9× margin.** Both blockers are clear; §3.3's numbers can be treated as final pending playtest.
-3. **Does an unpurchased player accrue points?** §2 says yes, on the D8 coercive-posture precedent. The alternative (accrual starts at purchase) is less coercive and materially weaker as an offer, and would also make late purchasers unable to finish. Worth confirming rather than assuming.
+3. ~~**Does an unpurchased player accrue points?**~~ — **resolved 12 Sep 2026: yes, accrue always.** Confirmed by Tim rather than assumed, as this entry asked. Implemented and tested in §6b; the alternative was rejected both for being a materially weaker offer and for making a late purchaser structurally unable to finish, which is question 5 made worse.
 4. **Forfeit on close** — §2 says unclaimed rungs are lost. That is the reference's framing but PawSanctuary chose the *softer* posture on Reward Ladder (no expiry at all, `Spec_Phase6b_RewardLadder.md` §0). Two features with opposite expiry postures needs to be deliberate.
 5. **Refund exposure.** A player who buys on day 3 of 3 and clears two rungs has a legitimate grievance. There is no StoreKit revocation flow here (§0 of the Reward Ladder spec records the same gap). Options: hard-stop sales in the final 24h, or scale a late-purchase catch-up grant.
 6. **What the reference's own completion banner meant** — `Capture_Log.md` 4 Sep finding 4 records the reference showing "Challenges complete!" over visibly unfilled bars. If that is a second, separate task set feeding the ladder, this spec's single-accumulator model is missing a layer. Unresolved from the capture; queued for deep dive.
