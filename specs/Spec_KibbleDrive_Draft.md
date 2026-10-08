@@ -359,6 +359,50 @@ With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into t
 
 **Not done:** §3.5's "worth an assertion" about login-only quest goals. `QuestGoal` has no login-only case today, so there is nothing to assert against; it needs adding if one is ever introduced. **Written without a Swift toolchain** (CI is the first compile); no on-screen check, since there is no UI until step 6. Steps 5–7 not started.
 
+### 6f. Step 6 design pass (8 Oct 2026) — tray tile and panel. Design only, no code
+
+§2's surface row is one line, so this fixes the details before building. Read from the code at `a96afac`; decisions are proposals for review, not yet confirmed.
+
+**D-1 — A new `TaskSheet.kibbleDrive` case, not `.event(id)`.** The Drive is not an `EventDefinition` (§6c: its own registry), and the `.event` case resolves through `EventRegistry` and renders nothing for it (`MergeBoardView.swift`, task-sheet switch). The panel is a new view, `KibbleDrivePanelView`, modelled on `EventSheetView`.
+
+**D-2 — The tile.** One `TrayTile`, mounted in the conditionals group beside `parallelBoardTile`:
+- Present while `viewModel.kibbleDrive` exists **and** `isMonetizationUnlocked` (§2: reuse D7's gate as-is). Present whether or not purchased, since the unpurchased tile is the offer (§2).
+- `icon` and name from the running `KibbleDriveEventDefinition`; warm orange tint (the DEBUG button's colour, to keep one identity).
+- `status: .progress(points / 300)`. A 40pt tile cannot show price, lock state or next rung; the panel does. The next rung goes in `accessibilityText`.
+- `showsBadge` = `!kibbleDriveClaimableRungs.isEmpty`, so the red dot appears only after purchase, when there is something to collect.
+- `urgency` from the same `deadlineRank(remaining:total:)` the other timed tiles use, which also sorts it toward the front as the 3-day window closes. Forfeit-on-close (§7 Q4) is what makes that matter.
+
+**D-3 — The panel.** One scrolling sheet:
+1. **Header**: name, `timerLabel`, `points / 300`, a progress bar with the 15 rung thresholds as ticks.
+2. **Buy banner**, only while `!purchased` and the product loaded: headline *"Earn up to 540 Kibble"*, the store price. Same mechanics as `passUnlockSection`: set `pendingKibbleDriveEventID = drive.eventID` before `purchase`, so the TOCTOU guard has what it checks.
+3. **Rung list**, 15 rows, top to bottom by threshold. Four states:
+
+| State | Look | Tap |
+|---|---|---|
+| Below threshold | muted, "N more points" | none |
+| Reached, **unpurchased** | full colour, **padlock**, reward visible | none; the banner above is the way out |
+| Reached, purchased | full colour, **Claim** | `claimKibbleDriveRung(index:)` |
+| Claimed | tick, dimmed | none |
+
+   Reached-but-locked rows are the coercive part (§2): points and rewards visible, release behind the purchase. Card-pack rungs 10 and 15 show a pack glyph beside the kibble.
+4. **Footer caption**: *"Unclaimed rewards are lost when the Drive ends."* Honest disclosure of §7 Q4.
+
+**D-4 — Claiming is one tap per rung, no "Claim all".** §2 says the serial tapping is the payoff and must not be auto-claimed. Claim feedback should reuse whatever `MilestoneRowView` already does on a claim; I did not verify what that is, so check it when building rather than assuming a kibble-flight animation exists.
+
+**D-5 — Disclose the catch-up grant before the purchase (my addition).** When `kibbleDriveCatchUpGrant()` is above 0, the banner adds *"+N bonus points on purchase"*. §6d built the grant but nothing in the UI says it exists, and a player deciding on day 3 is the one it helps. Cheap, and on D9's side: it removes a reason to hesitate.
+
+**D-6 — The DEBUG button moves, not disappears.** §6d said the UI retires it. But a `simctl`-installed build has no StoreKit configuration, so the real buy button stays hidden (the same gap as Reward Ladder rung 1). Move the simulated purchase inside the panel under `#if DEBUG` and remove the HUD one, so the panel is testable without StoreKit.
+
+**D-7 — Verification constraint.** No Drive is live on the day this was written: the 11 Sep window closed on 14 Sep and the next, `kibble_drive_20261009`, opens on **9 Oct 2026**. The Simulator has no date override (§6c), so on-screen checks either wait for that window or seed `kibbleDrive` through the existing debug path, as §6b/§6d did.
+
+**Tasks** (one per session, game playable after each):
+- **6.1** `TaskSheet.kibbleDrive`, the tile, and a placeholder panel (header only).
+- **6.2** Buy banner, including the grant line (D-5), and moving the DEBUG purchase (D-6).
+- **6.3** Rung rows and claiming.
+- **6.4** On-screen acceptance (step 7).
+
+**Open for review:** D-2's visibility gate (should the tile show before D7 unlocks monetization, given accrual happens regardless?), and D-5, which adds copy the spec did not ask for.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
