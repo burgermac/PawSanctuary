@@ -71,7 +71,7 @@ struct KibbleDrivePanelView: View {
                     .font(.caption.bold())
                     .foregroundColor(.green)
             }
-            if viewModel.isMonetizationUnlocked, let product {
+            if viewModel.isKibbleDriveBuyAvailable, let product {
                 Button(action: {
                     // Captured before the async purchase so the TOCTOU guard
                     // has something to check — see
