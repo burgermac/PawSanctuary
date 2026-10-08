@@ -443,7 +443,7 @@ struct TaskTrayView: View {
     private var catalogue: [TrayTile] {
         ([passDailyTile].compactMap { $0 } + trioTiles)
         + eventTiles
-        + [parallelBoardTile, rewardLadderTile, loyaltyTile, inviteTile].compactMap { $0 }
+        + [parallelBoardTile, kibbleDriveTile, rewardLadderTile, loyaltyTile, inviteTile].compactMap { $0 }
         + [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
            smileTile, careTile, weeklyTile, monthlyTile]
     }
@@ -556,6 +556,30 @@ struct TaskTrayView: View {
             urgency: deadlineRank(remaining: event.timeRemaining, total: window),
             accessibilityText: "\(event.name), \(event.timerLabel)",
             action: { showParallelBoard = true })
+    }
+
+    /// The running Kibble Drive (`Spec_KibbleDrive_Draft.md` §6f D-2). Shown
+    /// whether or not it has been purchased, and **not** gated on
+    /// `isMonetizationUnlocked` (decided 8 Oct 2026): points accrue regardless
+    /// (§2), and the filling-but-locked ladder is the offer. The badge appears
+    /// only once a rung is claimable, which needs the purchase.
+    private var kibbleDriveTile: TrayTile? {
+        guard let drive = viewModel.kibbleDrive,
+              let event = KibbleDriveRegistry.activeEvent(),
+              event.id == drive.eventID else { return nil }
+        let top = max(1, KibbleDriveLadder.topThreshold)
+        let window = event.endDate.timeIntervalSince(event.startDate)
+        let next = KibbleDriveLadder.rungs.first { drive.points < $0.threshold }
+        let nextText = next.map { "next reward at \($0.threshold) points" } ?? "ladder complete"
+        return TrayTile(
+            id: "kibbleDrive-\(event.id)",
+            icon: event.icon,
+            tint: Color(red: 0.85, green: 0.5, blue: 0.15),
+            status: .progress(Double(drive.points) / Double(top)),
+            showsBadge: !viewModel.kibbleDriveClaimableRungs.isEmpty,
+            urgency: deadlineRank(remaining: event.timeRemaining, total: window),
+            accessibilityText: "\(event.name), \(drive.points) of \(top) points, \(nextText), \(event.timerLabel)",
+            action: { activeSheet = .kibbleDrive })
     }
 
     private var rewardLadderTile: TrayTile? {

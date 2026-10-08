@@ -1271,6 +1271,7 @@ struct LoyaltyClubPanelView: View {
 enum TaskSheet: Identifiable, Equatable {
     case adoptionOrders, dailyChallenges, quests, loyalty, invite, weeklyGoal, monthlyGoal
     case carePoints
+    case kibbleDrive
     case event(String)
 
     var id: String {
@@ -1283,6 +1284,7 @@ enum TaskSheet: Identifiable, Equatable {
         case .weeklyGoal:      return "weeklyGoal"
         case .monthlyGoal:     return "monthlyGoal"
         case .carePoints:      return "carePoints"
+        case .kibbleDrive:     return "kibbleDrive"
         case .event(let eventID): return "event-\(eventID)"
         }
     }
@@ -1297,6 +1299,7 @@ enum TaskSheet: Identifiable, Equatable {
         case .weeklyGoal:      return "Weekly Goal"
         case .monthlyGoal:     return "Monthly Goal"
         case .carePoints:      return "Care Points"
+        case .kibbleDrive:     return "Kibble Drive"
         case .event(let eventID):
             return EventRegistry.allEvents.first { $0.id == eventID }?.name ?? "Active Event"
         }

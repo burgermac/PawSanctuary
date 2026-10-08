@@ -779,6 +779,8 @@ struct MergeBoardView: View {
             MonthlyGoalPanelView(viewModel: viewModel).padding()
         case .carePoints:
             CarePointsPanelView(viewModel: viewModel).padding()
+        case .kibbleDrive:
+            KibbleDrivePanelView(viewModel: viewModel).padding()
         case .event:
             EmptyView()
         }
