@@ -401,7 +401,9 @@ With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into t
 - **6.3** Rung rows and claiming.
 - **6.4** On-screen acceptance (step 7).
 
-**Open for review:** D-2's visibility gate (should the tile show before D7 unlocks monetization, given accrual happens regardless?), and D-5, which adds copy the spec did not ask for.
+**Resolved 8 Oct 2026:** D-2's tile is **not** gated on `isMonetizationUnlocked` (it shows whenever a Drive is running), and D-5's bonus-points line is wanted. One consequence to settle in 6.2: with the tile visible before D7 unlocks, the panel's **buy banner should still respect `isMonetizationUnlocked`**, or D7's "no monetization in session one" is bypassed through the Drive.
+
+**Task 6.1 IMPLEMENTED (8 Oct 2026):** `TaskSheet.kibbleDrive`, `kibbleDriveTile` in the tray's conditional group, and `KibbleDrivePanelView` with the header only (name, countdown, points, progress bar with rung ticks; a short "ended" message if the window closed under an open sheet). No schema change. Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded.
 
 ## 7. Open questions
 
