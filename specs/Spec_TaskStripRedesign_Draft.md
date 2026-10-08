@@ -1,111 +1,100 @@
-# PawSanctuary — TaskStripView redesign reference review (draft)
+# PawSanctuary — task tray reference clip: scroll timing and corrections (draft)
 
-**Status: draft, no code written yet.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log. Requested as a check against a specific redesign idea before any design or implementation work starts.
+**Status: draft, no code written yet.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log. Capture-and-measure only; no design decision is made here.
 
-**Headline finding: the footage does not show what it was expected to show.** This recording is not the user's own `TaskStripView` redesign prototype — it is already-catalogued **Tasty Travels** reference footage of a passive home-screen banner, and its actual on-screen structure only partially resembles the two-axis (horizontal quests + vertical thumbnail rail) design described going in. See §3 for the full comparison; do not skip to §4 or §5 without reading it.
+This file replaces its own first version (`7d229ec`, PR #23), whose headline was wrong. §1 lists exactly what was wrong; §2 is the new measurement; §3 redoes the comparison against the described two-axis design.
 
 ## 0. Source material
 
-`ScreenRecording_08-31-2026 12-30-46_1.MP4` (21.217s, 1206×2622 @ 59.873fps, 37.0MB) — confirmed **Tasty Travels**, not a PawSanctuary prototype and not footage of any of the three primary reference titles' in-play task rail.
+`ScreenRecording_08-31-2026 12-30-46_1.MP4` (21.217s, 1206×2622 @ 59.873fps) — **Tasty Travels**, player level 50.
 
-This exact file already has a row in `Capture_Catalogue.md` (dated 08-31-2026, tags `event` `ui-chrome`, Deep dive: `—`), catalogued from a triage pass before this session. That row's one-line description — "home-screen banner stack made of three independently auto-rotating widgets" — is confirmed accurate by this frame-by-frame pass; this spec adds the detail a triage pass doesn't capture. **Action taken: the existing catalogue row's Deep dive column was updated to point at this spec rather than adding a duplicate row for the same file** (see §7 for why).
+**This is the same clip `Spec_TaskTrayRedesign_Draft.md` §0 was built from, and that spec is fully implemented** (`TaskTrayView.swift`, `OrderLaneView.swift`). The first version of this file did not read that spec before concluding the clip was "the wrong recording"; it is the right one, and its design has already shipped. `TaskStripView` is superseded by the tray.
 
-Analysed with `scripts/refvideo.swift`: `info` for duration/resolution/fps, a `sheet` contact sheet at 0.5s steps (43 thumbnails) for overall structure, then native-resolution `crop` sweeps at 1–2s steps on the HUD banner region (`0,60,1206,420`), the vertical page-dot indicator (`0,470,100,120`), the full-screen frame at two timestamps (`0,0,1206,2622`), and the mid-screen card band (`0,300,1206,450`) across the first 10 seconds.
-
----
-
-## 1. What the clip actually is
-
-A **static home/idle screen**, never entered from or returning to active board play within the 21.2s. Coins (8,320), gems (7) and energy (115) never change. The merge board fills the lower ~60% of the screen and is never tapped, never merges, never scrolls — it just sits there as backdrop. The final ~2s is iOS Control Center (the recording being stopped), confirming this is the entire captured session, not a clip excerpted from a longer one.
-
-Everything of interest happens in a banner region roughly the top third of the screen (below the system status bar, above the board), made of **three distinct UI elements** occupying that space side by side / stacked:
-
-1. A compact card, top-left, containing a **2-column × 3-row grid of small square badge icons**, each with its own progress readout, with a **vertical 3-dot page indicator** on its left edge.
-2. A **fixed card cluster**, top-right: a "NEW!" gold pass-offer card (`0/5` progress bar, `+15`/`+3600` reward preview) beside a round dish/medal icon showing a live real-time countdown.
-3. A **horizontally auto-scrolling row of larger character cards**, below/overlapping (1) and (2), spanning the full screen width and continuing past both edges (cards are visibly cut off left and right at any given instant).
-
-Below all of this, the board itself carries no task strip, order rail, or any other UI at all — it is bare merge-item art on an idle board.
+Measured with `scripts/refvideo.swift`: native-resolution crops of the order lane (`0,540,1206,230`) at 0.05s steps (≈3 source frames), horizontal 1D cross-correlation of the column-gradient profile over x=250–1010 (negative = content moves left), outliers (corr < 0.8) replaced by the local median; 0.05s sweeps of the tray edge across the collapse (2.0–2.75s) and expand (9.0–9.95s); 0.25s sheets of the left widget (10.5–19.5s) and the whole band (1.75–11.0s). **Vertical-axis cross-correlation was tried and discarded** — the tile rows repeat and the page jumps exceed any usable search window — so the vertical widget is described from 0.25s sheets only.
 
 ---
 
-## 2. Detailed findings, by element
+## 1. What the first version got wrong
 
-### 2.1 — Left widget: vertically-paged badge grid
+| First version said | The footage shows |
+|---|---|
+| The clip is not footage of the intended design; wrong recording | It is the source clip of the already-built tray spec. The described design (horizontal lane + vertically scrolling thumbnail grid with embedded progress) *is* what this clip shows. |
+| A passive home screen, "auto-rotating", "no touch visible" | **iOS screen recordings do not draw touches, so "no touch visible" was never evidence.** The board is untouched, but both scrollers are being driven; the kinematics in §2 are those of finger flicks (instant onset, exponential decay, hold-to-stop, direction reversals, rubber-band overshoot). The catalogue's "auto-rotating" label is wrong for the same reason. |
+| A home-screen banner, not the in-play surface | It is the in-play task tray at the top of the main board screen. |
+| A "fixed" NEW! pass card beside the lane | The "NEW! 0/5" gold pile is the header art of the **first lane card** (the dragon/fabric/pin order, `+15`/`+3600`, 29m timer). It scrolls with the lane — gone by 2.5s, back by 8.5s. The only fixed element at the right edge is the round Statue-of-Liberty icon with the H:MM:SS countdown. |
+| Left widget "pages" through 3 pages of six on a timer | A **4-row × 3-column** tile list seen through a **2-row window**; the 3 dots are the 3 window positions (rows 1–2, 2–3, 3–4). Scrolled by hand. |
+| Lane cards are a "loyalty rail", not orders | They are order cards. Each shows a portrait, a purple potion pill, a starfish `+N`, a green ticket `+N`, a coin `+N`, one or two item slots and a medal count. The medal value tracks the coin payout closely (≈170–240 coins per point on five of six cards: `850→5`, `3,600→15`, `3,700→20`, `7,750→40`, `13,000→65`), which is the per-order token value `Spec_OrdersAndTasks_Draft.md` §2 describes. |
 
-A single rounded card holds six small square icons in a fixed 2×3 layout. In the portion of the paging cycle this pass captured (page 1, roughly the first ~12s), the six badges were:
+---
 
-| Position | Icon | Readout |
+## 2. Timing
+
+### 2.1 Event timeline (t in seconds)
+
+| t | Event |
+|---|---|
+| 0–2.05 | Static. Tray 3-wide; lane at its origin (pass-pile order first). |
+| **2.10** | **Collapse + leftward lane flick start together.** Lane speed 0 → ~700 → 1,180 → 1,240 px/s inside 0.10s — no ease-in. |
+| 2.10–2.45 | **Collapse: tray right edge ≈650 → ≈205px (~445px) in ≈0.35s at a near-constant 1,050–1,350 px/s, then stops dead.** No visible ease-in or ease-out (edge estimates read off sheets, ±20px). |
+| 2.5–3.62 | Lane continues left and decays; exponential fit τ ≈ **0.47s** (22 samples). |
+| 3.65 | One zero-velocity sample (0.05s), then 3.70 restarts at ~1,100 px/s — a second flick. |
+| 3.70–5.10 | Second push, slower decay (τ ≈ 1.4s); stops at ≈5.1 with a ~9px opposite bounce. Left travel by flick: −1,281px, then −740px; **≈−2,050px total**. |
+| 5.1–5.7 | Dwell at the far end (0.65s); last card (knight order) fully in view. |
+| 5.75–10.4 | **Return, ≥6 separate pushes** restarting at 5.75, 6.45, 7.15, 7.80, 8.30, 9.15 (gaps 0.70, 0.70, 0.65, 0.50, 0.85s). Each restarts at 10–40 px/step and peaks at 36–89 px/step (≈700–1,800 px/s), then decays. **≈+2,110px — equal and opposite to the leftward travel within ~3%.** |
+| **9.10–9.75** | **Expand: tray edge ≈225 → ≈650px (~425px) in ≈0.65s**, fast at first (~1,100 px/s over the first 0.2s) then decelerating to ~470 px/s — visibly ease-out. |
+| 10.05–10.40 | Rubber-band overshoot past the origin, ≈55px, settling in ≈0.35s. |
+| 10.45–11.2 | Static, tray expanded, lane at origin. |
+| 11.25–18.2 | **Left widget scrolled vertically by hand** (§2.3). Lane untouched. |
+| 18.25–19.5 | Static. (Final ~2s is iOS Control Center.) |
+
+Lane extent ≈2,050px at a card pitch of ≈388px ≈ 5.3 pitches — **six order cards**, matching the six counted by eye.
+
+### 2.2 What the kinematics say
+
+Offered as consistent-with, not proof — the finger is invisible:
+
+- **Instant onset, then exponential decay.** A scripted slide eases in; this does not. τ ≈ 0.47s is close to `UIScrollView`'s normal deceleration (0.998/ms ⇒ τ ≈ 0.5s), which SwiftUI's `ScrollView` shares.
+- **Hold-to-stop at 3.65, direction reversal at 5.75, a restart every ~0.7s** — a person flicking again before the last flick has died.
+- **Out-and-back over the same ~2,050px with a rubber-band bounce at the origin** — the list was driven to both ends.
+
+### 2.3 Left widget, vertical (0.25s resolution only)
+
+Three resting windows were seen: **W1** (rows 1–2) until 11.25 and again from 18.25; **W2** (rows 2–3) at 12.75–13.5, 14.5–15.25 and 17.25–17.75; **W3** (rows 3–4) at 15.5–17.0. Roughly nine window changes in ~7s, including a W3→W1→W3 round trip inside 13.75–14.25 (two-row jumps in ≤0.25s). Every dwell sampled was row-aligned, while mid-motion frames show rows clipped at both edges — so motion is continuous, and rests *look* snapped. One mid-scroll frame (as in the tray spec's §1.4) cannot distinguish "snaps on release" from "the user stopped on a row"; this clip cannot either. The dots: top lit at W1, middle at W2, bottom at W3.
+
+### 2.4 Against what shipped
+
+`TaskTrayView.setExpanded` animates collapse and expand identically: `.easeInOut(duration: 0.28)`.
+
+| | Reference (this clip) | Shipped |
 |---|---|---|
-| Top-left | Gold trophy | A number that climbs over the clip: `33` (t=0.0s) → `37` (t=2.0s) → `38` (t=3–4s) → `39` (t=5s) → `40` (t≈10s), plus a `1d 16h` timer |
-| Top-mid | Potion bottle | `03:59:31` (t=0s) → `03:59:16` (t=10s) — a real-time countdown |
-| Top-right | Orange starfish | `7/12`, a green fraction bar, unchanged throughout |
-| Bottom-left | Red "NEW" 3-star pass card | `1` over a blue progress bar, `16h 29m` |
-| Bottom-mid | Chest/checklist | `0/3`, `16h 29m` |
-| Bottom-right | Brown palm-frond medal | A blank maroon progress bar, `13h 59m` |
+| Collapse | ≈0.35s, near-constant speed, no ease | 0.28s easeInOut |
+| Expand | ≈0.65s, decelerating | 0.28s easeInOut |
+| Symmetry | Expand ≈1.9× slower than collapse | Symmetric |
 
-A **vertical** 3-dot indicator (confirmed by native-resolution crop at `0,470,100,120` — the dots are stacked top-to-bottom, not side-by-side) sits on the card's left edge. It read top-dot-lit at t=0s and t≈12s, and bottom-dot-lit by t≈16s — the card does advance through (at least) 3 pages over the clip, but this pass only directly captured page 1's contents; pages 2 and 3 were not sampled at a timestamp where they were legible. `Capture_Catalogue.md`'s original triage pass lists two badges not seen on page 1 here (a tiki-mask event reading `900` / `2d16h`, and a second medal reading `6d16h`), which is consistent with — but not confirmed as — content on the un-sampled pages.
-
-**No swipe, tap, or other touch input was visible on this widget at any point in the clip.** The page change (if it is one) happens without visible user interaction — consistent with the "auto-rotating" framing in the existing catalogue entry, not a user-driven scroll.
-
-### 2.2 — Fixed top-right cluster
-
-The "NEW!" gold pass card (`0/5` progress) and the round dish/medal icon beside it are stable in position throughout. The dish icon's countdown ticks in real time, second-for-second: `16:29:13` (t=0s) → `16:29:11` (t=2s) → `16:29:10` (t=3s) → `16:29:09` (t=4s) → `16:29:08` (t=5–6s) → `16:29:04` (t≈10s). This reads as a literal H:MM:SS countdown to some deadline, not an animated flourish.
-
-### 2.3 — Horizontal card carousel
-
-This is the richest and most ambiguous element, and the one closest to what could plausibly be read as "quests arrayed along a horizontal axis." At t=0–2s it shows a single compact card (a red dragon icon, a folded-fabric icon, a safety-pin icon, `+15` lightning / `+3600` coin, a `15` medal count, and its own countdown — `29m 25s` at t=1s → `29m 16s` at t=10s, again a real-time countdown). From t≈3s onward, the same horizontal band instead shows **full-size character cards**, several visible at once and clearly different from one second to the next:
-
-- t=3s: a man in a headband (`+20`/`+850`, comb icon, medal `12`) · a blond man with a moustache (`+3750`/`+240`/`+13000`, origami-crane icon, medal `65`) · a dark-haired man (`+650`/`+45`/`+1`, panda-mug icon, medal `12`)
-- t=4s: a trophy card labelled `38`/`1d 16h` · a blonde woman in a bandana (`+2280`/`+150`/`+7750`, coffee-cup icon, medal `40`) · a mascot figure with a live `16:29:xx` countdown
-- t=5–6s: a woman in a patriotic hat (`+1080`/`+70`/`+3700`, knight-figurine icon, medal `20`) alongside the same trophy/bandana-woman/mascot trio shifting position
-
-At least **six distinct named characters** were observed cycling through this band across roughly 6 seconds of sampling, each carrying: a portrait, one or two currency-reward amounts (a tinted potion/ticket icon plus a coin icon), one item-icon reward, and an escalating "medal" count (12, 20, 40, 65 observed). One item icon (a red dress) carried a small shopping-cart badge, suggesting it may be shop-linked rather than a pure reward — not confirmed further in this pass.
-
-Cards are visibly cropped at both screen edges at every sampled instant, confirming the row is wider than the viewport and is scrolling. **As with §2.1, no touch or swipe was visible anywhere in the clip** — the cards advance on their own. Whether this row is *also* user-swipeable (in addition to auto-advancing) cannot be determined from this footage, since no interaction of any kind occurs in the whole 21.2s.
-
-None of these cards show an explicit goal string (no "Collect 5 X" / "Merge to level 4" style text) — only a portrait, reward amounts, one item icon, and a cumulative medal count. This reads closer to a **per-character loyalty/reward rail** than to task cards with a stated objective.
+Caveat on interpretation: the reference collapse looks finger-tracked (constant speed, stops when the finger lifts) rather than a fixed-duration animation, so 0.35s is a swipe's duration, not necessarily a designed one. The expand is the cleaner animation sample. `Spec_TaskTrayRedesign_Draft.md` §0 says its expand sweep covered 10.6→12.4s; in this clip the tray is already fully expanded by 9.75s and 10.6–12.4s is the start of the vertical widget scroll, so that sweep window appears to be off by ≈1.5s.
 
 ---
 
-## 3. Comparison against the stated description — the actual deliverable
+## 3. Comparison against the described design
 
-The brief described the expected footage as: *"Quests arrayed along the horizontal scroll axis, and the always present cards (smile/star awards, daily/weekly/monthly goals, parallel board games/challenges) scrolling vertically and accessed via smaller thumbnail icons, often with a small progress bar included in the thumbnail."*
-
-**This does not match what the footage shows, on two levels — one about identity, one about structure.**
-
-**Identity mismatch (the more important one).** This is not the user's own redesign prototype. It is pre-existing, already-catalogued Tasty Travels footage of a passive home screen, filed under `Capture_Catalogue.md` before this session with a description (auto-rotating banner widgets, no board interaction) that this deep dive confirms in full. If the intent was to review a mockup of the *proposed* PawSanctuary redesign, this is very likely the wrong file — worth checking with the user before treating anything below as evidence for or against their design.
-
-**Structural comparison, taken at face value anyway:**
+Described: *quests along the horizontal axis; always-present cards (smile/star awards, daily/weekly/monthly goals, parallel-board games) scrolling vertically as small thumbnails, often with a progress bar in the thumbnail.*
 
 | Described | Observed | Verdict |
 |---|---|---|
-| A horizontal-scrolling row of **quest** cards | A horizontal, auto-advancing (not confirmed user-swipeable) row of **character/loyalty reward** cards — portrait + reward amounts + one item icon + a medal count, no visible goal text | **Partial match at best.** The axis and card format are right; calling these "quests" overstates what's on screen — nothing here shows a stated objective the way PawSanctuary's `Quest`/`DailyChallenge` cards do. |
-| A **vertically-scrolling** element of **smaller thumbnail icons**, "often" carrying an embedded progress bar | A card that **pages** (via a vertical 3-dot indicator, not continuous scroll) through sets of six small square badges, most of which do carry a fraction, bar, or countdown | **Good match on form** (small thumbnails, embedded progress), **imprecise on mechanism** (discrete paging vs. continuous scroll — meaningfully different to implement and to use). |
-| The vertical thumbnails represent "smile/star awards, daily/weekly/monthly goals, parallel board games/challenges" | The six captured badges are: a climbing rank/trophy number, a countdown potion, a star-quest fraction, a "NEW" pass card, a checklist fraction, and a medal countdown — **none of them are Smile Points, Care Points, or a Parallel-Board-style event card** in recognisable form | **Mismatch.** The specific content named doesn't appear; what's there instead is closer to a live-ops/event-and-rank tracker set. |
-| (implicit) the two axes are part of one integrated **task-tray** UI, analogous to `TaskStripView` | Both axes sit in a **home-screen banner above a completely idle, non-interactive board** — there is no task strip, order rail, or any docked UI visible on the board itself anywhere in the clip | **Mismatch, and the most consequential one.** `TaskStripView`'s actual problem (per `Spec_TravelTownReview_Draft.md` §3) is a horizontal strip that's awkward to drive *while playing*. This footage never shows play at all — it can't speak to that surface. |
+| Two scroll axes, one horizontal, one vertical | Yes — an order lane (horizontal) and a tile grid (vertical), both hand-scrolled | **Match** |
+| Vertical element is small thumbnails | 40pt-class icon tiles, 3 across, 2 rows visible | **Match** |
+| Progress bar embedded in the thumbnail | `7/12` bar, pass bar, `900` bar, `0/3` fraction inside the tile; countdowns on a pill below | **Match** |
+| Vertical content: smile/star awards, daily goals | Starfish `7/12` (star award) and the `0/3` daily checklist are present | **Match** |
+| Vertical content: weekly/monthly goals, parallel board | Not identifiable. Event tiles read `2d 16h` / `6d 16h` and a tiki tile carries a red dot; Tasty Travels has no parallel board in any capture | **Not shown** |
+| **Horizontal content is quests** | **Horizontal content is orders.** The one quest-like tile (starfish `7/12`) is in the vertical grid | **Mismatch — the axes' contents are swapped** |
+| (implied) a new design | This layout is what `TaskTrayView` already implements | **Already built** |
 
-**Bottom line:** there's a real, confirmable structural feature in this footage — a compact vertically-paged badge card sitting beside a horizontally-scrolling reward-card row — but it is not a clean match for the description given, and it is not footage of an in-play task strip at all. Treating this clip as validation for the described two-axis `TaskStripView` redesign would be a mistake; at most it's a loose visual precedent for "small paged thumbnails + a scrolling card row," observed on the wrong screen, in the wrong game, doing a different job (live-ops/loyalty promo, not task/order management).
+Relation to `Spec_TravelTownReview_Draft.md` §3's three options: this is not a fourth option — `Spec_TaskTrayRedesign_Draft.md` already records that none of the three is what it proposes, and chose this.
 
----
+## 4. Open questions
 
-## 4. Relationship to `Spec_TravelTownReview_Draft.md` §3's options
-
-§3 of that spec recorded three options for `TaskStripView`'s horizontal-scroll debt, left explicitly undecided: prioritise-by-urgency, collapse-to-summary, or a two-row layout. Given §3 above, this footage doesn't cleanly introduce a *fourth* option for that specific surface, because it isn't a task-strip at all — it's a different screen. If forced into that framing anyway, the closest fit is a **hybrid of collapse-to-summary and two-row**: the vertically-paged badge card *is* a collapsed summary (six always-on trackers folded into one card, paged rather than all visible), sitting in a second row alongside the horizontally-scrolling card. But this is a stretch — applying a home-screen live-ops banner's layout to an in-play task rail is a different design problem (constant board visibility, tap-to-fulfil interactions, per-order urgency) than what's shown here.
-
----
-
-## 5. Open questions
-
-1. **Is this the right recording at all?** The single most important thing to resolve before any design work. If the user has a different file in mind — one that actually shows a redesigned/prototyped `TaskStripView`, not Tasty Travels' home screen — that recording needs to be located and reviewed instead.
-2. **Does the badge-grid card page via swipe, or purely on a timer?** No interaction of any kind occurs in this clip, so this is unresolved. A follow-up recording with an actual swipe on that widget would settle it.
-3. **Is the horizontal character carousel user-scrollable, auto-advancing only, or both?** Same gap — nothing in this footage taps or swipes it.
-4. **What are pages 2 and 3 of the badge grid?** Only page 1's six badges were captured at a legible timestamp.
-5. **What is the horizontal carousel actually for?** The reward pattern (portrait + 2 currencies + 1 item + climbing medal count, no goal text) doesn't map cleanly onto "quests." A longer capture that includes a claim/tap interaction would clarify the mechanic.
-
-## 6. Suggested next step
-
-Confirm with the user whether this is the intended source clip before doing anything else. If it is not, locate and analyse the correct recording using the same `scripts/refvideo.swift` workflow. If it is — despite the mismatches in §3 — treat this spec's §2 as the accurate record of what it shows, and revisit the redesign description against that, since the two-axis idea as originally stated does not appear to be demonstrated here.
-
-## 7. Note on `Capture_Catalogue.md`
-
-This file was already catalogued (see §0) before this session, with an accurate one-line triage description and Deep dive status `—`. Rather than append a duplicate row for the same filename — which would fork the catalogue's single-source-of-truth structure and risk two rows drifting out of sync — this pass updated that existing row's Deep dive column to `done — Spec_TaskStripRedesign_Draft.md`, matching the convention used for every other file in the table. No new row was added.
+1. **Is a redesign of the shipped tray still wanted?** If the described design is the tray, there may be nothing left to redesign — or the intent may be *quests* on the horizontal lane, which is a genuine departure from both the clip and the build.
+2. **Should the expand be slower than the collapse, and decelerate?** §2.4 — a tuning question the clip raises, not answers.
+3. **Is collapse triggered by the lane flick itself?** Collapse (2.10) and the lane's leftward flick start in the same 0.05s; the expand ends as the lane returns to origin. Touches are invisible, so a swipe-direction rule and a board tap cannot be told apart here.
+4. **What is the floating trophy tile?** From ≈3.5–5.25s and 6.25–8.4s a trophy tile (rank `37→40`) sits to the right of the collapsed tray while the lane scrolls behind it, and is absent at 5.5–6.0s and 2.5–3.25s. Not explained by this pass.
+5. **Do the vertical rests snap?** §2.3 cannot say.
