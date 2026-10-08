@@ -244,7 +244,16 @@ struct OrderLaneView: View {
             // Lazy for the same reason the strip was: the lane grows with
             // Sanctuary Map upgrades, and only two cards are visible at once.
             LazyHStack(spacing: 8) {
-                // Daily tasks lead. They expire at midnight and are the only
+                // Standing quests lead, claimable first, so they sit next to
+                // the tray (Spec_QuestLaneCards_Draft.md). Claiming replaces
+                // the quest in place, so there is no claimed state here.
+                ForEach(laneOrderedQuests(viewModel.activeQuests)) { quest in
+                    QuestLaneCard(
+                        quest: quest,
+                        onClaim: { viewModel.claimQuest(id: quest.id) },
+                        onOpenSheet: { activeSheet = .quests })
+                }
+                // Daily tasks follow. They expire at midnight and are the only
                 // cards here that take pieces off the board, so they are the
                 // ones worth planning the session around.
                 //

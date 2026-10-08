@@ -161,6 +161,16 @@ The economics are the interesting part. Measured at Tasty Travels:
 
 **Draft spec now exists: `specs/Spec_Phase6b_RewardLadder.md`** (18 Aug 2026, written cold by Claude Code, not yet design-authority-reviewed). Named "Reward Ladder," not "chain offer" — the same naming-collision problem Pass hit with its own name, since this codebase already uses "chain" for the merge-chain model. Found while scoping: `OfferHookRegistry` turned out not to be a real fit (zero call sites anywhere, shaped as a flat offer-ID list, not a priced/sequenced ladder) — not used. Bigger finding: unlike Milestone track/Pass, this has **no separate token-earning faucet** — purchasing a rung is the only progress driver, so `EventTokenRiderProvider`'s reuse the Alignment Plan implied doesn't actually apply; only `ProgressTrack`'s storage shape carries over. The spec also proposes (not yet reviewed) that this isn't calendar-scheduled at all — it surfaces once the existing D7 `isMonetizationUnlocked` gate flips, permanent and untimed, explicitly cutting the reference titles' "timer-bound" property as a first-cut scope reduction rather than guessing at expiry semantics. That trigger proposal is flagged in the spec's own §6 as the single thing most likely to change if reviewed differently.
 
+### D9 — Retention outranks monetization *(added 8 Oct 2026)*
+
+The game's two primary aims are retention and monetization through IAPs. They conflict at specific points: energy walls, paywalled or locked rewards, and offer cadence help revenue and hurt staying power, while generous faucets and visible claimable progress do the reverse.
+
+**Decided 8 Oct 2026: when they collide, monetization gives way.** The reasoning is that attention sustained over continued play is what produces IAP revenue in the end, so a change that costs short-term revenue but helps players stay is taken. The converse is flagged, not forbidden: any change that raises revenue at a retention cost must say so explicitly in its spec.
+
+**Applies to:** every later spec that touches an IAP, a currency faucet or sink, an offer trigger or the energy wall. **Does not reopen** decisions already made on the economics (D1, D7, D8); it is the tiebreaker for new ones and for any revisit.
+
+**First known consequence:** `Spec_KibbleDrive_Draft.md` §6 step 5, the `energyLarge` repositioning, is a live-SKU revenue change and now needs a retention argument, not just a cleaner price ladder. Not yet applied; to be assessed when step 5 is picked up.
+
 ---
 
 ## 4. Phase 1 — Foundations
