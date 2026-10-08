@@ -439,6 +439,39 @@ So total value is roughly preserved (Large up, XL slightly down). What changes i
 
 **Decided 8 Oct 2026 (Tim): C, defer.** The `energyLarge`/`energyXL` packs are left as they are. Step 5 is not built, and §3.4's table stays a recorded proposal. Revisit after the first live Drive window using `PlayerCommerceState`; if the data shows the Drive cannibalizing `energyLarge`, option B is the version to pick up.
 
+### 6h. Task 6.4 acceptance checklist (8 Oct 2026) — to be run on a build, results to be recorded here
+
+Steps 1–6.3 are on main and CI-green, but **no part of the Drive UI has been seen running**. This is the manual pass. Nothing below can be done from a cloud session: it needs an Xcode Debug build on a Simulator or device.
+
+**Timing facts that change how you test.**
+- Windows are parsed as UTC dates, so `kibble_drive_20261009` runs **2026-10-09 00:00 UTC to 2026-10-12 00:00 UTC**. Check what that is in your timezone.
+- **The Drive is created only on a cold launch** inside the window (`checkEventLifecycle` is launch-only, §6c). Backgrounding and reopening the app is not enough: terminate it and launch again.
+- Simulators have no date override, so the forfeit step (11) cannot be run on a Simulator until the window really ends.
+- Points per action: easy / medium / hard quest claim = 8 / 15 / 30; order claim = 1; sweeping all three daily tasks = 25. Rung 1 is at 10 points.
+
+| # | Do | Expect | Result |
+|---|---|---|---|
+| 1 | Cold launch after the window opens, **monetization still locked** | An orange box tile in the tray with an empty progress bar. It shows even though monetization is locked (decided 8 Oct). | |
+| 2 | Tap the tile | Sheet titled "Kibble Drive": name, countdown such as `2d 11h left`, `0 / 300`, a progress bar with 15 tick marks, 15 rows all reading "N more", and the caption "Unclaimed rewards are lost when the Drive ends." | |
+| 3 | Look at the buy banner | "Earn up to 540 Kibble" and the explanatory line. **No price button** on a `simctl`/Debug build (no StoreKit configuration, so the product never loads). A Debug-only "Simulate purchase" button is present. | |
+| 4 | Claim a medium quest from the quest sheet | Drive points rise by 15 and the weekly Care Points bar rises by the same 15 (credited to both, not split). Tile bar moves; panel shows `15 / 300`. | |
+| 5 | Reopen the panel with 15 points, unpurchased | Rung 1 (10) is full colour with a **padlock**, not a Claim button. Rung 2 (22) still reads "7 more". | |
+| 6 | Check for the bonus line | "+N bonus points on purchase" shows only if time has elapsed in the window and you are behind par (105 points per day), at most half your banked points. At window open it should be absent. | |
+| 7 | Unlock monetization (Debug lock button), then tap "Simulate purchase" | Banner disappears. Points rise by the bonus shown in step 6 (or not at all if none). Reached rungs show **Claim!**. The tile gets a red dot. | |
+| 8 | Tap Claim on rung 1 | Kibble rises by 30. The row flips to a tick and "Claimed". The Claim button cannot be pressed again. The red dot clears once no rung is claimable. | |
+| 9 | Terminate and cold launch again, still inside the window | Points, purchased state and the claimed rung are all unchanged. The Drive was not recreated. | |
+| 10 | **Seed the top of the ladder.** With the app terminated, edit `kibbleDrive` in `gameState.json` to `points: 300, purchased: true, claimedRungs: []` (the technique §6b and §6d used), then launch | All 15 rows show Claim!. Claim them one by one: kibble rises by 540 in total, rung 10 queues a star4 card pack and rung 15 a star5 pack, and the tile bar is full. | |
+| 11 | After 2026-10-12 00:00 UTC, cold launch | The tile is gone and the sheet, if reached, says "This Kibble Drive has ended." Unclaimed rungs are forfeit. Covered by `KibbleDriveLifecycleTests`; this is the on-device confirmation. | |
+
+**Layout checks, any step:** all 15 rows scroll inside the sheet without clipping; the reward pills ("+40 Kibble", "5-Star Pack") stay on one line; nothing overlaps at your largest Dynamic Type setting.
+
+**What this pass cannot verify.**
+- **The `isMonetizationUnlocked` gate on the real price button.** On a build with no StoreKit configuration the product never loads, so the button is hidden whatever the gate says, and a pass in step 3 proves nothing about the gate. It needs an Xcode Run with a StoreKit configuration file, or a code-level check.
+- **The real StoreKit purchase**, `pendingKibbleDriveEventID` surviving the purchase sheet, and redelivery through `listenForTransactions()`. Same outstanding gap as the Reward Ladder.
+- **A purchase sheet straddling the window boundary.** Needs a controllable clock as well as StoreKit.
+
+Write results into the table, and record anything unexpected under the step it appeared in.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
