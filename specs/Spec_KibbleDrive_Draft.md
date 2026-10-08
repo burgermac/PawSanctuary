@@ -351,6 +351,14 @@ With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into t
 
 **Still ahead:** step 4 (the §3.3 ladder, now carrying step 3's claim half with it), 5 (`energyLarge` reposition), 6 (UI, which retires the DEBUG button), 7 (acceptance). §7's question 6 — the reference's unexplained "Challenges complete!" banner — is the last one open.
 
+### 6e. Step 4 IMPLEMENTED (8 Oct 2026) — the ladder, and step 3's claim half
+
+`KibbleDriveLadder.swift` (§3.3's 15 rungs as `TrackMilestone`s, `freeRewards` empty), `claimKibbleDriveRung(index:)` and `kibbleDriveClaimableRungs` on the view model, and `KibbleDriveLadderTests`. Claiming marks the rung claimed before paying, goes through the existing `applyRewards`, and pays raw kibble with no Pass bonus, since §3.5's margin is computed against the listed 540. Card packs land in `pendingCardPacks`.
+
+**§3.5's ratio is asserted from the model, not from the spec's figures.** The test rebuilds points/day from `ordersPerDay`, `carePointsPerOrder`, `carePointsPerDailySweep`, `questClaimsPerDay` and `carePoints(forQuest:)`, checks it against `kibbleDrivePointsPerDay` (so a Care Points retune forces a re-derivation), then requires the margin above 3.0 and above 2.0 after the worst-case catch-up grant.
+
+**Not done:** §3.5's "worth an assertion" about login-only quest goals. `QuestGoal` has no login-only case today, so there is nothing to assert against; it needs adding if one is ever introduced. **Written without a Swift toolchain** (CI is the first compile); no on-screen check, since there is no UI until step 6. Steps 5–7 not started.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
