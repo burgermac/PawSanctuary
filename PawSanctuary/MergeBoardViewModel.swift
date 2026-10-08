@@ -4176,6 +4176,20 @@ class MergeBoardViewModel {
         kibbleDrive = drive
     }
 
+    /// Whether the Drive's real buy control may be offered right now: a Drive
+    /// is running, it is unbought, and monetization is unlocked.
+    ///
+    /// The tile is deliberately visible before monetization unlocks (decided
+    /// 8 Oct 2026), so this is the one place D7's "no monetization in session
+    /// one" is kept for the Drive. It lives on the view model rather than
+    /// inline in the panel so it can be unit-tested: a Debug build has no
+    /// StoreKit configuration, so the price button never renders and the gate
+    /// cannot be checked by eye (`Spec_KibbleDrive_Draft.md` §6h).
+    var isKibbleDriveBuyAvailable: Bool {
+        guard let drive = kibbleDrive, !drive.purchased else { return false }
+        return isMonetizationUnlocked
+    }
+
     /// Rungs of the running Drive the player could claim right now: purchased,
     /// enough points, not already claimed. Empty when no Drive is running or it
     /// has not been bought — points accrue regardless (§2), but nothing is

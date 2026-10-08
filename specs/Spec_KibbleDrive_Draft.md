@@ -466,7 +466,7 @@ Steps 1–6.3 are on main and CI-green, but **no part of the Drive UI has been s
 **Layout checks, any step:** all 15 rows scroll inside the sheet without clipping; the reward pills ("+40 Kibble", "5-Star Pack") stay on one line; nothing overlaps at your largest Dynamic Type setting.
 
 **What this pass cannot verify.**
-- **The `isMonetizationUnlocked` gate on the real price button.** On a build with no StoreKit configuration the product never loads, so the button is hidden whatever the gate says, and a pass in step 3 proves nothing about the gate. It needs an Xcode Run with a StoreKit configuration file, or a code-level check.
+- **The `isMonetizationUnlocked` gate on the real price button, by eye.** On a build with no StoreKit configuration the product never loads, so the button is hidden whatever the gate says, and a pass in step 3 proves nothing about the gate. **Now covered by `KibbleDriveGateTests` (8 Oct 2026):** the condition moved out of the view into `MergeBoardViewModel.isKibbleDriveBuyAvailable` (running, unpurchased, `isMonetizationUnlocked`) so it can be tested; six tests cover wall-only, level-only, both, already purchased, no Drive, and that it tracks the shared D7 condition. Seeing the button itself still needs an Xcode Run with a StoreKit configuration file.
 - **The real StoreKit purchase**, `pendingKibbleDriveEventID` surviving the purchase sheet, and redelivery through `listenForTransactions()`. Same outstanding gap as the Reward Ladder.
 - **A purchase sheet straddling the window boundary.** Needs a controllable clock as well as StoreKit.
 
