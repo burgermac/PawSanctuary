@@ -437,7 +437,7 @@ So total value is roughly preserved (Large up, XL slightly down). What changes i
 
 **Recommendation: C.** It is the only option that needs no guess, and the thing it waits for (whether the Drive actually cannibalizes `energyLarge`) is cheap to observe. If the data shows cannibalization, B is the version that fits D9. §3.4's table stays as a recorded proposal, not an instruction.
 
-**Decision needed from Tim:** C, B, or A. Until then step 5 stays unbuilt.
+**Decided 8 Oct 2026 (Tim): C, defer.** The `energyLarge`/`energyXL` packs are left as they are. Step 5 is not built, and §3.4's table stays a recorded proposal. Revisit after the first live Drive window using `PlayerCommerceState`; if the data shows the Drive cannibalizing `energyLarge`, option B is the version to pick up.
 
 ## 7. Open questions
 
