@@ -409,6 +409,36 @@ With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into t
 
 **Task 6.3 IMPLEMENTED (8 Oct 2026):** the 15 rung rows in `KibbleDrivePanelView`, in the four states of §6f D-3 (below threshold: "N more"; reached and unpurchased: padlock; reached and purchased: Claim!; claimed: tick), plus the *"Unclaimed rewards are lost when the Drive ends"* caption. One tap per rung, no "Claim all". **D-4's check came back empty:** `MilestoneRowView` has no claim animation, only the row flipping to "Claimed", so there is no existing kibble-flight to reuse and none was added; the board-animation burst of `Spec_BoardAnimation_Draft.md` §3 stays unused here. Whether the claim needs more feedback is an on-screen question. Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded. Task 6.4 (acceptance) remains.
 
+### 6g. Step 5 retention argument (8 Oct 2026) — written for D9; recommends deferring
+
+D9 (retention outranks monetization) says a change that costs revenue must be justified by retention, and one that raises revenue at a retention cost must say so. §3.4's reposition of `energyLarge`/`energyXL` was decided on 4 Sep, before D9, and for a revenue reason: the pack should not lose a kibble-per-dollar comparison to the Drive. This section tests it against D9 using the code at `2254afc`. **Design only, nothing built.**
+
+**What the reposition changes, computed.** `DogTagKibbleExchange` sells 100 kibble per exchange at 15 / 30 / 60 tags, then 60 flat, resetting daily. Exchanges are whole, so leftover tags are stranded. Kibble-equivalent = instant kibble + 100 per affordable exchange:
+
+| Pack | Instant kibble | Kibble-equivalent, fresh ladder | Kibble-equivalent, ladder already used |
+|---|---|---|---|
+| Large today (120 k, 40 tags) | 120 | 220 | 120 |
+| Large proposed (60 k, 70 tags) | **60** | 260 | 160 |
+| XL today (250 k, 80 tags) | 250 | 450 | 350 |
+| XL proposed (120 k, 150 tags) | **120** | 420 | 320 |
+
+So total value is roughly preserved (Large up, XL slightly down). What changes is **how it arrives**: instant kibble roughly halves on both, and the rest becomes tags the player must spend through the exchange. Spawners go 1→2 and 2→3.
+
+**Against D9:**
+- **Against retention.** Phase 3 designed the wall as the moment of relief: hit zero kibble, see the ladder, buy a pack. A pack that now gives half the kibble instantly and asks the player to open the exchange for the rest makes the worst moment of a session feel stingier, which is the retention-negative direction D9 rules out.
+- **Against retention, second.** Extra `fosterHome` producers each take a board cell (`placeProducerReward` pays 10 kibble instead when none is free), on a board the economy model treats as congestion-limited. I did not verify how much a Foster Home is worth: `isShopProducer` marks the rescue-tier producers as superseded by family spawners, yet the packs still hand them out.
+- **For retention.** Little. More tags help a player who wants board items from the Dog Tag store, and a pack bought at the wall is somewhat richer on a fresh ladder. Neither is the reason the change was proposed.
+- **The motive is revenue protection**, not retention: it removes a comparison that may not exist. The Drive is a 3-day, earn-by-playing offer at 108 kibble/$ every ~4 weeks; the pack is instant relief at 24 kibble/$. They are different purchases, and there is no evidence yet that anyone would trade one for the other.
+
+**Options**
+- **A. Ship §3.4 as written.** Fails the D9 test above and is a live-SKU revenue experiment with no telemetry to read it.
+- **B. Add, don't subtract.** Keep instant kibble (120 / 250) and add the tags and spawner on top. Retention-positive and consistent with D9, but costs revenue per sale and needs `EconomySimulation` to price the extra tag volume (§3.6 already flags tags as a faucet by another route).
+- **C. Defer.** Leave the packs alone, ship the Drive, and revisit after the first live window using `PlayerCommerceState` (purchase count, average value, days since last purchase), which has recorded from first launch.
+
+**Recommendation: C.** It is the only option that needs no guess, and the thing it waits for (whether the Drive actually cannibalizes `energyLarge`) is cheap to observe. If the data shows cannibalization, B is the version that fits D9. §3.4's table stays as a recorded proposal, not an instruction.
+
+**Decision needed from Tim:** C, B, or A. Until then step 5 stays unbuilt.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
