@@ -2,6 +2,15 @@
 
 ## Pending
 
+### Kibble Drive — built, never seen running (added 8 Oct 2026)
+
+Code-complete on main (steps 1–4 and UI 6.1–6.3, all CI-green). Nothing below can be done from a cloud session; each needs a build on your device or Simulator.
+
+- [ ] **Run the §6h acceptance checklist** (`Spec_KibbleDrive_Draft.md` §6h, 11 steps) on a Debug build. The window `kibble_drive_20261009` runs **2026-10-09 00:00 UTC to 2026-10-12 00:00 UTC**. The Drive is created only on a **cold launch** inside the window, so terminate and relaunch rather than just reopening. Step 11 (forfeit after the window) cannot run until after 12 Oct. Next windows: 2026-11-06 to 2026-11-09. Also judge on screen whether a rung claim needs more feedback than the row flipping to "Claimed" (no claim animation exists to reuse).
+- [ ] **StoreKit pass, one Xcode Run with a StoreKit configuration file** — covers the Drive purchase flow, the real price button appearing only when `isMonetizationUnlocked`, and the Reward Ladder's rung 1 (see the entry below and its 12 Sep note; same gap, one pass). The gate's *logic* is unit-tested (`KibbleDriveGateTests`); seeing the button is not.
+- [ ] **Revisit the `energyLarge`/`energyXL` reposition after the first live Drive window.** Decision C, 8 Oct 2026: packs left as they are (`Spec_KibbleDrive_Draft.md` §6g). Read `PlayerCommerceState` (purchase count, average value, days since last purchase) around the window. If the Drive is cannibalizing `energyLarge`, option B (keep instant kibble, add tags and spawner on top) is the version that fits D9. Nothing to build until then.
+
+
 ### Test rot — `testCheckEventLifecycleRegistersAnIndependentRiderForEachRealActiveEvent` — RESOLVED 18 Aug 2026
 
 ~~`ConcurrentEventRiderRegistrationTests` (`EventSystemTests.swift:196`) reads real wall-clock time against `EventRegistry.activeEvents`... its own author already anticipated: "Foster Weekend's window (2026-08-14...18) may have closed -- add a fresh overlapping EventDefinition to re-enable this test." That's now exactly what's happening~~ — **fixed at the root, not patched.** `checkEventLifecycle()` (`MergeBoardViewModel.swift`) and `ParallelBoardEventRegistry.activeEvent` (`ParallelBoardEvents.swift`, `static var` → `static func activeEvent(at date: Date = Date())`) both gained an injectable `at date:` parameter, defaulting to `Date()` so the one production call site (`loadGame()`) is unchanged. The two rotted tests now check against a fixed, permanent synthetic date (2026-09-12) deep inside the real, already-shipped 90-day calendar instead of today's real wall clock — they'll never rot again, since those calendar dates don't change. A third test was added that this fix directly unlocked (`testCheckEventLifecycleUnregistersOnlyTheEndedEventsRiderWhenOneOfTwoOverlappingEventsEnds`), closing a gap `LiveOpsEngineTests.swift` had explicitly flagged as untestable before this. 373/373 tests pass; smoke-tested on the iOS Simulator to confirm the production call site's behavior is unchanged.
