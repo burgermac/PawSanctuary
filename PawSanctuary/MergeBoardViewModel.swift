@@ -4176,6 +4176,35 @@ class MergeBoardViewModel {
         kibbleDrive = drive
     }
 
+    /// Rungs of the running Drive the player could claim right now: purchased,
+    /// enough points, not already claimed. Empty when no Drive is running or it
+    /// has not been bought — points accrue regardless (§2), but nothing is
+    /// claimable until the purchase.
+    var kibbleDriveClaimableRungs: [TrackMilestone] {
+        guard let drive = kibbleDrive, drive.purchased else { return [] }
+        return KibbleDriveLadder.rungs.filter {
+            drive.points >= $0.threshold && !drive.claimedRungs.contains($0.index)
+        }
+    }
+
+    /// Claims one rung of the running Drive (§2: tapped one at a time, never
+    /// auto-claimed). Paid straight through `applyRewards`, so kibble lands
+    /// raw — no Pass bonus, since §3.5's margin is computed against the
+    /// listed 540.
+    ///
+    /// Marks the rung claimed before paying, so a re-entrant or repeated tap
+    /// cannot pay twice.
+    func claimKibbleDriveRung(index: Int) {
+        guard var drive = kibbleDrive, drive.purchased,
+              let rung = KibbleDriveLadder.rungs.first(where: { $0.index == index }),
+              drive.points >= rung.threshold,
+              !drive.claimedRungs.contains(index) else { return }
+        drive.claimedRungs.append(index)
+        kibbleDrive = drive
+        applyRewards(rung.paidRewards)
+        persist()
+    }
+
     /// Highest tier reached, and whether each is claimable right now.
     var carePointTiersReached: [CarePointTier: Bool] {
         Dictionary(uniqueKeysWithValues: CarePointTier.allCases.map {
