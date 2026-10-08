@@ -444,7 +444,7 @@ struct TaskTrayView: View {
         ([passDailyTile].compactMap { $0 } + trioTiles)
         + eventTiles
         + [parallelBoardTile, rewardLadderTile, loyaltyTile, inviteTile].compactMap { $0 }
-        + [levelTile, freeChestTile, spotlightTile, questsTile, dailiesTile,
+        + [levelTile, freeChestTile, spotlightTile, dailiesTile,
            smileTile, careTile, weeklyTile, monthlyTile]
     }
 
@@ -646,20 +646,9 @@ struct TaskTrayView: View {
                  action: { activeSheet = .dailyChallenges })
     }
 
-    /// One tile for the whole quest set, not one per quest — forced by the
-    /// 40pt tile (spec §3.6), and what the reference does too (§1.6).
-    private var questsTile: TrayTile {
-        let done = viewModel.activeQuests.filter(\.isComplete).count
-        let total = max(1, viewModel.activeQuests.count)
-        return TrayTile(id: "quests",
-                        icon: "target",
-                        tint: Color(red: 0.18, green: 0.48, blue: 0.22),
-                        status: .label("\(done)/\(total)"),
-                        showsBadge: done > 0,
-                        urgency: .active,
-                        accessibilityText: "Quests, \(done) of \(total) complete",
-                        action: { activeSheet = .quests })
-    }
+    // There is no Quests tile: the standing quests are cards at the head of
+    // the lane (`QuestLaneCard`, Spec_QuestLaneCards_Draft.md Task 5.2), and a
+    // tap on one opens the quest sheet.
 
     /// The daily tasks also have their own cards in the lane
     /// (`DailyTaskLaneCard`) — this tile stays because the lane scrolls and the

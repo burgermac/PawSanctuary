@@ -1,6 +1,6 @@
 # PawSanctuary — Quest cards on the horizontal lane (draft)
 
-**Status: draft. Task 5.1 implemented in PR #25 (8 Oct 2026); 5.2 and 5.3 not started.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log. Written 7 Oct 2026 from a direct design decision by the developer, not from reference footage.
+**Status: draft. Task 5.1 implemented in PR #25 (8 Oct 2026); 5.2 (Quests tile removed) implemented 8 Oct 2026; the tutorial's `.quest` step (§6.3) is not yet confirmed on screen.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log. Written 7 Oct 2026 from a direct design decision by the developer, not from reference footage.
 
 This spec **amends three recorded decisions** in `Spec_TaskTrayRedesign_Draft.md`: §3.4 ("the horizontal lane carries orders, not quests. Confirmed"), §3.5 ("quests and daily challenges move to the tray") and §3.6 (quests aggregate to one tile). Those were reasoned decisions, so §2 below restates why each is being overridden or kept rather than silently dropping them.
 
