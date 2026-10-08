@@ -1,6 +1,6 @@
 # PawSanctuary — Quest cards on the horizontal lane (draft)
 
-**Status: draft. Task 5.1 implemented in PR #25 (8 Oct 2026); 5.2 and 5.3 not started.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log. Written 7 Oct 2026 from a direct design decision by the developer, not from reference footage.
+**Status: draft. Task 5.1 implemented in PR #25 (8 Oct 2026); **5.2 (remove the tile) was implemented in PR #26 and then reverted: the tile stays (decided 8 Oct 2026, §6.1).** 5.3's on-screen items are partly done (card render and Claim confirmed on device). Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log. Written 7 Oct 2026 from a direct design decision by the developer, not from reference footage.
 
 This spec **amends three recorded decisions** in `Spec_TaskTrayRedesign_Draft.md`: §3.4 ("the horizontal lane carries orders, not quests. Confirmed"), §3.5 ("quests and daily challenges move to the tray") and §3.6 (quests aggregate to one tile). Those were reasoned decisions, so §2 below restates why each is being overridden or kept rather than silently dropping them.
 
@@ -31,7 +31,7 @@ This spec **amends three recorded decisions** in `Spec_TaskTrayRedesign_Draft.md
 
 The developer's wording was "ahead of orders, next to the collapsible tray": the quests sit at the lane's left edge, adjacent to the tray. This is read as ahead of the dailies and the urgent order too. The cost is that the urgent order, which expires in minutes, now sits behind up to three quest cards (~500pt), more than a viewport. It is accepted for now (§6.2), and the first thing to watch in play.
 
-**Q3 — The tray's Quests tile is removed.** Overrides §3.5/§3.6. Cost recorded in §6.1.
+**Q3 — The tray's Quests tile is kept.** Decided 8 Oct 2026, reversing this spec's first draft (tile removed). The tile is the only quest indicator that stays on screen while the lane scrolls, the same reason `dailiesTile` stays (§1). Quests therefore appear in two places, the lane cards and the tray tile, as dailies already do.
 
 **Q4 — The card claims directly, through the existing path.** Claim calls `claimQuest(id:)` unchanged. No reward, generation or persistence change; **no schema change**, so no migration or `PersistenceTests` case is needed.
 
@@ -69,15 +69,15 @@ One per session, game playable after each.
 
 **5.1 — Quest lane card and lane integration, tile kept.** Build `QuestLaneCard`; extract the lane's ordering into one pure, testable function (claimable quests → in-progress quests → daily → urgent → orders); add the cards to `OrderLaneView`. **Implemented in PR #25** (`laneCardKinds`, `laneOrderedQuests`, `QuestLaneCard`, `QuestLaneCardsTests`); CI green, Simulator check outstanding. Leave `questsTile` in place so the change is additive and revertible.
 
-**5.2 — Remove the Quests tile.** Delete `questsTile` and its entry in the tile list (`TaskTrayView.swift:447`); confirm the dot count, urgency ranking and `trayBandHeight` are unaffected (the tile list is conditional, so the count already varies).
+**5.2 — ~~Remove the Quests tile.~~ Dropped, tile kept (Q3).** It was built (PR #26, unmerged) and then closed on the developer's decision. Original text, kept for the record:  Delete `questsTile` and its entry in the tile list (`TaskTrayView.swift:447`); confirm the dot count, urgency ranking and `trayBandHeight` are unaffected (the tile list is conditional, so the count already varies).
 
 **5.3 — Tests and on-screen check.** See §7.
 
 ## 6. Open questions
 
-1. **Keep the tile after all?** `dailiesTile` is the standing counter-example: a tile is the only thing that stays on screen while the lane scrolls, and with quests last in a ~1,800pt lane they will usually be off screen. The developer chose removal; the recommendation here is to ship 5.1 first and decide 5.2 after seeing it in play. 5.1 is built to allow that.
+1. **Keep the tile after all?** Resolved 8 Oct 2026: **kept.** After building the removal (PR #26) the developer reverted it, preferring an always-visible quest indicator. The lane/tile duplication is accepted, as with dailies.
 2. **Urgent order behind the quests.** Resolved in favour of quests leading (Q2), but the urgent order can now sit off screen behind up to three quest cards. If that costs missed urgent orders in play, the fix is to move the urgent order (and perhaps dailies) ahead of the in-progress quests.
-3. **Tutorial.** `tutorialStep == .quest` (`MergeBoardView.swift:90`) opens `.task(.quests)`; the tutorial highlights the whole band frame, not the tile, so it should survive 5.2 — to be confirmed on screen, not assumed.
+3. **Tutorial.** `tutorialStep == .quest` (`MergeBoardView.swift:90`) opens `.task(.quests)`; the tutorial highlights the whole band frame, not the tile, so it would have survived 5.2. Moot now that the tile is kept.
 4. **Claim animation.** The claimed card is replaced in place. Whether it needs a visible hand-off (fade/slide) so the player sees a *new* quest arrived, rather than the old one resetting, is unspecified.
 5. **Mitigating lane length** (§4) — a cap on in-progress quest cards, or collapsing the three in-progress ones into one `Quests n/3` card behind the claimable ones — is not decided and not needed to start.
 
