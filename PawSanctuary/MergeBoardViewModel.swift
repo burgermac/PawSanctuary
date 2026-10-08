@@ -1139,7 +1139,28 @@ class MergeBoardViewModel {
         saveTickCounter = (saveTickCounter + 1) % 5
         if saveTickCounter == 0 { save() }
         updateMergeHint()
+        #if DEBUG
+        MemoryLog.tick { memoryLogContext() }
+        #endif
     }
+
+    #if DEBUG
+    /// Board facts recorded beside each memory sample, so a climb can be
+    /// matched against what was on screen (`MemoryLog.swift`).
+    private func memoryLogContext() -> MemoryLog.Context {
+        var spawners = 0, affordable = 0, occupied = 0
+        for cell in flatBoard where cell.isUnlocked {
+            if !cell.isEmpty { occupied += 1 }
+            if let species = cell.producer?.species {
+                spawners += 1
+                if canAffordSpawnerTap(species: species) { affordable += 1 }
+            }
+        }
+        return MemoryLog.Context(spawnersOnBoard: spawners,
+                                 spawnersAffordable: affordable,
+                                 occupiedCells: occupied)
+    }
+    #endif
 
     // MARK: Merge hint (idle nudge)
     //
