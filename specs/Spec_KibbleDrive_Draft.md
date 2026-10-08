@@ -405,6 +405,8 @@ With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into t
 
 **Task 6.1 IMPLEMENTED (8 Oct 2026):** `TaskSheet.kibbleDrive`, `kibbleDriveTile` in the tray's conditional group, and `KibbleDrivePanelView` with the header only (name, countdown, points, progress bar with rung ticks; a short "ended" message if the window closed under an open sheet). No schema change. Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded.
 
+**Task 6.2 IMPLEMENTED (8 Oct 2026):** the buy banner in `KibbleDrivePanelView`, shown only while unpurchased: headline *"Earn up to 540 Kibble"*, one line explaining that points accrue either way, the *"+N bonus points on purchase"* line when `kibbleDriveCatchUpGrant()` is above 0, and the store price button. The button sets `pendingKibbleDriveEventID` before purchasing (the TOCTOU guard's input) and renders only when `isMonetizationUnlocked` and the product loaded, so the tile showing early does not bypass D7. The HUD DEBUG button is removed; a `#if DEBUG` "Simulate purchase" button now lives in the banner (D-6). Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded. Rung rows (6.3) not started.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.
