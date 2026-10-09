@@ -3555,15 +3555,22 @@ class MergeBoardViewModel {
 
     // MARK: Daily login
 
+    /// Registers today's visit and, on a new day, **pays the reward on the spot**
+    /// (specs/Spec_LoginGrantAtCheck.md). It used to wait for a Claim tap, but the
+    /// visit date is saved by the next ordinary save while the reward was only
+    /// paid on the tap -- so quitting between the two lost the day's reward for
+    /// good. Paying here puts the date and the balance in the same save: they
+    /// either both persist or neither does, and a next launch pays once.
     func checkDailyLogin() {
         let isNew = quests.checkDailyLogin()
-        showLoginReward = isNew
         loginStreakDay = quests.loginStreakDay
+        if isNew { grantLoginReward() }
+        showLoginReward = isNew
     }
 
-    func claimLoginReward() {
-        // One claim per popup: the milestone bonus must not be payable twice.
-        guard showLoginReward else { return }
+    /// Pays the day reward and any Total Days milestone bonus. Called once per
+    /// new day, from `checkDailyLogin` only.
+    private func grantLoginReward() {
         let idx    = max(0, min(loginStreakDay - 1, loginDailyRewards.count - 1))
         let reward = loginDailyRewards[idx]
         kibbleEngine.kibble  += reward.kibble
@@ -3573,8 +3580,12 @@ class MergeBoardViewModel {
             kibbleEngine.dogTags += milestone.dogTags
             if let pack = milestone.cardPack { earnCardPack(pack) }
         }
+    }
+
+    /// Closes the Good Morning popup. The reward was already paid by
+    /// `checkDailyLogin`; this only dismisses the celebration.
+    func dismissLoginReward() {
         showLoginReward = false
-        persist()
     }
 
     // MARK: Adoption Order Board

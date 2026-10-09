@@ -64,40 +64,58 @@ final class TotalDaysTests: XCTestCase {
         XCTAssertEqual(q.loginStreak, 1, "the consecutive streak still resets, as before")
     }
 
-    // MARK: Claiming
+    // MARK: Paying (specs/Spec_LoginGrantAtCheck.md: paid at the check, not on a tap)
 
-    private func vm(totalDays: Int, kibble: Int = 0, tags: Int = 0) -> MergeBoardViewModel {
+    /// A view model whose last visit was `daysAgo` days ago, with the counter
+    /// at `totalDays` and a known balance, ready for `checkDailyLogin()`.
+    private func vm(totalDays: Int, daysAgo: Int = 1, kibble: Int = 0, tags: Int = 0) -> MergeBoardViewModel {
         let vm = MergeBoardViewModel()
         vm.quests.loginTotalDays = totalDays
-        vm.quests.loginStreakDay = 1
-        vm.showLoginReward = true
+        vm.quests.loginDayIndex = 0
+        vm.quests.loginStreak = 1
+        vm.quests.lastLoginDate = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())
         vm.kibbleEngine.kibble = kibble
         vm.kibbleEngine.dogTags = tags
         return vm
     }
 
-    func testAnOrdinaryDayPaysOnlyTheDayReward() {
-        let vm = vm(totalDays: 3)
-        vm.claimLoginReward()
-        XCTAssertEqual(vm.kibbleEngine.kibble, loginDailyRewards[0].kibble)
-        XCTAssertEqual(vm.kibbleEngine.dogTags, loginDailyRewards[0].dogTags)
+    func testAnOrdinaryDayPaysOnlyTheDayRewardAtTheCheck() {
+        let vm = vm(totalDays: 2)            // today becomes day 3: no milestone
+        vm.checkDailyLogin()
+        XCTAssertTrue(vm.showLoginReward)
+        // Yesterday's streak day index was 0, so today is streak day 2.
+        let reward = loginDailyRewards[vm.loginStreakDay - 1]
+        XCTAssertEqual(vm.kibbleEngine.kibble, reward.kibble)
+        XCTAssertEqual(vm.kibbleEngine.dogTags, reward.dogTags)
     }
 
-    func testAMilestoneDayPaysTheDayRewardPlusTheBonusInOneClaim() {
-        let vm = vm(totalDays: 15)
+    func testAMilestoneDayPaysTheDayRewardPlusTheBonusAtTheCheck() {
+        let vm = vm(totalDays: 14)           // today becomes day 15
         let packsBefore = vm.pendingCardPacks.count
-        vm.claimLoginReward()
+        vm.checkDailyLogin()
         let bonus = try! XCTUnwrap(loginMilestone(forTotalDays: 15))
-        XCTAssertEqual(vm.kibbleEngine.kibble, loginDailyRewards[0].kibble + bonus.kibble)
-        XCTAssertEqual(vm.kibbleEngine.dogTags, loginDailyRewards[0].dogTags + bonus.dogTags)
+        let reward = loginDailyRewards[vm.loginStreakDay - 1]
+        XCTAssertEqual(vm.kibbleEngine.kibble, reward.kibble + bonus.kibble)
+        XCTAssertEqual(vm.kibbleEngine.dogTags, reward.dogTags + bonus.dogTags)
         XCTAssertEqual(vm.pendingCardPacks.count, packsBefore + 1, "day 15 carries a card pack")
     }
 
-    func testTheBonusCannotBePaidTwice() {
-        let vm = vm(totalDays: 8)
-        vm.claimLoginReward()
+    func testASecondCheckTheSameDayPaysNothingMore() {
+        let vm = vm(totalDays: 7)
+        vm.checkDailyLogin()
         let kibble = vm.kibbleEngine.kibble, tags = vm.kibbleEngine.dogTags
-        vm.claimLoginReward()
+        vm.checkDailyLogin()
+        XCTAssertEqual(vm.kibbleEngine.kibble, kibble)
+        XCTAssertEqual(vm.kibbleEngine.dogTags, tags)
+        XCTAssertFalse(vm.showLoginReward, "no popup the second time")
+    }
+
+    func testDismissingThePopupPaysNothing() {
+        let vm = vm(totalDays: 7)
+        vm.checkDailyLogin()
+        let kibble = vm.kibbleEngine.kibble, tags = vm.kibbleEngine.dogTags
+        vm.dismissLoginReward()
+        XCTAssertFalse(vm.showLoginReward)
         XCTAssertEqual(vm.kibbleEngine.kibble, kibble)
         XCTAssertEqual(vm.kibbleEngine.dogTags, tags)
     }
