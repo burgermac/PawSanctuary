@@ -566,6 +566,13 @@ class MergeBoardViewModel {
         get { quests.loginDayIndex }
         set { quests.loginDayIndex = newValue }
     }
+    var loginTotalDays: Int {
+        get { quests.loginTotalDays }
+        set { quests.loginTotalDays = newValue }
+    }
+    /// The Total Days milestone today's count lands on, shown beside the day
+    /// reward in the Good Morning popup (specs/Spec_TotalDaysTrack.md).
+    var loginMilestoneToday: LoginMilestone? { loginMilestone(forTotalDays: loginTotalDays) }
     var spotlightProgressFraction: Double { quests.spotlightProgressFraction }
     var dailyChallengeResetText: String   { quests.dailyChallengeResetText }
 
@@ -1492,7 +1499,7 @@ class MergeBoardViewModel {
         selectedCell = nil; draggingFrom = nil
         quests.dailyChallengeStreak = 0; quests.dailyChallengeBonusClaimed = false
         quests.spotlightMergesThisWeek = 0
-        quests.lastLoginDate = nil; quests.loginStreak = 0; quests.loginDayIndex = 0
+        quests.lastLoginDate = nil; quests.loginStreak = 0; quests.loginDayIndex = 0; quests.loginTotalDays = 0
         quests.lastDailyChallengeReset = nil; quests.lastSpotlightWeek = 0
         passLastClaimDate = nil
         loyaltyClubDayIndex = 0; loyaltyClubLastClaimDate = nil; loyaltyClubStreak = 0
@@ -3523,10 +3530,17 @@ class MergeBoardViewModel {
     }
 
     func claimLoginReward() {
+        // One claim per popup: the milestone bonus must not be payable twice.
+        guard showLoginReward else { return }
         let idx    = max(0, min(loginStreakDay - 1, loginDailyRewards.count - 1))
         let reward = loginDailyRewards[idx]
         kibbleEngine.kibble  += reward.kibble
         kibbleEngine.dogTags += reward.dogTags
+        if let milestone = loginMilestoneToday {
+            kibbleEngine.kibble  += milestone.kibble
+            kibbleEngine.dogTags += milestone.dogTags
+            if let pack = milestone.cardPack { earnCardPack(pack) }
+        }
         showLoginReward = false
         persist()
     }

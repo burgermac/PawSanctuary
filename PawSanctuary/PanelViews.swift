@@ -17,6 +17,57 @@ struct LoginRewardView: View {
     var rewardIndex: Int { max(0, min(viewModel.loginStreakDay - 1, loginDailyRewards.count - 1)) }
     var todayReward: (kibble: Int, dogTags: Int, label: String) { loginDailyRewards[rewardIndex] }
 
+    private func milestoneRewardText(_ m: LoginMilestone) -> String {
+        var parts = ["+\(m.kibble) Kibble", "+\(m.dogTags) Tags"]
+        if m.cardPack != nil { parts.append("a card pack") }
+        return parts.joined(separator: "  ·  ")
+    }
+
+    /// The slower, forgiving track under the 7-day cycle (specs/Spec_TotalDaysTrack.md):
+    /// "Day N of 30" with the four milestones marked. Missed days cost nothing.
+    private var totalDaysStrip: some View {
+        let day = loginCycleDay(forTotalDays: viewModel.loginTotalDays)
+        return VStack(spacing: 6) {
+            HStack {
+                Text("Total Days").font(.system(size: 12, weight: .bold)).foregroundColor(.white)
+                Spacer()
+                Text("Day \(day) of \(loginTotalDaysCycle)")
+                    .font(.system(size: 12, weight: .semibold)).foregroundColor(.white.opacity(0.8))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.2))
+                    Capsule().fill(Color.yellow)
+                        .frame(width: geo.size.width * Double(day) / Double(loginTotalDaysCycle))
+                    ForEach(loginTotalDaysMilestones, id: \.day) { m in
+                        Circle()
+                            .fill(day >= m.day ? Color.yellow : Color.white.opacity(0.5))
+                            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                            .frame(width: 14, height: 14)
+                            .position(x: geo.size.width * Double(m.day) / Double(loginTotalDaysCycle),
+                                      y: geo.size.height / 2)
+                    }
+                }
+            }
+            .frame(height: 14)
+            // Placed with the same proportions as the markers above, so each
+            // number sits under its own marker.
+            GeometryReader { geo in
+                ForEach(loginTotalDaysMilestones, id: \.day) { m in
+                    Text("\(m.day)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(day >= m.day ? .yellow : .white.opacity(0.5))
+                        .position(x: geo.size.width * Double(m.day) / Double(loginTotalDaysCycle),
+                                  y: geo.size.height / 2)
+                }
+            }
+            .frame(height: 12)
+        }
+        .padding(.horizontal, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Total days, day \(day) of \(loginTotalDaysCycle)"))
+    }
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.55).ignoresSafeArea()
@@ -52,6 +103,8 @@ struct LoginRewardView: View {
                     }
                 }
 
+                totalDaysStrip
+
                 VStack(spacing: 8) {
                     Text("Today's Reward").font(.headline).foregroundColor(.white)
                     HStack(spacing: 20) {
@@ -69,6 +122,13 @@ struct LoginRewardView: View {
                                     .font(.system(size: 12, weight: .bold)).foregroundColor(.white)
                             }
                         }
+                    }
+                    if let milestone = viewModel.loginMilestoneToday {
+                        Divider().overlay(Color.white.opacity(0.3))
+                        Label("Day \(milestone.day) bonus", systemImage: "gift.fill")
+                            .font(.system(size: 13, weight: .heavy)).foregroundColor(.yellow)
+                        Text(milestoneRewardText(milestone))
+                            .font(.system(size: 12, weight: .bold)).foregroundColor(.white)
                     }
                 }
                 .padding(18)

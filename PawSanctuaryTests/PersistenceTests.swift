@@ -1406,6 +1406,27 @@ final class PersistenceTests: XCTestCase {
                        "the Drive's ladder must survive a weekly reset that zeroes carePointsThisWeek — straddling that boundary would otherwise destroy a purchase")
     }
 
+    // MARK: v42 → v43 (Total Days login track)
+
+    func testV42toV43StartsTheTotalDaysTrackAtZero() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "loginTotalDays")
+        obj["version"] = 42
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v42 save should migrate to v43")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.loginTotalDays, 0)
+    }
+
+    func testLoginTotalDaysRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.loginTotalDays = 17
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.loginTotalDays, 17)
+    }
+
     // MARK: v38 → v39 (Smile Points)
 
     func testV38toV39DefaultsSmilePointsToAnEmptyBundle() throws {

@@ -44,6 +44,9 @@ class QuestCoordinator {
     var lastLoginDate: Date? = nil
     var loginStreak: Int = 0
     var loginDayIndex: Int = 0
+    /// Days the player has opened the game, lifetime (v43). Unlike `loginStreak`
+    /// it never resets on a gap — see specs/Spec_TotalDaysTrack.md.
+    var loginTotalDays: Int = 0
     var loginStreakDay: Int = 1
     var showLoginReward: Bool = false
 
@@ -414,6 +417,7 @@ class QuestCoordinator {
             loginStreak   = 1
         }
         lastLoginDate  = today
+        loginTotalDays += 1
         loginStreakDay = loginDayIndex + 1
         showLoginReward = true
         return true
@@ -432,6 +436,7 @@ class QuestCoordinator {
         lastLoginDate             = s.lastLoginDate
         loginStreak               = s.loginStreak
         loginDayIndex             = s.loginDayIndex
+        loginTotalDays            = s.loginTotalDays
     }
 
     func capture(into s: inout GameState) {
@@ -445,5 +450,6 @@ class QuestCoordinator {
         s.lastLoginDate             = lastLoginDate
         s.loginStreak               = loginStreak
         s.loginDayIndex             = loginDayIndex
+        s.loginTotalDays            = loginTotalDays
     }
 }
