@@ -1753,6 +1753,12 @@ let loyaltyClubCycle: [LoyaltyReward] = [
 let passDailyKibble        = 20    // kibble granted on each daily pass claim
 let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble rewards
 
+// ── Board themes (specs/Spec_BoardThemes.md) ─────────────────────
+// Built Sanctuary areas needed to unlock the two non-starter themes. Mine,
+// not measured: reachable (the map has 15) without being session-one.
+let boardThemeAutumnAreas  = 3
+let boardThemeBlossomAreas = 6
+
 // ── Parallel Board energy (Phase 6b, Task 3.2) ──────────────────
 // First-cut numbers, not derived from a model — see Spec_Phase6b_ParallelBoard.md §4.
 let parallelBoardEnergyCap      = 30

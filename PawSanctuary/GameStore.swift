@@ -127,6 +127,10 @@ struct GameState: Codable {
     var loginDayIndex: Int
     /// Lifetime days the game was opened (v43), for the Total Days track.
     var loginTotalDays: Int = 0
+    /// The player's board look (v44, specs/Spec_BoardThemes.md), and whether the
+    /// one-time first-choice sheet has been offered.
+    var boardTheme: BoardTheme = .meadow
+    var boardThemePrompted: Bool = false
     var lastDailyChallengeReset: Date?
     var lastSpotlightWeek: Int
 
@@ -377,7 +381,11 @@ enum GameStore {
     /// v43: loginTotalDays added (`specs/Spec_TotalDaysTrack.md`). Non-Optional,
     ///      so it has an `additiveDefaultsSinceV8` entry; a migrating save starts
     ///      the track at zero.
-    static let currentVersion = 43
+    /// v44: boardTheme + boardThemePrompted added (`specs/Spec_BoardThemes.md`).
+    ///      Both non-Optional, so both have `additiveDefaultsSinceV8` entries; a
+    ///      migrating save starts on Meadow and has not yet been offered the
+    ///      first-choice sheet.
+    static let currentVersion = 44
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -699,6 +707,7 @@ enum GameStore {
         if version == 40 { return migrateByInjecting(from: 40, defaults: [:], into: data) }   // playtestMetrics covered by additiveDefaultsSinceV8
         if version == 41 { return migrateByInjecting(from: 41, defaults: [:], into: data) }   // kibbleDrive is Optional — no default needed
         if version == 42 { return migrateByInjecting(from: 42, defaults: [:], into: data) }   // loginTotalDays covered by additiveDefaultsSinceV8
+        if version == 43 { return migrateByInjecting(from: 43, defaults: [:], into: data) }   // boardTheme / boardThemePrompted covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -798,6 +807,8 @@ enum GameStore {
         "smilePointsBanked": 0,
         // v43 — Total Days login track. A migrating save starts it at zero.
         "loginTotalDays": 0,
+        // v44 — Board themes. A migrating save starts on Meadow, un-prompted.
+        "boardTheme": "meadow", "boardThemePrompted": false,
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space
