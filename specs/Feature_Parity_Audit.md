@@ -4,6 +4,8 @@
 
 **Sources:** `Merge2_Reference_Blueprint.md`, `Reference_Data_Extract.md`, `Findings_26July.md`, `Phase2_Economy_Model.md` (companion to `Phase2_Economy_Model.xlsx`), cross-checked against the current PawSanctuary source (`PawSanctuary/*.swift`).
 
+**Updated 9 Oct 2026.** Rows marked "Re-checked 9 Oct 2026" were verified against the current source and changed; everything else is as read on 13 Aug. A section below lists what was built since.
+
 **Legend:** ✅ present and functionally equivalent · 🟡 present but structurally thinner than the reference · 🚧 infrastructure exists, not player-facing · ❌ absent
 
 ---
@@ -30,7 +32,7 @@
 | Power Boost / spawn multiplier | ×1/2/4/8/16, exactly energy-neutral by construction, dominant strategy | ✅ | `spawnMultiplier` (1/2/4/8), confirmed energy-neutral by `EconomyTests.testEveryMultiplierIsEnergyNeutral`. Matches the reference finding almost exactly, independently arrived at. |
 | Bonus rolls gated to boosted taps | 0 events at ×1 vs. 12–15 at ×4 in a controlled sample | ✅ | `legendaryBonusShare` bonus layer on boosted spawns (Gap_Analysis_Round2 C-2, closed). |
 | Currency-as-merge-chain on the board | "The single largest structural miss" in the original blueprint — coins/energy spawn and merge like any item | ✅ | `currency.kibble` / `currency.coin` chains spawn and merge on the board (Phase 4, Task 4.1) — this was explicitly adopted, not missed. |
-| Generator cooldown class system | An order of magnitude spread: 2m44s to 30m, deliberately two classes (fast common / slow "return visit" premium) | ❌ | All PawSanctuary producer cooldowns cluster in 25–60 **seconds** (`ProducerLevel.cooldown`, `AnimalSpecies.swift:337`) — no long-cooldown class exists at all. The reference's "30-min generator as the return-visit mechanic" has no PawSanctuary equivalent; the Free Chest timer (3.6, 4h) is the closest analog but isn't a board generator. Worth a decision, not obviously a gap — depends on whether the multi-hour Free Chest already fills that role. |
+| Generator cooldown class system | An order of magnitude spread: 2m44s to 30m, deliberately two classes (fast common / slow "return visit" premium) | 🟡 | **Re-checked 9 Oct 2026.** Family spawners now cool down for **30 s after every 150 kibble they spend**, per spawner, skippable for 2 Dog Tags (`Spec_SpawnerCooldown.md`) — built at Tim's direction, overruling an earlier recommendation of none. Legacy rescue producers and the shop supply boxes keep their 25–60 s per-tap cooldowns. There is still **no 30-minute "return-visit" class**: the Free Chest (4 h) and the Kibble Drive windows fill that role. Whether to add a premium long-cooldown generator is an open content decision, not a gap in the mechanism. |
 | Chest-as-purchased-spawner | A bought energy chest doesn't credit currency directly — it becomes a board spawner that produces it over several taps | ❌ | PawSanctuary's Dog Tag / kibble IAP packs credit currency directly on purchase. The "purchase costs board space and taps too" mechanic doesn't exist. |
 | Item purchase from chain inspector | "SEE IN STORE" button in the chain viewer, 14 gems mid-tier | 🟡 | Same *function* exists (buy a specific chain/tier for Dog Tags — `DogTagStore`), but it's a separate shop section, not a contextual button while inspecting a chain. |
 
@@ -55,9 +57,9 @@
 
 | Feature | Reference (measured) | PawSanctuary | Note |
 |---|---|---|---|
-| Live-ops primitives (milestone track, parallel board, competitive, timed order, reward table) | 8 primitives cataloged, all observed in the wild | 🚧 | All 8 have infrastructure (`LiveOpsPrimitives.swift`, `LiveOpsEngine.swift`) — `TokenWallet`, `ProgressTrack`, `EventScheduler` — but most are unused by any shipped content. |
-| Concurrent events | 6+ simultaneous timers observed, ranging 4 minutes to 29 days, layered | ❌ | PawSanctuary's model is explicitly single-active-event (`"the current single-active-event model"`, `MergeBoardViewModel.swift` comment). Only one event has ever been authored (`rescue_rush_jun2026`), and it's expired — nothing seasonal is currently live (`TODO.md`). This is the single largest structural gap in the audit: the reference's "permanent lattice of overlapping deadlines" has no PawSanctuary counterpart at all right now. |
-| Parallel board (a complete second mini-game, e.g. "Petal Talk") | Own board, generators, chain, currency, progress track, 36h duration | 🚧 | `ParallelBoardStub` satisfies the protocol with **no real board grid, no chains, no energy regen** — explicitly deferred in its own doc comment ("its own spec, deferred to 6b"). |
+| Live-ops primitives (milestone track, parallel board, competitive, timed order, reward table) | 8 primitives cataloged, all observed in the wild | ✅ | **Re-checked 9 Oct 2026.** Every primitive is implemented and in use (Phase 6a–6c): milestone track, Pass, parallel board, a rolling 90-day calendar of 13 weekly events and 3 Passes. Since the audit two more live-ops shapes were added: the **Reward Ladder** (D8) and the **Kibble Drive** (a paid, activity-fed ladder). Only competitive events are absent, and that is deliberate (3.8). |
+| Concurrent events | 6+ simultaneous timers observed, ranging 4 minutes to 29 days, layered | ✅ | **Re-checked 9 Oct 2026.** The single-active-event model was replaced in Phase 6c (`EventRegistry.activeEvents`). Weekly events, a Pass, parallel-board events and Kibble Drive windows now run at once, and the calendar deliberately overlaps them. This was the audit's "single largest structural gap". |
+| Parallel board (a complete second mini-game, e.g. "Petal Talk") | Own board, generators, chain, currency, progress track, 36h duration | 🟡 | **Re-checked 9 Oct 2026.** Built (`Spec_Phase6b_ParallelBoard.md`): a full-screen second board with its own chain, energy, generator and progress track, verified on screen on its real opening day, 11 Sep. It is structurally thinner than the reference's Greek Fest (`Spec_ParallelBoardReview_Draft.md` §2): a smaller board, an in-grid generator rather than an off-grid pedestal, one progress track rather than a 27-set collection, and — the one that changes the design — **no main-board token faucet**: energy is a self-contained timer, whereas the reference feeds it from main-board orders and sells a booster on that flow. Undecided. |
 | Competitive events (duels, tournaments, ranked races) | All three reference titles run them | ❌ | This is 3.8 in `Gap_Analysis_Round2.md` — deliberately deferred 2026-08-13 pending player population. `LiveOpsEngine` could host it. |
 | Event Pass (paid lane) | — | ✅ | `Spec_Phase6b_Pass.md`, `passUnlockedEventIDs`. |
 | Sanctuary Pass (recurring subscription) | — | ✅ | `IAPProduct.sanctuaryPass`, $4.99/mo per `TODO.md`'s pricing notes. |
@@ -87,10 +89,10 @@
 
 | Feature | Reference (measured) | PawSanctuary | Note |
 |---|---|---|---|
-| Weekly goal ladder | 5 point-weighted tasks, 170/420 pts for the reward | 🟡 | Bronze/Silver/Gold coin-threshold tiers (`weeklyGoalBronzeCoins` etc.) — a simpler 3-tier ladder against one metric (coins earned), not 5 independently-weighted task types. |
-| Daily rewards | 7-day cycle + slower "Total Days" milestone track underneath it | 🟡 | 7-day Loyalty Club cycle exists (`loyaltyClubCycle`); no second, slower long-run streak track alongside it. |
-| Daily challenges | Near-miss stagger (next challenge 60–90% done when current finishes) | ✅ | 3.1, closed this session — explicitly calibrated to this exact mechanic. |
-| "Spend N currency" quest (a spend quota disguised as a quest) | Observed in Tasty Tasks — explicitly flagged as the most aggressive daily-system item | ❌ | No `QuestGoal` case spends currency as an objective (`mergeAny`, `mergeInChain`, `reachTier`, `spawnBase` only). Absence matches the deliberately-conservative monetization posture chosen for 3.7 this session — consistent, not an oversight. |
+| Weekly goal ladder | 5 point-weighted tasks, 170/420 pts for the reward | ✅ | **Re-checked 9 Oct 2026.** The coin-based Bronze/Silver/Gold weekly goal still exists, but the point-weighted task ladder the audit asked for is now **Care Points** (v38): 120 / 320 / 520 points a week fed by quest claims, daily-task sweeps and order claims, paying Dog Tags, XP and card packs. Crossing a tier raises a full-screen milestone takeover (`Spec_MilestoneTakeover.md`). |
+| Daily rewards | 7-day cycle + slower "Total Days" milestone track underneath it | ✅ | **Re-checked 9 Oct 2026.** The **Total Days** track (v43, `Spec_TotalDaysTrack.md`) runs under the 7-day Good Morning cycle with milestones at the measured 8 / 15 / 22 / 30 in repeating 30-day cycles; it never resets on a gap. The thresholds are measured, **the rewards are not** (the reference extract records none). The reward is now paid when the day registers, so quitting before tapping the popup no longer loses it (`Spec_LoginGrantAtCheck.md`). |
+| Daily challenges | Near-miss stagger (next challenge 60–90% done when current finishes) | 🟡 | **Re-checked 9 Oct 2026.** Dailies are no longer counted-event challenges: they are three **hand-in baskets** of specific creatures held on the board and surrendered for coins (`Spec_DailyHandInTasks.md`), matching how the reference titles' own daily tasks work. The near-miss stagger was deliberately **dropped for dailies** (a basket of mixed creatures cannot share an anchor); it still operates on standing quests and the order-slot spread (`Gap_Analysis_Round2.md` 3.1). |
+| "Spend N currency" quest (a spend quota disguised as a quest) | Observed in Tasty Tasks — explicitly flagged as the most aggressive daily-system item | ✅ | **Re-checked 9 Oct 2026.** Adopted anyway (D6, `Spec_SpendQuotaDailies.md`), overriding the Alignment Plan's own "out" recommendation: `QuestGoal.spendCurrency` now exists. It reaches players through **standing quests** (`Spec_StandingQuestSpendGoals.md`); its daily-challenge half went away when dailies became hand-in baskets. |
 | Monthly goal | — | ✅ | `monthlyGoalClaimed`, monthly variant of the weekly system. |
 
 ## 9. Monetization surfaces
@@ -103,7 +105,7 @@
 | Price ladder value curve | 2.0× value bottom-to-top, steepest gains $2→$20 | 🚧 | Not independently verified — would need PawSanctuary's actual App Store Connect pricing, which isn't set in-repo (`ShopItemPreviewRow` shows "Pricing set in App Store Connect"). |
 | Contextual vs. rotating offer differentiation | Same price, different value density depending on player state | ❌ | No contextual-offer system — IAP packs are static regardless of player state. |
 | Purchase-progress promotion (VIP ladder) | Purchases earn points toward a track/prize | ✅ | 3.7, closed this session. |
-| First-purchase offer | Highest-leverage single offer in the game, visible only pre-first-purchase | ❌ | No dedicated first-purchase offer construct found (`starterBundle` IAP exists but isn't gated to pre-first-purchase state specifically). |
+| First-purchase offer | Highest-leverage single offer in the game, visible only pre-first-purchase | ✅ | **Re-checked 9 Oct 2026.** The kibble-refill sheet shows a "Welcome Offer" (the Sanctuary Starter Pack) until the player's first purchase and the smallest energy pack afterwards (`commerce.hasEverPurchased`). It appears at the wall, not as a standing storefront banner. |
 | Store item stock limits ("2 left") | Scarcity pressure on shop slots | ✅ | `DogTagStoreSlot`, stock 1 each, daily rotation. |
 | Piggy bank | Passive accumulator, paid to crack | ✅ | 3.4, closed this session. |
 | Timed free chests | Free with a wait, soft speed-up sink | ✅ | 3.6, closed this session. |
@@ -112,18 +114,26 @@
 
 ---
 
-## What this changes about the backlog
+## Built since this audit (13 Aug – 9 Oct 2026)
 
-Cross-referencing against `Gap_Analysis_Round2.md`, most gaps found here were **already known and already decided** — this audit mostly confirms rather than discovers:
+None of this is a gap any more; it is listed so the table above can be read against it. Each links to its spec.
 
-- Competitive events (§5) and the out-of-app loyalty surface (§7) are 3.8/3.9, both deliberately deferred today.
-- The spend-quota quest and first-purchase offer (§8, §9) are consistent absences with the conservative monetization posture chosen for 3.7 — not oversights.
+- **Orders and tasks:** order baskets, Smile Points, Care Points (`Spec_OrdersAndTasks_Draft.md`); hand-in dailies (`Spec_DailyHandInTasks.md`); the task tray and quest lane cards (`Spec_TaskTrayRedesign_Draft.md`, `Spec_QuestLaneCards_Draft.md`); the "Almost there!" nudge and per-currency reward flights (`Spec_TravelTownReview_Draft.md` §2, §5).
+- **Retention:** the Total Days login track, pay-at-check login reward, and the Care Points milestone takeover.
+- **Monetization (under D9, retention first):** the Reward Ladder (D8) and the Kibble Drive.
+- **Board feel:** the Lv.N tier badge, the producer-to-cell spawn flight (`Spec_SpawnFlight.md`) and the family spawner cooldown (`Spec_SpawnerCooldown.md`), alongside the earlier merge burst and producer shimmer.
+- **Live-ops:** the concurrent-event model, the 90-day calendar and the parallel board (Phase 6).
 
-**Two items are genuinely new findings from this pass, worth a decision:**
+## What is still open
 
-1. **Tier numbers aren't shown in the UI** (§1). Cheap, low-risk, directly recommended by the reference research as something they omitted and should have added. A real candidate for a future small session.
-2. **Generator cooldowns cluster at 25–60 seconds with no long-cooldown class** (§2). The reference's "30-minute generator as the return-visit mechanic" has no equivalent — unless the Free Chest (3.6) is judged to already fill that role, in which case this is resolved, not open. Worth a short conversation, not a unilateral build.
+**Real gaps, awaiting a decision**
+- **Parallel Board token faucet** — main-board orders and milestones feeding the parallel board's energy (see its row above). The largest remaining design question.
+- **Chest-as-purchased-spawner** and **contextual offers** — both monetization; both lower priority under D9.
+- **Chores, cosmetic choice, named characters / dialogue** — absent, and nobody has decided whether to build them.
+- **A long-cooldown premium generator class** — a content decision (see the cooldown row).
 
-**Everything else marked 🚧 or 🟡 is either genuinely unverified from this pass** (album set-vs-completion reward ratio, card purchase-by-rarity gating, days-per-building-level ramp) — would need a dedicated read to confirm, not urgent — **or a defensible scale/maturity difference** (album size, forever-goal total) that doesn't call for action.
+**Deliberately held back:** competitive events (3.8) and the out-of-app loyalty surface (3.9), pending a player population; the Party Board, pending more reference footage; merge-animation Tier B, pending the `BoardStateManager` Phase D refactor.
 
-No absence found here reads as an accidental miss serious enough to warrant reopening on its own; the two flagged above are offered as options, not recommendations to build unprompted.
+**Rows still unverified** (unchanged from 13 Aug; they need a dedicated read, not a guess): the album set-vs-completion reward ratio, card purchase by rarity, the days-per-building-level ramp, the price-ladder value curve, and whether top-tier tiles should show persistent "maxed" text.
+
+**Not code:** the real ad SDK behind the wall, Push Notifications, iCloud and Game Center capabilities, and the App Store submission items — see `TODO.md`.
