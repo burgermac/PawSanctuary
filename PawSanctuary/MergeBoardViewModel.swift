@@ -1486,7 +1486,7 @@ class MergeBoardViewModel {
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
-        carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0
+        carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0; pendingMilestone = nil
         kibbleDrive = nil
         cachedActiveBonuses = UpgradeBonus()
         selectedCell = nil; draggingFrom = nil
@@ -4095,6 +4095,7 @@ class MergeBoardViewModel {
         // Unclaimed tiers are forfeited with the points, same as the coin goal.
         carePointsThisWeek      = 0
         claimedCarePointTiers   = []
+        pendingMilestone        = nil   // its tier was just forfeited with the points
         // `kibbleDrive` is deliberately NOT reset here, and adding it to this
         // list would destroy a purchase. A Drive window can straddle the weekly
         // boundary; its ladder is scoped to the event, not to the week, and is
@@ -4201,8 +4202,44 @@ class MergeBoardViewModel {
     /// each of them.
     func awardCarePoints(_ amount: Int) {
         guard amount > 0 else { return }
+        let before = carePointsThisWeek
         carePointsThisWeek += amount
         kibbleDrive?.points += amount
+        raiseMilestoneIfCrossed(from: before, to: carePointsThisWeek)
+    }
+
+    // MARK: Milestone takeover (specs/Spec_MilestoneTakeover.md)
+
+    /// The Care Points tier whose takeover is on screen, or nil. Ephemeral by
+    /// design: if the app closes before it is seen, the tier is simply still
+    /// claimable in the panel.
+    var pendingMilestone: CarePointTier?
+
+    /// Raises the takeover for the highest unclaimed tier whose threshold the
+    /// award just crossed. One takeover, never a queue; a later crossing while
+    /// one is showing can only raise it.
+    private func raiseMilestoneIfCrossed(from before: Int, to after: Int) {
+        let crossed = CarePointTier.allCases.filter {
+            before < $0.pointsNeeded && after >= $0.pointsNeeded && !isCarePointTierClaimed($0)
+        }
+        guard let highest = crossed.last else { return }
+        if let current = pendingMilestone, current.rawValue >= highest.rawValue { return }
+        pendingMilestone = highest
+    }
+
+    /// "Later": close it; the tiers stay claimable in the Care Points panel.
+    func dismissMilestone() {
+        pendingMilestone = nil
+    }
+
+    /// "Claim": every claimable tier up to the one shown, through the same
+    /// chokepoint the panel uses, then close.
+    func claimMilestone() {
+        guard let shown = pendingMilestone else { return }
+        for tier in claimableCarePointTiers where tier.rawValue <= shown.rawValue {
+            claimCarePointTier(tier)
+        }
+        pendingMilestone = nil
     }
 
     // MARK: Kibble Drive (specs/Spec_KibbleDrive_Draft.md)
