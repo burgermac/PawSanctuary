@@ -1640,6 +1640,13 @@ class MergeBoardViewModel {
         guard var producer = boardState.producer(at: pos) else { return }
 
         if producer.level == .familySpawner, let species = producer.species {
+            // Cooling down (specs/Spec_SpawnerCooldown.md): a tap offers the skip
+            // instead of spawning. Checked first so the wait is never bypassed.
+            guard producer.isReady else {
+                requestSpawnerSkip(at: pos)
+                selectedCell = pos
+                return
+            }
             // Family spawner — kibble-based, unlimited, species-specific animal chain
             let chainID = ContentRegistry.animalChainID(species)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
@@ -1709,6 +1716,14 @@ class MergeBoardViewModel {
             }
             finishSpawn(item: spawnedItem, at: target, cost: cost)
             maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier)
+            // Re-read the tile: the Scout preview above rewrote it, and a stale
+            // local copy would overwrite that. The bonus spawn is free, so only
+            // this tap's `cost` counts toward the cooldown.
+            if var tile = boardState.producer(at: pos) {
+                let startedCooldown = tile.recordKibbleSpent(cost)
+                boardState.setProducer(tile, at: pos)
+                if startedCooldown { scheduleSpawnerCooldownRefresh(at: pos, readyAt: tile.readyAt) }
+            }
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
             // Task 2.1: priced from the selected tier, same as the family spawner.
@@ -3856,6 +3871,49 @@ class MergeBoardViewModel {
     /// Derived live from `freeChestReadyAt`, never ticked by hand — see
     /// `ProducerTile.readyAt`'s doc comment for why.
     var freeChestTimeRemaining: Double { max(0, freeChestReadyAt.timeIntervalSinceNow) }
+
+    // MARK: Family spawner cooldown (specs/Spec_SpawnerCooldown.md)
+
+    /// Where the "skip the wait?" alert is pending; nil when none is.
+    var pendingSpawnerSkip: GridPosition?
+
+    /// Tapping a cooling family spawner. The skip is a Dog Tag spend, so it is a
+    /// monetization surface and stays silent until D7's gate opens — before that
+    /// the tap just selects and the 30 seconds run out on their own.
+    func requestSpawnerSkip(at pos: GridPosition) {
+        guard isMonetizationUnlocked else { return }
+        pendingSpawnerSkip = pos
+    }
+
+    /// Pays `familySpawnerCooldownSkipDogTags` to end the cooldown at `pos` now.
+    /// Returns false (charging nothing) if there is no cooling family spawner
+    /// there or the player cannot afford it.
+    @discardableResult
+    func skipSpawnerCooldown(at pos: GridPosition) -> Bool {
+        guard isMonetizationUnlocked,
+              var tile = boardState.producer(at: pos),
+              tile.level == .familySpawner, !tile.isReady,
+              kibbleEngine.dogTags >= familySpawnerCooldownSkipDogTags else { return false }
+        kibbleEngine.dogTags -= familySpawnerCooldownSkipDogTags
+        updateAllAfterSpend(kind: .dogTags, amount: familySpawnerCooldownSkipDogTags)
+        tile.readyAt = .distantPast
+        boardState.setProducer(tile, at: pos)
+        return true
+    }
+
+    /// A tile's readiness is derived from `readyAt`, so nothing re-renders the
+    /// board when a cooldown simply runs out. Rewriting the tile once at that
+    /// moment brings the tap shimmer back on time. Skipped if the wait was
+    /// skipped or restarted meanwhile (`readyAt` no longer matches).
+    private func scheduleSpawnerCooldownRefresh(at pos: GridPosition, readyAt: Date) {
+        let delay = max(0, readyAt.timeIntervalSinceNow) + 0.1
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, let tile = self.boardState.producer(at: pos),
+                  tile.readyAt == readyAt else { return }
+            self.boardState.setProducer(tile, at: pos)
+        }
+    }
 
     /// Claims the chest for free if ready, or pays `freeChestSkipCostDogTags`
     /// to claim it early. Either way, delivers a toolbox item (Gap_Analysis_

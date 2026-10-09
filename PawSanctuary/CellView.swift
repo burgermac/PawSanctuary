@@ -506,7 +506,12 @@ struct ProducerTileContent: View {
             }
         }
         .overlay {
-            if isAffordable {
+            // Cooling down (specs/Spec_SpawnerCooldown.md): a ring and countdown
+            // replace the shimmer. The `TimelineView` exists only while there is
+            // a wait to show, so an idle spawner still costs no per-second work.
+            if !producer.isReady {
+                SpawnerCooldownOverlay(producer: producer, tint: tint, size: cellSize)
+            } else if isAffordable {
                 SpawnerShimmerView(tint: tint, size: cellSize)
             }
         }
@@ -579,6 +584,38 @@ struct ProducerTileContent: View {
         case 1:  return .red
         case 2:  return .orange
         default: return producer.level.tintColor
+        }
+    }
+}
+
+// ============================================================
+// MARK: - FAMILY SPAWNER COOLDOWN
+// ============================================================
+
+/// Dims a cooling family spawner and shows how long is left
+/// (specs/Spec_SpawnerCooldown.md). The remaining time derives from
+/// `producer.readyAt`; the one-second `TimelineView` only repaints it.
+private struct SpawnerCooldownOverlay: View {
+    let producer: ProducerTile
+    let tint: Color
+    let size: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.16)
+                    .fill(Color.black.opacity(0.35))
+                Circle()
+                    .trim(from: 0, to: 1 - producer.cooldownFraction)
+                    .stroke(tint.opacity(0.9), lineWidth: max(2, size * 0.06))
+                    .rotationEffect(.degrees(-90))
+                    .padding(size * 0.14)
+                Text("\(Int(producer.cooldownRemaining.rounded(.up)))s")
+                    .font(.system(size: size * 0.26, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .shadow(radius: 1)
+            }
+            .allowsHitTesting(false)
         }
     }
 }
