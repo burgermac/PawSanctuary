@@ -31,6 +31,10 @@ struct CellView: View {
     /// (`Spec_BoardAnimation_Draft.md` §5). Ignored for every other cell
     /// content; `ProducerTileContent` only reads it on the family-spawner path.
     var isFamilySpawnerAffordable: Bool = false
+    /// True while a spawned item is still arcing in from its producer
+    /// (specs/Spec_SpawnFlight.md): the item is already in `cell`, but the
+    /// overlay is drawing it mid-air, so it stays hidden here until it lands.
+    var isFlightLanding: Bool = false
     /// Whether an unclaimed daily hand-in task wants what is standing in this
     /// cell, and whether that task is fully stocked
     /// (`Spec_DailyHandInTasks.md` D-B). Drives the muted/bright blue tint
@@ -112,7 +116,7 @@ struct CellView: View {
                         .opacity(isDragging ? 0.25 : 1.0)
                 } else if let item = cell.item {
                     itemContent(item)
-                        .opacity(isDragging ? 0.25 : 1.0)
+                        .opacity(isFlightLanding ? 0 : (isDragging ? 0.25 : 1.0))
                         .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
                         .overlay(bubbleOverlay(for: item))
                         .offset(mergeHintOffset)

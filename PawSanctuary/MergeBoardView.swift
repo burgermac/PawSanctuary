@@ -35,6 +35,8 @@ struct MergeBoardView: View {
     /// Full-screen, not a sheet (Phase 6b, Task 3.7) — kept separate from
     /// `activeRoute`/`SheetRoute`, which only ever drive `.sheet`.
     @State private var showParallelBoard = false
+    /// Spawn flights are skipped (the item just appears) under Reduce Motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Drives the "Skip the wait?" alert from the view model's pending position.
     private var spawnerSkipBinding: Binding<Bool> {
@@ -866,6 +868,8 @@ struct MergeBoardView: View {
                                 isLeapSource: viewModel.leapSourceCell == pos,
                                 mergeHintOffset: mergeHintOffset,
                                 isFamilySpawnerAffordable: isSpawnerAffordable,
+                                isFlightLanding: !reduceMotion
+                                    && viewModel.spawnFlights.contains { $0.to == pos },
                                 dailyTaskHighlight: cell.item.flatMap {
                                     taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
                                 } ?? .none
@@ -950,6 +954,12 @@ struct MergeBoardView: View {
                 }
                 .zIndex(rowHasAnimatingCell ? 5 : 0)
             }
+        }
+        // Before the padding and background below, so the overlay shares the
+        // grid's own origin and a cell's centre is a pure function of row/col.
+        .overlay(alignment: .topLeading) {
+            SpawnFlightOverlay(flights: reduceMotion ? [] : viewModel.spawnFlights,
+                               cellSize: cellSize, spacing: cellSpacing)
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 20)
