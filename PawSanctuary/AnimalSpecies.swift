@@ -2241,6 +2241,10 @@ let freeChestCooldownHours = 4.0
 /// already in the shop, not a real alternative to waiting.
 let freeChestSkipCostDogTags = 10
 
+/// Seconds a spawned item takes to arc from its producer to its cell
+/// (specs/Spec_SpawnFlight.md). Measured at 80-120 ms in the reference titles.
+let spawnFlightDuration = 0.11
+
 // Family spawner cooldown (specs/Spec_SpawnerCooldown.md, decided 9 Oct 2026).
 // Per spawner: every `familySpawnerCooldownKibble` kibble it has spent starts a
 // `familySpawnerCooldownSeconds` wait, skippable for Dog Tags. The skip price is

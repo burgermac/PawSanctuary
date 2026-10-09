@@ -1574,7 +1574,23 @@ class MergeBoardViewModel {
     /// by every rescue-producer path in `activateProducer` (currency spend, notification
     /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
     /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
-    private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int) {
+    /// A spawned item in flight from its producer to the cell it landed in
+    /// (specs/Spec_SpawnFlight.md). The item is already in board state; the view
+    /// hides it in `to` and draws the arc until `spawnFlightDuration` passes.
+    struct SpawnFlight: Identifiable, Equatable {
+        let id = UUID()
+        let from: GridPosition
+        let to: GridPosition
+        let item: BoardItem
+    }
+
+    /// Flights currently in the air. A list, not one slot: a boosted tap can
+    /// land a free bonus spawn right behind the main one.
+    var spawnFlights: [SpawnFlight] = []
+
+    /// `from` is the producer that spawned the item; nil (or the same cell)
+    /// places it with no flight.
+    private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int, from: GridPosition? = nil) {
         boardState.setItem(item, at: target.position)
         kibbleEngine.kibble -= cost
         updateAllAfterSpend(kind: .kibble, amount: cost)
@@ -1584,7 +1600,23 @@ class MergeBoardViewModel {
         grantXP(xpPerRescue)
         updateAllAfterRescue()
         updateOrdersAfterMerge(chainID: item.chainID, tier: item.tier)
-        animatingCell = target.position
+        if let from, from != target.position {
+            // The landing pop and sparkle wait for the arc to arrive.
+            let flight = SpawnFlight(from: from, to: target.position, item: item)
+            spawnFlights.append(flight)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(spawnFlightDuration))
+                self.spawnFlights.removeAll { $0.id == flight.id }
+                self.popCell(target.position)
+            }
+        } else {
+            popCell(target.position)
+        }
+    }
+
+    /// The scale-and-sparkle pop on a cell, cleared after 600 ms.
+    private func popCell(_ pos: GridPosition) {
+        animatingCell = pos
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
             self.animatingCell = nil
@@ -1597,7 +1629,7 @@ class MergeBoardViewModel {
     /// board has no room; a bonus should never itself trigger a "Board Full"
     /// complaint. Free (cost: 0) and routed through `finishSpawn` so it still
     /// counts as a rescue, grants XP, and can fulfil a matching order.
-    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int) {
+    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int, from: GridPosition? = nil) {
         let chance = bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
         guard chance > 0, Double.random(in: 0..<1) < chance,
               let target = emptyUnlockedCells.randomElement() else { return }
@@ -1606,7 +1638,7 @@ class MergeBoardViewModel {
         let bonusTier = isLegendary ? min(spawnTier + 1, maxTier) : spawnTier
         let label = ContentRegistry.shared.tier(chainID, bonusTier)?.name ?? species.name
         enqueueToast(Toast(kind: .info(isLegendary ? "✨ Legendary! +1 \(label)" : "🍀 Lucky! +1 \(label)")))
-        finishSpawn(item: BoardItem(chainID: chainID, tier: bonusTier), at: target, cost: 0)
+        finishSpawn(item: BoardItem(chainID: chainID, tier: bonusTier), at: target, cost: 0, from: from)
     }
 
     /// Task 1.4 (Phase 1) — records a kibble-wall event (hit zero kibble while
@@ -1721,8 +1753,8 @@ class MergeBoardViewModel {
                     boardState.setProducer(p, at: pos)
                 }
             }
-            finishSpawn(item: spawnedItem, at: target, cost: cost)
-            maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier)
+            finishSpawn(item: spawnedItem, at: target, cost: cost, from: pos)
+            maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier, from: pos)
             // Re-read the tile: the Scout preview above rewrote it, and a stale
             // local copy would overwrite that. The bonus spawn is free, so only
             // this tap's `cost` counts toward the cooldown.
