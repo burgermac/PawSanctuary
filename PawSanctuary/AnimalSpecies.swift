@@ -1425,6 +1425,21 @@ let carePointsPerDailySweep = 25
 /// mechanic exists to surface.
 let carePointsPerOrder = 1
 
+// MARK: - iCloud Key-Value Storage
+
+/// Whether the iCloud Key-Value Storage capability is provisioned for this build.
+///
+/// **Flip to `true` only after adding the capability in Xcode** (Signing &
+/// Capabilities → + Capability → iCloud → Key-value storage), which is blocked on
+/// paid Apple Developer enrollment (`TODO.md`). `GameStore` used to guard its
+/// `NSUbiquitousKeyValueStore` calls with `FileManager.ubiquityIdentityToken`
+/// alone, but that only says the *user* is signed into iCloud, not that *this
+/// app* holds the entitlement. A signed-in device without the entitlement
+/// therefore logged "Unable to find entitlement for KVS store" and "BUG IN
+/// CLIENT OF KVS" on every load and save. Sync never worked in that state, so
+/// gating it off changes no behaviour; saves stay local.
+let iCloudKVSProvisioned = false
+
 // MARK: - Kibble Drive (specs/Spec_KibbleDrive_Draft.md)
 
 /// Drive Points an engaged player banks per day at the projection level,

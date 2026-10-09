@@ -444,8 +444,12 @@ enum GameStore {
     /// is signed into iCloud. Accessing NSUbiquitousKeyValueStore.default without
     /// the entitlement logs "BUG IN CLIENT OF KVS" on-device, so we guard every
     /// call site behind this check and never touch .default when it returns false.
+    ///
+    /// `ubiquityIdentityToken` alone only proves the *user* is signed in, not that
+    /// this app holds the entitlement, so the provisioning flag is checked first
+    /// (`iCloudKVSProvisioned`, `AnimalSpecies.swift`).
     private static var isCloudAvailable: Bool {
-        FileManager.default.ubiquityIdentityToken != nil
+        iCloudKVSProvisioned && FileManager.default.ubiquityIdentityToken != nil
     }
 
     /// Guards write ordering: `save()`/`saveAndSync()` each capture state
