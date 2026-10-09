@@ -1,0 +1,77 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "F2760670-2E1A-4736-8282-EECB294462CC.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "merge_burst_4_at_rest_0_3CCB51CA-B81C-455C-BF40-0BDBEF5B8473.png",
+        "timestamp" : 1791576105.037
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "153D56E4-0408-4986-A175-49414A51E9B5.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "merge_burst_3_settled_sparkles_fading_0_CC307546-F56D-4887-AB25-AF5343971B63.png",
+        "timestamp" : 1791576103.978
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "7099675D-08CB-4251-A012-16D875E0EFCA.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "merge_burst_2_mid_drift_0_89AC4579-766B-4371-82CD-67CF19370F96.png",
+        "timestamp" : 1791576102.819
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "4AD5A329-679F-413C-B0E5-C5AC5F41A202.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "merge_burst_1_peak_overshoot_0_5D466775-6E64-40E5-B1D6-EC2D77CFBAFC.png",
+        "timestamp" : 1791576101.988
+      }
+    ],
+    "testIdentifier" : "BoardAnimationSnapshotTests/testMergeBurstOvershootAcrossRows()",
+    "testIdentifierURL" : "test://com.apple.xcode/PawSanctuary/PawSanctuaryTests/BoardAnimationSnapshotTests/testMergeBurstOvershootAcrossRows"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "DA35092D-F3CD-4801-A4CA-1EC6C8086F7C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "spawner_shimmer_3_0_B6755AD8-0702-4C8E-90F5-3B23BA2AED18.png",
+        "timestamp" : 1791576108.233
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "B5F00C9F-181F-4D5D-A0B4-DF4CE182A689.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "spawner_shimmer_2_0_46F35970-95E6-4121-82D0-3A87886DD4D7.png",
+        "timestamp" : 1791576107.153
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "4C675116-265D-488F-BFFA-836A4545674C",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "FD2F7020-4438-486D-804E-5B11A74D8CA6.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "spawner_shimmer_1_0_4B041057-105F-4366-8E4D-B3A0BF52C275.png",
+        "timestamp" : 1791576106.186
+      }
+    ],
+    "testIdentifier" : "BoardAnimationSnapshotTests/testSpawnerShimmerAffordabilityContrast()",
+    "testIdentifierURL" : "test://com.apple.xcode/PawSanctuary/PawSanctuaryTests/BoardAnimationSnapshotTests/testSpawnerShimmerAffordabilityContrast"
+  }
+]
