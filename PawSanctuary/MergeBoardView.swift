@@ -35,6 +35,10 @@ struct MergeBoardView: View {
     /// Full-screen, not a sheet (Phase 6b, Task 3.7) — kept separate from
     /// `activeRoute`/`SheetRoute`, which only ever drive `.sheet`.
     @State private var showParallelBoard = false
+    /// Measured on-screen frames the reward flights run between
+    /// (specs/Spec_RewardFlight.md).
+    @State private var hudFrames: [RewardFlightKind: CGRect] = [:]
+    @State private var orderCardFrames: [UUID: CGRect] = [:]
     /// Spawn flights are skipped (the item just appears) under Reduce Motion.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -242,6 +246,13 @@ struct MergeBoardView: View {
                     .zIndex(100)
             }
 
+            // Order payouts flying to their HUD counters (specs/Spec_RewardFlight.md).
+            RewardFlightOverlay(bursts: reduceMotion ? [] : viewModel.rewardBursts,
+                                hudFrames: hudFrames,
+                                orderFrames: orderCardFrames,
+                                fallbackSource: CGPoint(x: UIScreen.main.bounds.midX, y: 170))
+                .zIndex(96)
+
             // Leap mode overlay hint — armed by merging a Leap piece onto a target
             // (see applyLeapPiece), so leapSourceCell is always already set here;
             // this is purely "pick the destination" now, no source-selection step.
@@ -306,6 +317,8 @@ struct MergeBoardView: View {
         .animation(.easeInOut(duration: 0.25), value: viewModel.leapMode)
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+        .onPreferenceChange(HUDFrameKey.self) { hudFrames = $0 }
+        .onPreferenceChange(OrderCardFrameKey.self) { orderCardFrames = $0 }
         .sheet(item: $activeRoute) { route in routeContent(route) }
         .fullScreenCover(isPresented: $showParallelBoard) {
             if let coordinator = viewModel.activeParallelBoardEvent {
@@ -587,13 +600,13 @@ struct MergeBoardView: View {
                 // next tick is 20 seconds out rather than four minutes changes
                 // whether you wait, and that is a decision made at a glance.
                 HStack(spacing: 6) {
-                    levelBadge
+                    levelBadge.reportHUDFrame(.xp)
 
                     Spacer(minLength: 4)
 
                     kibblePill
-                    coinPill
-                    dogTagPill
+                    coinPill.reportHUDFrame(.coins)
+                    dogTagPill.reportHUDFrame(.dogTags)
 
                     Spacer(minLength: 4)
 

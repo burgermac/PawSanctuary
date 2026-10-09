@@ -216,6 +216,7 @@ private struct OrderLaneCard: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
         .frame(width: orderLaneCardWidth, height: trayBandHeight, alignment: .topLeading)
+        .reportOrderCardFrame(order.id)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(isReady ? Color.green.opacity(0.10)
