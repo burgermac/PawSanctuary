@@ -187,6 +187,16 @@ private struct OrderLaneCard: View {
                         .font(.system(size: 8, weight: isExpiring ? .bold : .regular))
                         .foregroundColor(isExpiring ? .red : .secondary)
                 }
+            } else if order.isAlmostThere {
+                // The family speaking (Spec_TravelTownReview_Draft.md §5): with
+                // one item left, the count is replaced by a nudge in their
+                // colour. The slots above already show which one is missing.
+                Label("Almost there!", systemImage: "bubble.left.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .italic()
+                    .foregroundColor(order.family.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             } else if order.wantedCount > 1 {
                 // A basket's own description truncates to nonsense at this
                 // width -- "a Houndling + a Houndling + a..." tells the player
