@@ -184,6 +184,13 @@ struct CellView: View {
             }
             .padding(3)
 
+            // Tier number (Feature_Parity_Audit.md §1): a small "Lv.N" in the
+            // bottom-left so the ladder reads at a glance. Bottom-right is the
+            // superpower badge's corner and top-right is `def.badge`'s.
+            if let level = Self.tierBadgeLevel(for: item) {
+                TierBadge(level: level, cellSize: cellSize)
+            }
+
             // Superpower badge — shown when this family has unlocked its superpower.
             if hasUnlockedSuperpower, let sp = itemSpecies {
                 Group {
@@ -199,6 +206,16 @@ struct CellView: View {
                 .background(Circle().fill(Color.purple.opacity(0.85)))
                 .offset(x: 2, y: 2)
             }
+        }
+    }
+
+    /// The number to show on a tile's tier badge, or nil for chains that are not
+    /// a ladder the player climbs: currencies (a value, not a rank), power-ups,
+    /// superpower pieces and the wildcard. Tier 0 reads "Lv.1".
+    static func tierBadgeLevel(for item: BoardItem) -> Int? {
+        switch item.chain?.category {
+        case .animal, .supply, .material, .tool, .subObject: return item.tier + 1
+        default: return nil
         }
     }
 
@@ -617,6 +634,30 @@ private struct SpawnerCooldownOverlay: View {
             }
             .allowsHitTesting(false)
         }
+    }
+}
+
+// ============================================================
+// MARK: - TIER BADGE
+// ============================================================
+
+/// "Lv.N" in a tile's bottom-left corner. Sized off the cell so it stays legible
+/// on the board's smallest cells without crowding the art, and drawn on a dark
+/// capsule so it reads against any item's colours.
+private struct TierBadge: View {
+    let level: Int
+    let cellSize: CGFloat
+
+    var body: some View {
+        Text("Lv.\(level)")
+            .font(.system(size: max(7, cellSize * 0.17), weight: .heavy, design: .rounded))
+            .foregroundColor(.white)
+            .padding(.horizontal, 3).padding(.vertical, 1)
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(2)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
