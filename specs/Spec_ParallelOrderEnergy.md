@@ -38,7 +38,7 @@ Run with the economy model's own functions (`EconomySimulation.ordersPerDay`, `d
 
 ## 4. Tests and verification
 
-`ParallelOrderEnergyTests` (10): bonus fills the bar then banks above the cap; the bank stops at 60 and never lowers an over-cap balance; regen does nothing to a banked pool but still refills a low one; claiming a persistent order and the urgent order each add +1 during a live event; no event live changes nothing; many orders stop at the bank cap; a banked balance survives save and restore without being clamped back to 30. 712/712.
+`ParallelOrderEnergyTests` (11): bonus fills the bar then banks above the cap; the bank stops at 60 and never lowers an over-cap balance; regen does nothing to a banked pool but still refills a low one; claiming a persistent order and the urgent order each add +1 during a live event; no event live changes nothing; many orders stop at the bank cap; a banked balance survives save and restore without being clamped back to 30. 712/712.
 
 **Seen on screen, but not in the running app.** The Simulator cannot move its clock (`TODO.md`, 18 Aug) and changing the Mac's is not mine to do, so no Parallel Board event can be live today. I rendered the real `ParallelBoardView` in a throwaway test (not committed) with two energy values: **20 → "20/30" with the 1:30 regen countdown**, and **45 → "45" with a green "+15 banked"** and no countdown, both under the new caption "Orders you finish on the main board add +1 energy, up to 60." Not seen: an order claim actually crediting a live event end to end — that is covered by the tests, and will be visible from 11 Oct when `second_chances_20261011` opens.
 
