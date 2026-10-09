@@ -3634,6 +3634,33 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Order payouts in flight to the HUD (specs/Spec_RewardFlight.md). Purely
+    /// presentational: the rewards were already applied when this is appended.
+    var rewardBursts: [RewardBurst] = []
+
+    /// Records an order's payout for the flight overlay, then drops it once the
+    /// longest sprite has landed.
+    private func emitRewardBurst(for order: AdoptionOrder) {
+        var items: [RewardBurstItem] = []
+        for reward in order.rewards {
+            switch reward.kind {
+            case .coins:
+                let amount = reward.amount + cachedActiveBonuses.coinsPerOrderFulfil
+                if amount > 0 { items.append(RewardBurstItem(kind: .coins, amount: amount)) }
+            case .dogTags:
+                if reward.amount > 0 { items.append(RewardBurstItem(kind: .dogTags, amount: reward.amount)) }
+            default: break
+            }
+        }
+        items.append(RewardBurstItem(kind: .xp, amount: xpPerOrderFulfil))
+        let burst = RewardBurst(sourceID: order.id, items: items)
+        rewardBursts.append(burst)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.8))
+            self.rewardBursts.removeAll { $0.id == burst.id }
+        }
+    }
+
     func autoClaimOrder(at index: Int) {
         guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index),
               adoptionBoardCoordinator.adoptionOrders[index].isComplete,
@@ -3644,6 +3671,7 @@ class MergeBoardViewModel {
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
+        emitRewardBurst(for: order)
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
         // Persistent slots have no timer, so claiming one doesn't touch the
@@ -3670,6 +3698,7 @@ class MergeBoardViewModel {
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
+        emitRewardBurst(for: order)
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
         order.isClaimed = true
