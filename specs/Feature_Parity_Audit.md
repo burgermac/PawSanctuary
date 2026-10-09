@@ -14,7 +14,7 @@
 |---|---|---|---|
 | Board geometry | 7×9 = 63 tiles, single screen | ✅ | Matches exactly — arrived at independently per the blueprint. |
 | Chain depth | 8–13 tiers observed, up to 12+ | ✅ | 12 tiers (`animalChainTopTier = 11`), cut down from an original 15 (`ItemChain.swift`). |
-| Tier number surfaced in UI (`Lv.9`) | Yes, called out as important — "converts an opaque exponential into a legible ladder" | ❌ | `CellView.swift` shows only the tier's name (`shortLabel`, e.g. "Groomed"), never a numeric badge. Unexamined gap, not a decision — cheap to add. |
+| Tier number surfaced in UI (`Lv.9`) | Yes, called out as important — "converts an opaque exponential into a legible ladder" | ✅ **Built 9 Oct 2026** — a "Lv.N" badge in each ladder tile's bottom-left (animals, supplies, materials, toolbox, sub-objects; not currencies, power-ups or the wildcard). The selected-item info line already said "Level N" for animals, so only the always-visible badge was missing. Original finding: | `CellView.swift` shows only the tier's name (`shortLabel`, e.g. "Groomed"), never a numeric badge. Unexamined gap, not a decision — cheap to add. |
 | Terminal-tier messaging | `"Max level reached for this item."` | 🟡 | Top-tier items get a celebration banner (`triggerTopTierCelebration`) but board tiles don't show persistent "maxed" state text the way the reference does. |
 | Sell any item, tier-scaled | Listed as a universal pressure valve | ✅ | `sellSelectedAnimal`, `sellValue(forTier:)`. |
 | Splitter / reverse-a-merge | Store item, 50 gems, "reverses a merge one tier" | 🟡 | Exists as `applySplitterPiece` (Felines "Nine Lives" superpower), not a purchasable store item — same effect, different access path (earned/rolled vs. bought on demand). |
