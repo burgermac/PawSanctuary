@@ -1758,6 +1758,14 @@ let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble r
 let parallelBoardEnergyCap      = 30
 let parallelBoardEnergyRegenSecs = 90   // full refill in 45 minutes
 
+// Main-board orders feed it (specs/Spec_ParallelOrderEnergy.md — this pair, unlike
+// the numbers above, WAS run through the economy model, 9 Oct 2026).
+/// Energy a claimed main-board order adds while a Parallel Board event is live.
+let parallelBoardEnergyPerOrder = 1
+/// Most energy the pool will bank, above the regen cap. Regen alone never takes
+/// it past `parallelBoardEnergyCap`; only the order bonus can.
+let parallelBoardEnergyBankCap  = parallelBoardEnergyCap * 2
+
 // ── Parallel Board grid + generator (Phase 6b, Task 3.3) ────────
 // Same first-cut posture as the energy constants above.
 let parallelBoardRows          = 5
