@@ -949,6 +949,9 @@ let adoptionFamilies: [AdoptionFamily] = [
     AdoptionFamily(name: "The Singh Seniors", sfSymbol: "figure.walk.motion",              color: Color(red: 0.65, green: 0.45, blue: 0.20)),
 ]
 
+/// Items still owed on a basket when its family says "Almost there!".
+let orderAlmostThereRemaining = 1
+
 /// Duration (seconds) an active urgent order stays open before it's missed
 /// (Phase 5, Task 5.2). The 4 persistent order slots have no timer at all — this
 /// is now the only order-side countdown in the game.
@@ -1079,6 +1082,15 @@ struct AdoptionOrder: Identifiable, Codable {
     /// Every line filled. An empty basket is *not* complete — it would otherwise
     /// read as instantly claimable if one ever slipped through.
     var isComplete: Bool { !lines.isEmpty && lines.allSatisfy(\.isComplete) }
+
+    /// One item short of a basket of two or more — the moment the family speaks
+    /// up ("Almost there!", `Spec_TravelTownReview_Draft.md` §5). A single-item
+    /// order has no "almost": it is either unfilled or done. Claimed orders and
+    /// complete ones never nudge.
+    var isAlmostThere: Bool {
+        guard !isClaimed, !isComplete, wantedCount >= 2 else { return false }
+        return wantedCount - fulfilled == orderAlmostThereRemaining
+    }
 
     var progressFraction: Double {
         let wanted = wantedCount
