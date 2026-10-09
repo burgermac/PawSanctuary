@@ -230,6 +230,16 @@ struct MergeBoardView: View {
                 .zIndex(97)
             }
 
+            // Care Points milestone takeover (specs/Spec_MilestoneTakeover.md).
+            if let tier = viewModel.pendingMilestone {
+                MilestoneTakeoverView(
+                    tier: tier,
+                    onClaim: { viewModel.claimMilestone() },
+                    onLater: { viewModel.dismissMilestone() })
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
+
             // Leap mode overlay hint — armed by merging a Leap piece onto a target
             // (see applyLeapPiece), so leapSourceCell is always already set here;
             // this is purely "pick the destination" now, no source-selection step.
@@ -289,6 +299,7 @@ struct MergeBoardView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.68), value: MilestoneManager.shared.pendingMilestone != nil)
         .animation(.spring(response: 0.5, dampingFraction: 0.65), value: viewModel.showAmbassadorBanner)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showLevelUpBanner)
+        .animation(.easeInOut(duration: 0.25), value: viewModel.pendingMilestone)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showSuperpowerUnlockBanner)
         .animation(.easeInOut(duration: 0.25), value: viewModel.leapMode)
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
