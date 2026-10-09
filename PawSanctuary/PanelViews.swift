@@ -134,8 +134,8 @@ struct LoginRewardView: View {
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.15)))
 
-                Button(action: { viewModel.claimLoginReward() }) {
-                    Text("Claim!")
+                Button(action: { viewModel.dismissLoginReward() }) {
+                    Text("Got it!")
                         .font(.headline.bold())
                         .foregroundColor(Color(red: 0.2, green: 0.45, blue: 0.3))
                         .padding(.horizontal, 50).padding(.vertical, 14)
