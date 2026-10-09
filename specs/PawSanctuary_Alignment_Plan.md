@@ -171,6 +171,26 @@ The game's two primary aims are retention and monetization through IAPs. They co
 
 **First known consequence:** `Spec_KibbleDrive_Draft.md` §6 step 5, the `energyLarge` repositioning, is a live-SKU revenue change and now needs a retention argument, not just a cleaner price ladder. Not yet applied; to be assessed when step 5 is picked up.
 
+### D10 — Chores: not adopted *(decided 9 Oct 2026)*
+
+The reference lists **chores** — named tasks costing soft currency and paying XP, "a second use for coins, parallel to orders" (`Merge2_Reference_Blueprint.md` §29). The audit carried it as an absent feature.
+
+**Decided: do not build it.** Three reasons, each sufficient on its own:
+
+1. **The premise does not hold here.** A chore sink assumes coins that would otherwise pile up. PawSanctuary's coins are fully committed: the Sanctuary Map's 291,900 coins of costs are pinned to a 55–70-day build-out by `testMapBuildOutLandsInTheTargetWindow`, and `Spec_Phase2c_CoinEconomy.md` says to "treat map costs as fixed; tune the faucet, not the sink". A coin-costing chore pulls coins from the map and slows exactly the number that was tuned.
+2. **The XP side is load-bearing.** XP sets level, and level gates the wall (the ratio crossing 1.00 at L41–50), the monetization unlock at level 5, and row and chain unlocks. A new XP source shifts all of them, and `EconomySimulation` has no term for it.
+3. **There is no evidence to design from.** The reference data records one line: no costs, XP amounts, names or counts. A design would be wholly invented, against a number that took a whole phase to fix.
+
+**Revisit only if** playtest data shows coins genuinely accumulating unspent (the `PlaytestMetrics` panel is the instrument), or the map's costs are retuned.
+
+### D11 — Named characters and dialogue: held *(decided 9 Oct 2026)*
+
+The reference's Tasty Travels carries a "light narrative spine" (named characters, scripted dialogue); Travel Town does not. The parity audit already recorded the call: stay lean like Travel Town, and "worth revisiting if retention data says the lean version feels thin".
+
+**Decided: hold, with that trigger kept.** There is no retention data to say the lean version is thin: the playtest metrics are only just gathering. It is also the largest remaining item by far (writing, art, a dialogue surface) and sits on the Warmth pillar's content side rather than on any mechanic with a measurement behind it. The "Almost there!" nudge already gives order families a voice in one line, which is the cheapest test of whether players respond to it.
+
+**Revisit when** there is retention data from real play to read, not before.
+
 ---
 
 ## 4. Phase 1 — Foundations

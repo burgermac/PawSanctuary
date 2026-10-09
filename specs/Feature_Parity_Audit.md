@@ -20,8 +20,8 @@
 | Terminal-tier messaging | `"Max level reached for this item."` | 🟡 | Top-tier items get a celebration banner (`triggerTopTierCelebration`) but board tiles don't show persistent "maxed" state text the way the reference does. |
 | Sell any item, tier-scaled | Listed as a universal pressure valve | ✅ | `sellSelectedAnimal`, `sellValue(forTier:)`. |
 | Splitter / reverse-a-merge | Store item, 50 gems, "reverses a merge one tier" | 🟡 | Exists as `applySplitterPiece` (Felines "Nine Lives" superpower), not a purchasable store item — same effect, different access path (earned/rolled vs. bought on demand). |
-| Chores (soft-currency tasks paying XP) | Listed as "a second use for coins, parallel to orders" | ❌ | No equivalent system. |
-| Cosmetic choice (no-cost color/theme) | "An ownership device, not a sink" | ❌ | No cosmetic customization anywhere in the codebase. |
+| Chores (soft-currency tasks paying XP) | Listed as "a second use for coins, parallel to orders" | ❌ | **Decided 9 Oct 2026: not adopted (Alignment Plan D10).** PawSanctuary's coins are not idle — the map's 291,900 coins are pinned to a 55–70-day build-out by a test — and a new XP source shifts the level-gated wall and monetization unlock. The reference data records one line and no numbers. Revisit only if playtest data shows coins accumulating unspent. |
+| Cosmetic choice (no-cost color/theme) | "An ownership device, not a sink" | ✅ | **Re-checked 9 Oct 2026.** Five free **board themes** (Meadow, Seaside, Dusk; Autumn and Blossom unlocked by 3 and 6 built Sanctuary areas), offered once in session one and changeable from Profile (`Spec_BoardThemes.md`, schema v44). The reference does not say what it customises, so the scope is PawSanctuary's own. |
 
 ## 2. Energy / generators
 
@@ -82,7 +82,7 @@
 |---|---|---|---|
 | Card trading | ✅ (album section above) | ✅ | |
 | Invite/referral milestones | — | ✅ | `InviteSystem.swift`, `inviteMilestones`. |
-| Named characters / scripted dialogue | Tasty Travels only, not Travel Town — a "light narrative spine" | ❌ | No character/dialogue system. Matches the *Travel Town* (leaner) reference more than Tasty Travels; the doc that made this call already noted Tasty Travels grew faster despite the added narrative, and left it as "worth revisiting if retention data says the lean version feels thin" — not yet revisited. |
+| Named characters / scripted dialogue | Tasty Travels only, not Travel Town — a "light narrative spine" | ❌ | **Decided 9 Oct 2026: held (Alignment Plan D11).** Stay lean like Travel Town until retention data from real play says the lean version is thin — there is none yet. The "Almost there!" order nudge already gives families one line of voice. |
 | Out-of-app loyalty surface | Web PWA, own auth, level 35+ | ❌ | 3.9 in `Gap_Analysis_Round2.md` — deliberately deferred 2026-08-13; this is separate infrastructure (own backend/hosting), not an in-app feature. |
 
 ## 8. Daily / weekly / monthly retention
@@ -129,7 +129,7 @@ None of this is a gap any more; it is listed so the table above can be read agai
 **Real gaps, awaiting a decision**
 - **Parallel Board token faucet** — main-board orders and milestones feeding the parallel board's energy (see its row above). The largest remaining design question.
 - **Chest-as-purchased-spawner** and **contextual offers** — both monetization; both lower priority under D9.
-- **Chores, cosmetic choice, named characters / dialogue** — absent, and nobody has decided whether to build them.
+- **Chores and named characters / dialogue** — both now **decided** (D10: chores not adopted; D11: characters held until retention data exists). Cosmetic choice was built as board themes.
 - **A long-cooldown premium generator class** — a content decision (see the cooldown row).
 
 **Deliberately held back:** competitive events (3.8) and the out-of-app loyalty surface (3.9), pending a player population; the Party Board, pending more reference footage; merge-animation Tier B, pending the `BoardStateManager` Phase D refactor.
