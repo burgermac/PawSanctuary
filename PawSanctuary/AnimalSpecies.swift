@@ -443,7 +443,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         switch self {
         case .rescueCrate:  return 30; case .shelterPod: return 45; case .fosterHome: return 60
         case .groomingBox, .feedBox, .shelterBox: return 25
-        case .familySpawner: return 45
+        case .familySpawner: return familySpawnerCooldownSeconds
         }
     }
     /// The chain category this producer emits into.
@@ -554,6 +554,11 @@ struct ProducerTile: Identifiable, Equatable, Codable {
     var speedBurstEndsAt: Date? = nil
     var nextDropGuaranteedHighTier: Bool = false
 
+    /// Family spawners only: kibble spent at this spawner since its last cooldown
+    /// began (specs/Spec_SpawnerCooldown.md). Carries the remainder over when a
+    /// cooldown starts rather than resetting to zero.
+    var kibbleSpentSinceCooldown: Int = 0
+
     // Phase 6 — Avians Scout preview: non-nil when Scout is unlocked and a spawn has just fired.
     // true = next spawn from this tile will be a sub-object, false = animal.
     var scoutPreviewIsSubObject: Bool? = nil
@@ -569,7 +574,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, level, readyAt, chargesRemaining, species, speedBurstEndsAt
-        case nextDropGuaranteedHighTier, scoutPreviewIsSubObject
+        case nextDropGuaranteedHighTier, scoutPreviewIsSubObject, kibbleSpentSinceCooldown
         // Legacy keys — decode-only. Old saves persisted a hand-ticked
         // `cooldownRemaining` Double and `speedBurstActive`/`speedBurstRemaining`
         // instead of the Date-based fields above; encode(to:) never writes
@@ -604,6 +609,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         }
         nextDropGuaranteedHighTier = try c.decodeIfPresent(Bool.self, forKey: .nextDropGuaranteedHighTier) ?? false
         scoutPreviewIsSubObject    = try c.decodeIfPresent(Bool.self, forKey: .scoutPreviewIsSubObject)
+        kibbleSpentSinceCooldown   = try c.decodeIfPresent(Int.self, forKey: .kibbleSpentSinceCooldown) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
@@ -616,6 +622,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         try c.encodeIfPresent(speedBurstEndsAt, forKey: .speedBurstEndsAt)
         try c.encode(nextDropGuaranteedHighTier, forKey: .nextDropGuaranteedHighTier)
         try c.encodeIfPresent(scoutPreviewIsSubObject, forKey: .scoutPreviewIsSubObject)
+        try c.encode(kibbleSpentSinceCooldown, forKey: .kibbleSpentSinceCooldown)
     }
 
     var isReady: Bool { readyAt <= Date() }
@@ -628,6 +635,19 @@ struct ProducerTile: Identifiable, Equatable, Codable {
 
     var speedBurstActive: Bool { (speedBurstEndsAt ?? .distantPast) > Date() }
     var speedBurstRemaining: Double { max(0, (speedBurstEndsAt ?? .distantPast).timeIntervalSinceNow) }
+
+    /// Records `cost` kibble spent at this family spawner and starts its
+    /// cooldown if that crosses `familySpawnerCooldownKibble`. Returns true when
+    /// a cooldown began. A zero or negative cost (a free bonus spawn) is a no-op.
+    @discardableResult
+    mutating func recordKibbleSpent(_ cost: Int, now: Date = Date()) -> Bool {
+        guard cost > 0 else { return false }
+        kibbleSpentSinceCooldown += cost
+        guard kibbleSpentSinceCooldown >= familySpawnerCooldownKibble else { return false }
+        kibbleSpentSinceCooldown -= familySpawnerCooldownKibble
+        startCooldown(now: now)
+        return true
+    }
 
     /// Starts (or restarts) this producer's cooldown at its level's full duration.
     mutating func startCooldown(now: Date = Date()) {
@@ -2208,6 +2228,20 @@ let freeChestCooldownHours = 4.0
 /// (5) rather than scaled to the wait itself — "soft," an impulse for a player
 /// already in the shop, not a real alternative to waiting.
 let freeChestSkipCostDogTags = 10
+
+// Family spawner cooldown (specs/Spec_SpawnerCooldown.md, decided 9 Oct 2026).
+// Per spawner: every `familySpawnerCooldownKibble` kibble it has spent starts a
+// `familySpawnerCooldownSeconds` wait, skippable for Dog Tags. The skip price is
+// a tuning guess, to revisit with play data.
+
+/// Kibble one family spawner spends before it cools down.
+let familySpawnerCooldownKibble = 150
+
+/// Length of that cooldown, in seconds.
+let familySpawnerCooldownSeconds = 30.0
+
+/// Dog Tag price to skip a family spawner's remaining cooldown.
+let familySpawnerCooldownSkipDogTags = 2
 
 /// Kibble cost to build one item at `tier`, times `count` — the quantity both
 /// coin channels are denominated in.

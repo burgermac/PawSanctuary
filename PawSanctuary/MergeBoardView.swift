@@ -36,6 +36,12 @@ struct MergeBoardView: View {
     /// `activeRoute`/`SheetRoute`, which only ever drive `.sheet`.
     @State private var showParallelBoard = false
 
+    /// Drives the "Skip the wait?" alert from the view model's pending position.
+    private var spawnerSkipBinding: Binding<Bool> {
+        Binding(get: { viewModel.pendingSpawnerSkip != nil },
+                set: { if !$0 { viewModel.pendingSpawnerSkip = nil } })
+    }
+
     /// Used to flush a final save when the app leaves the foreground.
     @Environment(\.scenePhase) private var scenePhase
 
@@ -291,6 +297,23 @@ struct MergeBoardView: View {
         .fullScreenCover(isPresented: $showParallelBoard) {
             if let coordinator = viewModel.activeParallelBoardEvent {
                 ParallelBoardView(coordinator: coordinator, onDismiss: { showParallelBoard = false })
+            }
+        }
+        .alert("Skip the wait?", isPresented: spawnerSkipBinding) {
+            if viewModel.kibbleEngine.dogTags >= familySpawnerCooldownSkipDogTags {
+                Button("Skip for \(familySpawnerCooldownSkipDogTags) Dog Tags") {
+                    if let pos = viewModel.pendingSpawnerSkip { viewModel.skipSpawnerCooldown(at: pos) }
+                    viewModel.pendingSpawnerSkip = nil
+                }
+                Button("Wait", role: .cancel) { viewModel.pendingSpawnerSkip = nil }
+            } else {
+                Button("OK", role: .cancel) { viewModel.pendingSpawnerSkip = nil }
+            }
+        } message: {
+            if viewModel.kibbleEngine.dogTags >= familySpawnerCooldownSkipDogTags {
+                Text("This spawner is catching its breath. Spend \(familySpawnerCooldownSkipDogTags) Dog Tags to use it right now.")
+            } else {
+                Text("This spawner is catching its breath. Skipping costs \(familySpawnerCooldownSkipDogTags) Dog Tags.")
             }
         }
         .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
