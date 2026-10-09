@@ -2369,6 +2369,44 @@ func levelUpReward(for level: Int) -> LevelUpReward {
     return r
 }
 
+// ── Total Days track (specs/Spec_TotalDaysTrack.md) ──────────────
+//
+// A slower, forgiving counter under the 7-day login cycle: it counts days the
+// player opened the game, never resets on a gap, and runs in repeating cycles.
+// The thresholds (8 / 15 / 22 / 30) are measured from the reference; the
+// rewards are PawSanctuary's own and unmeasured.
+
+/// Length of one Total Days cycle, in days.
+let loginTotalDaysCycle = 30
+
+struct LoginMilestone {
+    let day: Int
+    let kibble: Int
+    let dogTags: Int
+    let cardPack: CardPackType?
+}
+
+let loginTotalDaysMilestones: [LoginMilestone] = [
+    LoginMilestone(day: 8,  kibble: 40,  dogTags: 5,  cardPack: nil),
+    LoginMilestone(day: 15, kibble: 60,  dogTags: 10, cardPack: .star1),
+    LoginMilestone(day: 22, kibble: 80,  dogTags: 15, cardPack: nil),
+    LoginMilestone(day: 30, kibble: 100, dogTags: 25, cardPack: .star2),
+]
+
+/// Where `totalDays` falls in the 30-day cycle, 1...30. Zero days (never
+/// opened) reads as day 1 so the strip never shows "Day 0".
+func loginCycleDay(forTotalDays totalDays: Int) -> Int {
+    guard totalDays > 0 else { return 1 }
+    return (totalDays - 1) % loginTotalDaysCycle + 1
+}
+
+/// The milestone `totalDays` lands exactly on, if any.
+func loginMilestone(forTotalDays totalDays: Int) -> LoginMilestone? {
+    guard totalDays > 0 else { return nil }
+    let day = loginCycleDay(forTotalDays: totalDays)
+    return loginTotalDaysMilestones.first { $0.day == day }
+}
+
 let loginDailyRewards: [(kibble: Int, dogTags: Int, label: String)] = [
     (kibble: 5,  dogTags: 0, label: "Day 1"),
     (kibble: 10, dogTags: 0, label: "Day 2"),
