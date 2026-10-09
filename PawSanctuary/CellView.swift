@@ -31,6 +31,7 @@ struct CellView: View {
     /// (`Spec_BoardAnimation_Draft.md` §5). Ignored for every other cell
     /// content; `ProducerTileContent` only reads it on the family-spawner path.
     var isFamilySpawnerAffordable: Bool = false
+    @Environment(\.boardTheme) private var boardTheme
     /// True while a spawned item is still arcing in from its producer
     /// (specs/Spec_SpawnFlight.md): the item is already in `cell`, but the
     /// overlay is drawing it mid-air, so it stays hidden here until it lands.
@@ -328,7 +329,7 @@ struct CellView: View {
         }
         if let p = cell.producer { return p.level.tintColor.opacity(0.12) }
         if let item = cell.item  { return (item.def?.color ?? .gray).opacity(0.12) }
-        return Color.white.opacity(0.7)
+        return boardTheme.emptyCellFill
     }
     private var borderColor: Color {
         if isSelected            { return Color.yellow }

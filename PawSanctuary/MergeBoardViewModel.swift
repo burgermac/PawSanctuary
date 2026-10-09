@@ -1296,6 +1296,8 @@ class MergeBoardViewModel {
         s.pityStates = pityStates
         s.unlockedSuperpowerSpecies = unlockedSuperpowerSpecies
         s.superpowerCooldownEnds    = superpowerCooldownEnds
+        s.boardTheme                = boardTheme
+        s.boardThemePrompted        = boardThemePrompted
         s.lagomorphMergeCount       = lagomorphMergeCount
         s.lastMergeTimestamp        = lastMergeTimestamp
         s.lastMergedSpeciesRaw      = lastMergedSpeciesRaw
@@ -1343,6 +1345,8 @@ class MergeBoardViewModel {
         ambassadorQuestProgress = s.ambassadorQuestProgress
         pendingMaterialLots     = s.pendingMaterialLots
         completedAreaIDs    = s.completedAreaIDs
+        boardTheme          = s.boardTheme
+        boardThemePrompted  = s.boardThemePrompted
         areaUpgradeLevels   = s.areaUpgradeLevels
         cardInventory       = s.cardInventory
         starCount           = s.starCount
@@ -1489,6 +1493,7 @@ class MergeBoardViewModel {
         inventoryStore.producerStorage = [:]
         inventoryStore.overflowProducerStorage = Array(repeating: nil, count: totalProducerOverflowSlots)
         completedAreaIDs = []; areaUpgradeLevels = [:]
+        boardTheme = .meadow; boardThemePrompted = false
         coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0; freeChestReadyAt = .distantPast
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
@@ -3836,6 +3841,38 @@ class MergeBoardViewModel {
         kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
             self?.kibbleEngine.kibble += amount
         }
+    }
+
+    // MARK: Board themes (specs/Spec_BoardThemes.md)
+
+    /// The player's board look. Free, and changeable at any time.
+    var boardTheme: BoardTheme = .meadow
+    /// Whether the one-time "Make it yours" sheet has been offered.
+    var boardThemePrompted: Bool = false
+
+    /// Built Sanctuary areas, the currency-free key to the two later themes.
+    var builtAreaCount: Int { completedAreaIDs.count }
+
+    func isBoardThemeUnlocked(_ theme: BoardTheme) -> Bool {
+        theme.isUnlocked(builtAreas: builtAreaCount)
+    }
+
+    /// Switches the board look. Refuses (and changes nothing) for a theme the
+    /// player has not yet unlocked.
+    @discardableResult
+    func selectBoardTheme(_ theme: BoardTheme) -> Bool {
+        guard isBoardThemeUnlocked(theme) else { return false }
+        boardTheme = theme
+        persist()
+        return true
+    }
+
+    /// Records that the first-choice sheet was shown, so it never returns by
+    /// itself.
+    func markBoardThemePrompted() {
+        guard !boardThemePrompted else { return }
+        boardThemePrompted = true
+        persist()
     }
 
     // MARK: Sanctuary map

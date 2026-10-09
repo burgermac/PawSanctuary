@@ -1406,6 +1406,31 @@ final class PersistenceTests: XCTestCase {
                        "the Drive's ladder must survive a weekly reset that zeroes carePointsThisWeek — straddling that boundary would otherwise destroy a purchase")
     }
 
+    // MARK: v43 → v44 (Board themes)
+
+    func testV43toV44StartsOnMeadowAndUnprompted() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "boardTheme")
+        obj.removeValue(forKey: "boardThemePrompted")
+        obj["version"] = 43
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v43 save should migrate to v44")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.boardTheme, .meadow)
+        XCTAssertFalse(loaded.boardThemePrompted)
+    }
+
+    func testBoardThemeRoundTripsOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.boardTheme = .dusk
+        state.boardThemePrompted = true
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.boardTheme, .dusk)
+        XCTAssertTrue(decoded.boardThemePrompted)
+    }
+
     // MARK: v42 → v43 (Total Days login track)
 
     func testV42toV43StartsTheTotalDaysTrackAtZero() throws {

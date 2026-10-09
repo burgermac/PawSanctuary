@@ -35,6 +35,15 @@ struct MergeBoardView: View {
     /// Full-screen, not a sheet (Phase 6b, Task 3.7) — kept separate from
     /// `activeRoute`/`SheetRoute`, which only ever drive `.sheet`.
     @State private var showParallelBoard = false
+    /// The one-time "Make it yours" sheet (specs/Spec_BoardThemes.md).
+    @State private var showThemeChoice = false
+
+    /// Offered once, after the tutorial is done, when nothing else is on top:
+    /// not over the Good Morning popup or any sheet.
+    private var shouldOfferThemeChoice: Bool {
+        viewModel.isLoaded && !viewModel.boardThemePrompted && tutorialStep == .done
+            && !viewModel.showLoginReward && activeRoute == nil && !showThemeChoice
+    }
     /// Measured on-screen frames the reward flights run between
     /// (specs/Spec_RewardFlight.md).
     @State private var hudFrames: [RewardFlightKind: CGRect] = [:]
@@ -107,11 +116,8 @@ struct MergeBoardView: View {
 
     @ViewBuilder private var gameBody: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.85, green: 0.95, blue: 0.85),
-                         Color(red: 0.95, green: 0.88, blue: 0.75)],
-                startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
+            viewModel.boardTheme.backdrop
+                .ignoresSafeArea()
 
             // Gated on isLoaded: the board and most of the panel/task-strip
             // view layer scan board[r][c] for r/c up to viewModel.rows/.cols,
@@ -318,6 +324,27 @@ struct MergeBoardView: View {
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .onPreferenceChange(HUDFrameKey.self) { hudFrames = $0 }
+        .environment(\.boardTheme, viewModel.boardTheme)
+        .onChange(of: shouldOfferThemeChoice) { _, offer in
+            guard offer else { return }
+            Task { @MainActor in
+                // A beat after the tutorial or popup clears, so it does not
+                // land on top of the moment that just ended.
+                try? await Task.sleep(for: .seconds(1))
+                if shouldOfferThemeChoice { showThemeChoice = true }
+            }
+        }
+        .onAppear {
+            if shouldOfferThemeChoice {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if shouldOfferThemeChoice { showThemeChoice = true }
+                }
+            }
+        }
+        .sheet(isPresented: $showThemeChoice, onDismiss: { viewModel.markBoardThemePrompted() }) {
+            BoardThemeChoiceSheet(viewModel: viewModel, onDone: { showThemeChoice = false })
+        }
         .onPreferenceChange(OrderCardFrameKey.self) { orderCardFrames = $0 }
         .sheet(item: $activeRoute) { route in routeContent(route) }
         .fullScreenCover(isPresented: $showParallelBoard) {
@@ -976,7 +1003,7 @@ struct MergeBoardView: View {
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 20)
-            .fill(Color.white.opacity(0.5)).shadow(color: .black.opacity(0.1), radius: 8))
+            .fill(viewModel.boardTheme.panelFill).shadow(color: .black.opacity(0.1), radius: 8))
     }
 
     // MARK: Bottom bar
