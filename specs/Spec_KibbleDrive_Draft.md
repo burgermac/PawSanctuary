@@ -472,6 +472,8 @@ Steps 1–6.3 are on main and CI-green, but **no part of the Drive UI has been s
 
 Write results into the table, and record anything unexpected under the step it appeared in.
 
+**Seeding without hand-editing JSON:** `scripts/seed_kibble_drive.sh POINTS true|false` (added 9 Oct 2026) finds the booted Simulator's save, backs up the original once, and sets points, purchase and an empty claimed list; `--restore` puts the original back. Stop the app before running it. It defaults to the Debug Simulator bundle ID `com.timothyherburger.pawsanctuary1`.
+
 **Run of 9 Oct 2026** (iPhone 17 Pro simulator, iOS 26.5, Debug build of `main`, window open with 2d 21h left). Steps 1–10 passed. Three findings, all fixed in the follow-up PR:
 - **Reward pills wrapped at the default text size.** On rungs 10 and 15, "+40 Kibble" wrapped to two lines beside the star-pack pill, and with a Claim button showing "4-Star Pack"/"5-Star Pack" wrapped too. Fixed by stacking a rung's pills vertically and giving the action control a fixed size.
 - **The largest Dynamic Type size broke the sheet.** The header wrapped ("Kibble / Drive", "300 / / 300"), "10 points" split, "+30 Kibble" clipped to "+3", "Claimed" clipped to "Claime / d" and "Claim!" was clipped. Fixed with a separate stacked layout at accessibility sizes for both the header and the rows. **A large blank gap above the header at the top of the sheet was also seen and is not addressed**: its cause is unknown (no code in the panel adds top space), so recheck it after this fix.
