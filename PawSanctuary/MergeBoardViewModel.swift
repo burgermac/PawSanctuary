@@ -3672,6 +3672,13 @@ class MergeBoardViewModel {
         }
     }
 
+    /// A claimed order feeds the live Parallel Board event's energy
+    /// (specs/Spec_ParallelOrderEnergy.md). No event live means no coordinator,
+    /// so this does nothing outside one.
+    private func feedParallelBoardEnergy() {
+        activeParallelBoardEvent?.energy.addBonus(parallelBoardEnergyPerOrder)
+    }
+
     func autoClaimOrder(at index: Int) {
         guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index),
               adoptionBoardCoordinator.adoptionOrders[index].isComplete,
@@ -3683,6 +3690,7 @@ class MergeBoardViewModel {
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
         emitRewardBurst(for: order)
+        feedParallelBoardEnergy()
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
         // Persistent slots have no timer, so claiming one doesn't touch the
@@ -3710,6 +3718,7 @@ class MergeBoardViewModel {
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
         emitRewardBurst(for: order)
+        feedParallelBoardEnergy()
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
         order.isClaimed = true

@@ -56,6 +56,10 @@ struct ParallelBoardView: View {
 
             VStack(spacing: 16) {
                 header
+                Text("Orders you finish on the main board add +\(parallelBoardEnergyPerOrder) energy, up to \(parallelBoardEnergyBankCap).")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
                 progressBar
                 Spacer(minLength: 0)
                 boardGrid
@@ -82,8 +86,19 @@ struct ParallelBoardView: View {
     private var energyMeter: some View {
         HStack(spacing: 6) {
             Image(systemName: "bolt.fill").foregroundColor(.yellow)
-            Text("\(coordinator.energy.balance)/\(parallelBoardEnergyCap)")
+            // Above the regen cap the pool is holding order-bonus energy, so
+            // "45/30" would read as an error. Show the balance and, beside it,
+            // how much of it is banked.
+            Text(coordinator.energy.isBanked
+                 ? "\(coordinator.energy.balance)"
+                 : "\(coordinator.energy.balance)/\(parallelBoardEnergyCap)")
                 .font(.system(size: 14, weight: .semibold))
+            if coordinator.energy.isBanked {
+                Text("+\(coordinator.energy.balance - parallelBoardEnergyCap) banked")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.green)
+                    .transition(.opacity)
+            }
             // Regen is 90s a point, so an empty bar is three quarters of an
             // hour from full and a single generator tap is three minutes
             // away — long enough that a bare balance tells the player
