@@ -1,6 +1,6 @@
 # PawSanctuary — Phase 7: the second 90-day calendar (2026-12-03 → 2027-03-03)
 
-**Status: Complete — §3.1–§3.6 all done (10 Nov 2026). Calendar 2 implemented and tested; merge to `main` before 2026-12-01 still required (§5).** Written 10 Nov 2026.
+**Status: Complete — §3.1–§3.6 all done (10 Nov 2026). Calendar 2 implemented, tested and merged to `main` (PRs #64–#69, 11 Nov 2026).** Written 10 Nov 2026.
 
 **§3.1 — continuous track:** `sanctuary_circle_s4_20261203`, `sanctuary_circle_s5_20270102`, `sanctuary_circle_s6_20270201` added to `EventRegistry.allEvents` (after `rescue_relay_20261127`), plus their `ProgressTrackRegistry.tracks` entries — verbatim copies of Founders' Circle's 10-milestone table. Pinned count test renamed to `testRegistryHasExpectedRunningTotalOfUniqueEventIDsNoDuplicates` and set to 23 (§3.2–§3.4 take it to 36). 7 new tests (`SanctuaryCircleSeasons2Tests`, `EventSystemTests.swift`): exact dates, S3→S4 seam, S4→S5→S6 contiguity, 90-day / 30-each span on a UTC calendar, verbatim table equality, the matching season active at 12-15/01-15/02-15, and exactly one season at each boundary instant. Full suite 736/736 green. No schema change.
 
@@ -268,17 +268,17 @@ The first calendar's tests stay green unchanged except for the two pinned counts
 
 ## 5. Acceptance
 
-- [ ] 16 new `EventDefinition`s in `EventRegistry.allEvents`, dates and IDs exactly as §2.2/§2.3
-- [ ] 3 new `ParallelBoardEventDefinition`s and 4 new `KibbleDriveEventDefinition`s, exactly as §2.4/§2.5
-- [ ] 19 new `ProgressTrackRegistry.tracks` entries, each a verbatim copy of its reference table (§2.7)
-- [ ] S3 → S4 → S5 → S6 contiguous, zero gap, zero overlap; exactly one season active every day 2026-12-03 → 2027-03-03
-- [ ] Weekly track never dark more than 3 days, including across the 12-01 → 12-04 seam
-- [ ] At most 2 batch-2 `EventRegistry` events, 1 Parallel Board and 1 Drive active on any day, verified day by day, observed `EventRegistry` max confirmed to reach 2
-- [ ] All tests use injected dates only
-- [ ] The two pinned counts (`EventSystemTests.swift:846-850`, `ParallelBoardEventsTests.swift:163-168`) updated in the same commits that change the counts
-- [ ] No production code changed outside the three registries and `ProgressTrackRegistry.tracks`; no schema change
-- [ ] Full suite green
-- [ ] **Merged to `main` before 2026-12-01**
+- [x] 16 new `EventDefinition`s in `EventRegistry.allEvents`, dates and IDs exactly as §2.2/§2.3
+- [x] 3 new `ParallelBoardEventDefinition`s and 4 new `KibbleDriveEventDefinition`s, exactly as §2.4/§2.5
+- [x] 19 new `ProgressTrackRegistry.tracks` entries, each a verbatim copy of its reference table (§2.7)
+- [x] S3 → S4 → S5 → S6 contiguous, zero gap, zero overlap; exactly one season active every day 2026-12-03 → 2027-03-03
+- [x] Weekly track never dark more than 3 days, including across the 12-01 → 12-04 seam
+- [x] At most 2 batch-2 `EventRegistry` events, 1 Parallel Board and 1 Drive active on any day, verified day by day, observed `EventRegistry` max confirmed to reach 2
+- [x] All tests use injected dates only
+- [x] The two pinned counts (`EventSystemTests.swift:846-850`, `ParallelBoardEventsTests.swift:163-168`) updated in the same commits that change the counts
+- [x] No production code changed outside the three registries and `ProgressTrackRegistry.tracks`; no schema change
+- [x] Full suite green
+- [x] **Merged to `main` before 2026-12-01**
 
 ---
 
