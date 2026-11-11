@@ -253,7 +253,7 @@ Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite g
 - [x] **3.3** Surface the nearest incomplete order or event timer on the sheet — the player must leave seeing what's unfinished. (Event timer will extend naturally once Phase 6 ships real events; only orders exist to surface today.)
 - [x] **3.4** First-purchase offer + `hasEverPurchased` gating; suppress all monetization surfaces in session one per D7. `isMonetizationUnlocked = commerce.hasReachedFirstWall && playerLevel >= monetizationUnlockLevel` (the latter a plain `let monetizationUnlockLevel = 5` constant, not a function — corrected 15 Aug 2026) — read D7's "whichever is later" as requiring both, not either.
 - [ ] **3.5** Enable Push Notifications capability (already-written scheduling logic is what converts the wall into a return visit). **Blocked on you** — Xcode Signing & Capabilities, not code (see TODO.md).
-- [ ] **3.6** Real ad SDK. Now load-bearing rather than optional. **Blocked on an SDK/account decision** (AdMob, AppLovin, etc.) — flag when ready to proceed.
+- [ ] **3.6** Real ad SDK. Now load-bearing rather than optional. **SDK decided 10 Nov 2026: Google AdMob, rewarded ads only**, behind the existing `AdProvider` protocol with the existing daily cap. Integration blocked on owner hands: AdMob account plus app ID and rewarded ad-unit ID.
 
 **Definition of done:** hitting zero kibble produces the full ladder in order; a fresh account sees no monetization surface in session one. **Met for 3.1–3.4**, verified on screen 31 July 2026. Phase 3 is not fully closed until 3.5/3.6 land.
 
