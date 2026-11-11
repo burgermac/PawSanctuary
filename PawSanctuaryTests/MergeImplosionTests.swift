@@ -5,7 +5,8 @@
 //  specs/Spec_BoardAnimation_Draft.md §8, task 8.1: a merge records its two
 //  source items (read before the board write) as a short-lived MergeImplosion
 //  for the view, then removes it after mergeImplosionDuration. No other
-//  outcome records one.
+//  outcome records one. Task 8.2: a new attemptMergeOrMove naming an
+//  in-flight implosion's destination (as from or to) settles it first.
 //
 
 import XCTest
@@ -149,6 +150,65 @@ final class MergeImplosionTests: XCTestCase {
         XCTAssertEqual(record?.targetItem.tier, 2)
         XCTAssertEqual(vm.boardState.item(at: b)?.chainID, catChain, "fixture check: it merged")
         XCTAssertEqual(vm.boardState.item(at: b)?.tier, 3)
+    }
+
+    // MARK: - Task 8.2: settle-on-input
+
+    func testASecondMergeOntoAnImplodingCellSettlesTheFirst() async {
+        let vm = makeViewModel()
+        let c = GridPosition(row: 1, col: 0)
+        place(vm, chainID: catChain, tier: 1, at: a)
+        place(vm, chainID: catChain, tier: 1, at: b)
+        place(vm, chainID: catChain, tier: 2, at: c)
+
+        vm.attemptMergeOrMove(from: a, to: b)          // b becomes tier 2, imploding
+        let first = vm.mergeImplosions.first
+        XCTAssertNotNil(first)
+
+        vm.attemptMergeOrMove(from: c, to: b)          // rapid chain merge onto b
+        XCTAssertEqual(vm.boardState.item(at: b)?.tier, 3, "fixture check: the chain merge happened")
+        XCTAssertEqual(vm.mergeImplosions.count, 1, "the first implosion was settled, the second recorded")
+        XCTAssertFalse(vm.mergeImplosions.contains { $0.id == first?.id }, "the settled record is gone")
+        XCTAssertEqual(vm.mergeImplosions.first?.from, c)
+        XCTAssertEqual(vm.mergeImplosions.first?.targetItem.tier, 2,
+                       "the new record's target is the (hidden) tier-2 result of the first merge")
+
+        // The first merge's delayed removal must not disturb anything; the
+        // second's clears on its own schedule.
+        await settle(mergeImplosionDuration + 0.25)
+        XCTAssertTrue(vm.mergeImplosions.isEmpty)
+    }
+
+    func testMovingTheResultAwaySettlesItsImplosion() {
+        let vm = makeViewModel()
+        let c = GridPosition(row: 1, col: 0)
+        place(vm, chainID: catChain, tier: 1, at: a)
+        place(vm, chainID: catChain, tier: 1, at: b)
+
+        vm.attemptMergeOrMove(from: a, to: b)
+        XCTAssertEqual(vm.mergeImplosions.count, 1)
+
+        vm.attemptMergeOrMove(from: b, to: c)          // drag the hidden result away
+        XCTAssertEqual(vm.boardState.item(at: c)?.tier, 2, "fixture check: the result moved")
+        XCTAssertTrue(vm.mergeImplosions.isEmpty, "dragging the result away settles its implosion")
+    }
+
+    func testAnUnrelatedMergeLeavesAnInFlightImplosionAlone() {
+        let vm = makeViewModel()
+        let c = GridPosition(row: 1, col: 0)
+        let d = GridPosition(row: 1, col: 1)
+        place(vm, chainID: catChain, tier: 1, at: a)
+        place(vm, chainID: catChain, tier: 1, at: b)
+        place(vm, chainID: catChain, tier: 0, at: c)
+        place(vm, chainID: catChain, tier: 0, at: d)
+
+        vm.attemptMergeOrMove(from: a, to: b)
+        let first = vm.mergeImplosions.first
+
+        vm.attemptMergeOrMove(from: c, to: d)
+        XCTAssertEqual(vm.mergeImplosions.count, 2, "merges in different cells do not settle each other")
+        XCTAssertEqual(vm.mergeImplosions.first?.id, first?.id, "the first record is untouched")
+        XCTAssertEqual(vm.mergeImplosions.last?.to, d)
     }
 
     func testTheImplosionTimingsSitInsideTheMeasuredReferenceRange() {

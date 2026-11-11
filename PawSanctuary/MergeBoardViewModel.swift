@@ -2172,6 +2172,13 @@ class MergeBoardViewModel {
               boardState.isUnlocked(at: from),
               boardState.isUnlocked(at: to) else { return }
 
+        // Tier B settle-on-input (Spec_BoardAnimation_Draft.md §8c, task 8.2):
+        // the model is authoritative and the animation yields. Any implosion
+        // still in flight into a cell this action names — dragging the hidden
+        // result away, or dropping onto it — is dropped before the action runs.
+        // Its delayed removal Task removes by id, so it then does nothing.
+        mergeImplosions.removeAll { $0.to == from || $0.to == to }
+
         if let srcProducer = boardState.producer(at: from) {
             let dstProducer = boardState.producer(at: to)
             let dstItem     = boardState.item(at: to)
@@ -2302,7 +2309,8 @@ class MergeBoardViewModel {
             mergeImplosions.append(implosion)
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(mergeImplosionDuration))
-                // By id, so a record already removed is a no-op.
+                // By id, so a record already removed — including one settled
+                // by attemptMergeOrMove (task 8.2) — is a no-op.
                 self.mergeImplosions.removeAll { $0.id == implosion.id }
             }
         }
