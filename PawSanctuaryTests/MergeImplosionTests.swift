@@ -52,6 +52,16 @@ final class MergeImplosionTests: XCTestCase {
         vm.board = board
     }
 
+    /// Polls until `condition` holds or `timeout` passes. Used instead of a
+    /// fixed sleep for positive checks: a loaded CI runner can delay the
+    /// view model's timer tasks well past their nominal 0.15 s.
+    private func waitUntil(timeout: Double = 5, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     private func settle(_ seconds: Double) async {
         try? await Task.sleep(for: .seconds(seconds))
     }
@@ -84,7 +94,7 @@ final class MergeImplosionTests: XCTestCase {
         vm.attemptMergeOrMove(from: a, to: b)
         XCTAssertEqual(vm.mergeImplosions.count, 1)
 
-        await settle(mergeImplosionDuration + 0.25)
+        await waitUntil { vm.mergeImplosions.isEmpty }
         XCTAssertTrue(vm.mergeImplosions.isEmpty, "the record is removed once the implosion window ends")
     }
 
@@ -175,7 +185,7 @@ final class MergeImplosionTests: XCTestCase {
 
         // The first merge's delayed removal must not disturb anything; the
         // second's clears on its own schedule.
-        await settle(mergeImplosionDuration + 0.25)
+        await waitUntil { vm.mergeImplosions.isEmpty }
         XCTAssertTrue(vm.mergeImplosions.isEmpty)
     }
 
@@ -229,7 +239,7 @@ final class MergeImplosionTests: XCTestCase {
         vm.attemptMergeOrMove(from: a, to: b)
         XCTAssertNil(vm.animatingCell, "no pop straight after release")
 
-        await settle(mergeImplosionDuration + 0.15)
+        await waitUntil { vm.animatingCell == b }
         XCTAssertEqual(vm.animatingCell, b, "the pop fires once the implosion window ends")
     }
 
