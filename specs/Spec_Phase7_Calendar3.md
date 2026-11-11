@@ -1,6 +1,8 @@
 # PawSanctuary — Phase 7: the third 90-day calendar (2027-03-03 → 2027-06-01)
 
-**Status: Draft — not started.** Written 11 Nov 2026 from a read of `main` at `b900435` (Calendar 2 fully merged, PRs #64–#69).
+**Status: In progress — §3.1 done (11 Nov 2026), §3.2–§3.6 not started.** Written 11 Nov 2026 from a read of `main` at `b900435` (Calendar 2 fully merged, PRs #64–#69).
+
+**§3.1 — continuous track:** `sanctuary_circle_s7_20270303`, `sanctuary_circle_s8_20270402`, `sanctuary_circle_s9_20270502` added to `EventRegistry.allEvents` (after `playtime_rush_20270226`), plus their `ProgressTrackRegistry.tracks` entries (verbatim Founders' Circle tables, after the S6 key). Running-total pin 36 → 39; Calendar 2's §4.8 `EventRegistry` half converted to subset assertions (Parallel Board / Drive halves untouched until §3.5). 7 new tests (`SanctuaryCircleSeasons3Tests`, UTC-pinned). Full suite green. No schema change.
 
 **Self-contained brief.** Assumes no prior conversation. This is the pass `Spec_Phase7_Calendar2.md` §6 names in advance: *"After 2027-03-03: the next calendar-authoring pass, same shape again."* `Spec_Phase6c_Calendar.md` §6 set the rule: each batch is *"another calendar-authoring pass, structurally identical to this one, not a new mechanism."* That is all this spec is. Same four layers, same tracks, same curves, same names, same ID convention, same verification method as Calendar 2, re-dated for the next 90 days. Every start date below is derived from the real last window in code, not from Calendar 2's prose; each derivation cites file:line.
 

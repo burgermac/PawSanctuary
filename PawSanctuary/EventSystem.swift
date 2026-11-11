@@ -697,6 +697,55 @@ enum EventRegistry {
                 Color(red: 0.68, green: 0.90, blue: 0.82),
             ]
         ),
+        // Phase 7 third calendar (Spec_Phase7_Calendar3.md §2.3/§3.1) — the
+        // continuous track continued for 2027-03-03...2027-06-01: Sanctuary
+        // Circle seasons 7-9, 3 sequential 30-day Passes, contiguous with
+        // zero gap, Season 7 starting the instant Season 6 above ends.
+        // Cosmetics copied verbatim from seasons 1-6; milestone tables are
+        // the same verbatim Founders' Circle reuse (ProgressTrackRegistry
+        // .tracks). Additive only — expired entries stay as inert history.
+        EventDefinition(
+            id: "sanctuary_circle_s7_20270303",
+            name: "Sanctuary Circle",
+            tagline: "A season of rewards for the sanctuary's circle of supporters.",
+            startDate: date("2027-03-03"),
+            endDate:   date("2027-04-02"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
+        EventDefinition(
+            id: "sanctuary_circle_s8_20270402",
+            name: "Sanctuary Circle",
+            tagline: "A season of rewards for the sanctuary's circle of supporters.",
+            startDate: date("2027-04-02"),
+            endDate:   date("2027-05-02"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
+        EventDefinition(
+            id: "sanctuary_circle_s9_20270502",
+            name: "Sanctuary Circle",
+            tagline: "A season of rewards for the sanctuary's circle of supporters.",
+            startDate: date("2027-05-02"),
+            endDate:   date("2027-06-01"),
+            milestones: [],
+            icon: "trophy.fill",
+            accentColor: Color(red: 0.72, green: 0.50, blue: 0.10),
+            gradientColors: [
+                Color(red: 1.00, green: 0.96, blue: 0.85),
+                Color(red: 0.96, green: 0.85, blue: 0.60),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
