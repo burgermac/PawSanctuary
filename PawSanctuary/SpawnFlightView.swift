@@ -67,15 +67,25 @@ private struct SpawnFlightSprite: View {
         }
     }
 
-    @ViewBuilder
     private var sprite: some View {
-        if let art = flight.item.artImage {
+        BoardItemSprite(item: flight.item, cellSize: cellSize)
+    }
+}
+
+/// A board item drawn as a free-floating sprite (art if present, otherwise its
+/// SF Symbol). Shared by the spawn flight and the merge implosion overlays.
+struct BoardItemSprite: View {
+    let item: BoardItem
+    let cellSize: CGFloat
+
+    var body: some View {
+        if let art = item.artImage {
             art.resizable().scaledToFit()
                 .frame(width: cellSize * 0.78, height: cellSize * 0.78)
         } else {
-            Image(systemName: flight.item.def?.symbol ?? "pawprint.fill")
+            Image(systemName: item.def?.symbol ?? "pawprint.fill")
                 .font(.system(size: cellSize * 0.5))
-                .foregroundColor(flight.item.def?.tint ?? flight.item.def?.color ?? .brown)
+                .foregroundColor(item.def?.tint ?? item.def?.color ?? .brown)
         }
     }
 }

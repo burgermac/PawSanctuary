@@ -912,6 +912,8 @@ struct MergeBoardView: View {
                                 isFamilySpawnerAffordable: isSpawnerAffordable,
                                 isFlightLanding: !reduceMotion
                                     && viewModel.spawnFlights.contains { $0.to == pos },
+                                isMergeImploding: !reduceMotion
+                                    && viewModel.mergeImplosions.contains { $0.to == pos },
                                 dailyTaskHighlight: cell.item.flatMap {
                                     taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
                                 } ?? .none
@@ -1002,6 +1004,10 @@ struct MergeBoardView: View {
         .overlay(alignment: .topLeading) {
             SpawnFlightOverlay(flights: reduceMotion ? [] : viewModel.spawnFlights,
                                cellSize: cellSize, spacing: cellSpacing)
+        }
+        .overlay(alignment: .topLeading) {
+            MergeImplosionOverlay(implosions: reduceMotion ? [] : viewModel.mergeImplosions,
+                                  cellSize: cellSize, spacing: cellSpacing)
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 20)

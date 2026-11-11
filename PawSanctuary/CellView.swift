@@ -36,6 +36,10 @@ struct CellView: View {
     /// (specs/Spec_SpawnFlight.md): the item is already in `cell`, but the
     /// overlay is drawing it mid-air, so it stays hidden here until it lands.
     var isFlightLanding: Bool = false
+    /// True while the merge implosion overlay (Spec_BoardAnimation_Draft.md
+    /// section 8, task 8.4) is drawing the two sources in this cell. The merge
+    /// result is already in `cell`, so it stays hidden until the burst.
+    var isMergeImploding: Bool = false
     /// Whether an unclaimed daily hand-in task wants what is standing in this
     /// cell, and whether that task is fully stocked
     /// (`Spec_DailyHandInTasks.md` D-B). Drives the muted/bright blue tint
@@ -117,7 +121,10 @@ struct CellView: View {
                         .opacity(isDragging ? 0.25 : 1.0)
                 } else if let item = cell.item {
                     itemContent(item)
-                        .opacity(isFlightLanding ? 0 : (isDragging ? 0.25 : 1.0))
+                        .opacity((isFlightLanding || isMergeImploding) ? 0 : (isDragging ? 0.25 : 1.0))
+                        // Non-animated: the drop's spring transaction must not
+                        // fade the hidden result in or out.
+                        .animation(nil, value: isMergeImploding)
                         .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
                         .overlay(bubbleOverlay(for: item))
                         .offset(mergeHintOffset)

@@ -247,4 +247,21 @@ final class MergeImplosionTests: XCTestCase {
         await settle(mergeImplosionDuration + 0.15)
         XCTAssertNil(vm.animatingCell, "a settled implosion fires no stray burst")
     }
+
+    // MARK: - Task 8.4: start geometry
+
+    func testTheSourceStartsInTheTargetCellOffsetTowardItsOrigin() {
+        // Dragged from the left of the target: starts left of centre, same row.
+        let left = mergeImplosionStartOffset(from: GridPosition(row: 2, col: 1),
+                                             to: GridPosition(row: 2, col: 2), cellSize: 100)
+        XCTAssertEqual(left.width, -22, accuracy: 0.001)
+        XCTAssertEqual(left.height, 0, accuracy: 0.001)
+        // From below: starts below centre.
+        let below = mergeImplosionStartOffset(from: GridPosition(row: 3, col: 2),
+                                              to: GridPosition(row: 2, col: 2), cellSize: 100)
+        XCTAssertEqual(below.width, 0, accuracy: 0.001)
+        XCTAssertEqual(below.height, 22, accuracy: 0.001)
+        // Same cell: no offset (guards divide by zero).
+        XCTAssertEqual(mergeImplosionStartOffset(from: a, to: a, cellSize: 100), .zero)
+    }
 }
