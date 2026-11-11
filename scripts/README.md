@@ -7,6 +7,7 @@ Standalone Swift scripts. Run with `swift scripts/<name>.swift` — no build ste
 | `refvideo.swift` | Reference-video analysis — frame extraction and contact sheets from competitor screen recordings. See below. |
 | `generate_icon.swift` | Renders the app icon PNG. |
 | `generate_launch_logo.swift` | Renders the launch-screen logo PNG. |
+| `seed_kibble_drive.sh` | Seeds or restores the Kibble Drive in a Simulator save, for the §6h acceptance checklist. Bash, not Swift: `scripts/seed_kibble_drive.sh 300 true`, `--restore` to undo. See its header. |
 
 ---
 

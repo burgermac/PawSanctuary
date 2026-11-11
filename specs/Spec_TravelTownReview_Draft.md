@@ -73,6 +73,18 @@ PawSanctuary has nudges (the merge hint, the sell-vs-order toast) but nothing th
 
 ---
 
+### 5a. Implemented 9 Oct 2026
+
+An order basket one item short of complete now swaps its "N/M delivered" caption for **"Almost there!"** in the family's colour, with a speech-bubble glyph (`OrderLaneCard`, `OrderLaneView.swift`; the rule is `AdoptionOrder.isAlmostThere`, tuned by `orderAlmostThereRemaining = 1`). No schema change.
+
+Decisions made while building, for review:
+- **Baskets only.** A single-item order has no "almost" (it is unfilled or done), so it never nudges. A single line wanting two of the same does: 1/2 delivered reads "Almost there!".
+- **Not on the urgent order.** Its caption slot is the countdown, which matters more.
+- **A caption swap, not a floating bubble.** The card is 148 pt wide and the band has no vertical slack (`Spec_TaskTrayRedesign_Draft.md` §2), so there is nowhere for a bubble to sit without covering the slots.
+- **Lane card only.** The order sheet's own cards already show per-line progress and were left alone.
+
+Seen on the Simulator with one order seeded at 1 of 2; `AlmostThereTests` (7) cover the rule. The reference's portrait-with-bubble treatment is not reproduced: `AdoptionFamily` has an SF Symbol, not a portrait.
+
 ## 6. Open questions
 
 1. **What does Travel Town's 12-starfish bar pay?** Unobserved — the clip ends at 11/12. The single most useful thing to capture in a follow-up recording, since it is the direct analogue of Smile Points' bundle.

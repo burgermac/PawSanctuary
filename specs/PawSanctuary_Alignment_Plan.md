@@ -161,6 +161,36 @@ The economics are the interesting part. Measured at Tasty Travels:
 
 **Draft spec now exists: `specs/Spec_Phase6b_RewardLadder.md`** (18 Aug 2026, written cold by Claude Code, not yet design-authority-reviewed). Named "Reward Ladder," not "chain offer" — the same naming-collision problem Pass hit with its own name, since this codebase already uses "chain" for the merge-chain model. Found while scoping: `OfferHookRegistry` turned out not to be a real fit (zero call sites anywhere, shaped as a flat offer-ID list, not a priced/sequenced ladder) — not used. Bigger finding: unlike Milestone track/Pass, this has **no separate token-earning faucet** — purchasing a rung is the only progress driver, so `EventTokenRiderProvider`'s reuse the Alignment Plan implied doesn't actually apply; only `ProgressTrack`'s storage shape carries over. The spec also proposes (not yet reviewed) that this isn't calendar-scheduled at all — it surfaces once the existing D7 `isMonetizationUnlocked` gate flips, permanent and untimed, explicitly cutting the reference titles' "timer-bound" property as a first-cut scope reduction rather than guessing at expiry semantics. That trigger proposal is flagged in the spec's own §6 as the single thing most likely to change if reviewed differently.
 
+### D9 — Retention outranks monetization *(added 8 Oct 2026)*
+
+The game's two primary aims are retention and monetization through IAPs. They conflict at specific points: energy walls, paywalled or locked rewards, and offer cadence help revenue and hurt staying power, while generous faucets and visible claimable progress do the reverse.
+
+**Decided 8 Oct 2026: when they collide, monetization gives way.** The reasoning is that attention sustained over continued play is what produces IAP revenue in the end, so a change that costs short-term revenue but helps players stay is taken. The converse is flagged, not forbidden: any change that raises revenue at a retention cost must say so explicitly in its spec.
+
+**Applies to:** every later spec that touches an IAP, a currency faucet or sink, an offer trigger or the energy wall. **Does not reopen** decisions already made on the economics (D1, D7, D8); it is the tiebreaker for new ones and for any revisit.
+
+**First known consequence:** `Spec_KibbleDrive_Draft.md` §6 step 5, the `energyLarge` repositioning, is a live-SKU revenue change and now needs a retention argument, not just a cleaner price ladder. Not yet applied; to be assessed when step 5 is picked up.
+
+### D10 — Chores: not adopted *(decided 9 Oct 2026)*
+
+The reference lists **chores** — named tasks costing soft currency and paying XP, "a second use for coins, parallel to orders" (`Merge2_Reference_Blueprint.md` §29). The audit carried it as an absent feature.
+
+**Decided: do not build it.** Three reasons, each sufficient on its own:
+
+1. **The premise does not hold here.** A chore sink assumes coins that would otherwise pile up. PawSanctuary's coins are fully committed: the Sanctuary Map's 291,900 coins of costs are pinned to a 55–70-day build-out by `testMapBuildOutLandsInTheTargetWindow`, and `Spec_Phase2c_CoinEconomy.md` says to "treat map costs as fixed; tune the faucet, not the sink". A coin-costing chore pulls coins from the map and slows exactly the number that was tuned.
+2. **The XP side is load-bearing.** XP sets level, and level gates the wall (the ratio crossing 1.00 at L41–50), the monetization unlock at level 5, and row and chain unlocks. A new XP source shifts all of them, and `EconomySimulation` has no term for it.
+3. **There is no evidence to design from.** The reference data records one line: no costs, XP amounts, names or counts. A design would be wholly invented, against a number that took a whole phase to fix.
+
+**Revisit only if** playtest data shows coins genuinely accumulating unspent (the `PlaytestMetrics` panel is the instrument), or the map's costs are retuned.
+
+### D11 — Named characters and dialogue: held *(decided 9 Oct 2026)*
+
+The reference's Tasty Travels carries a "light narrative spine" (named characters, scripted dialogue); Travel Town does not. The parity audit already recorded the call: stay lean like Travel Town, and "worth revisiting if retention data says the lean version feels thin".
+
+**Decided: hold, with that trigger kept.** There is no retention data to say the lean version is thin: the playtest metrics are only just gathering. It is also the largest remaining item by far (writing, art, a dialogue surface) and sits on the Warmth pillar's content side rather than on any mechanic with a measurement behind it. The "Almost there!" nudge already gives order families a voice in one line, which is the cheapest test of whether players respond to it.
+
+**Revisit when** there is retention data from real play to read, not before.
+
 ---
 
 ## 4. Phase 1 — Foundations

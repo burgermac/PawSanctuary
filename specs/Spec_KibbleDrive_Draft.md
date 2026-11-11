@@ -351,6 +351,144 @@ With the live Drive seeded to a plausible mid-window 40 points, 1.54 days into t
 
 **Still ahead:** step 4 (the §3.3 ladder, now carrying step 3's claim half with it), 5 (`energyLarge` reposition), 6 (UI, which retires the DEBUG button), 7 (acceptance). §7's question 6 — the reference's unexplained "Challenges complete!" banner — is the last one open.
 
+### 6e. Step 4 IMPLEMENTED (8 Oct 2026) — the ladder, and step 3's claim half
+
+`KibbleDriveLadder.swift` (§3.3's 15 rungs as `TrackMilestone`s, `freeRewards` empty), `claimKibbleDriveRung(index:)` and `kibbleDriveClaimableRungs` on the view model, and `KibbleDriveLadderTests`. Claiming marks the rung claimed before paying, goes through the existing `applyRewards`, and pays raw kibble with no Pass bonus, since §3.5's margin is computed against the listed 540. Card packs land in `pendingCardPacks`.
+
+**§3.5's ratio is asserted from the model, not from the spec's figures.** The test rebuilds points/day from `ordersPerDay`, `carePointsPerOrder`, `carePointsPerDailySweep`, `questClaimsPerDay` and `carePoints(forQuest:)`, checks it against `kibbleDrivePointsPerDay` (so a Care Points retune forces a re-derivation), then requires the margin above 3.0 and above 2.0 after the worst-case catch-up grant.
+
+**Not done:** §3.5's "worth an assertion" about login-only quest goals. `QuestGoal` has no login-only case today, so there is nothing to assert against; it needs adding if one is ever introduced. **Written without a Swift toolchain** (CI is the first compile); no on-screen check, since there is no UI until step 6. Steps 5–7 not started.
+
+### 6f. Step 6 design pass (8 Oct 2026) — tray tile and panel. Design only, no code
+
+§2's surface row is one line, so this fixes the details before building. Read from the code at `a96afac`; decisions are proposals for review, not yet confirmed.
+
+**D-1 — A new `TaskSheet.kibbleDrive` case, not `.event(id)`.** The Drive is not an `EventDefinition` (§6c: its own registry), and the `.event` case resolves through `EventRegistry` and renders nothing for it (`MergeBoardView.swift`, task-sheet switch). The panel is a new view, `KibbleDrivePanelView`, modelled on `EventSheetView`.
+
+**D-2 — The tile.** One `TrayTile`, mounted in the conditionals group beside `parallelBoardTile`:
+- Present while `viewModel.kibbleDrive` exists **and** `isMonetizationUnlocked` (§2: reuse D7's gate as-is). Present whether or not purchased, since the unpurchased tile is the offer (§2).
+- `icon` and name from the running `KibbleDriveEventDefinition`; warm orange tint (the DEBUG button's colour, to keep one identity).
+- `status: .progress(points / 300)`. A 40pt tile cannot show price, lock state or next rung; the panel does. The next rung goes in `accessibilityText`.
+- `showsBadge` = `!kibbleDriveClaimableRungs.isEmpty`, so the red dot appears only after purchase, when there is something to collect.
+- `urgency` from the same `deadlineRank(remaining:total:)` the other timed tiles use, which also sorts it toward the front as the 3-day window closes. Forfeit-on-close (§7 Q4) is what makes that matter.
+
+**D-3 — The panel.** One scrolling sheet:
+1. **Header**: name, `timerLabel`, `points / 300`, a progress bar with the 15 rung thresholds as ticks.
+2. **Buy banner**, only while `!purchased` and the product loaded: headline *"Earn up to 540 Kibble"*, the store price. Same mechanics as `passUnlockSection`: set `pendingKibbleDriveEventID = drive.eventID` before `purchase`, so the TOCTOU guard has what it checks.
+3. **Rung list**, 15 rows, top to bottom by threshold. Four states:
+
+| State | Look | Tap |
+|---|---|---|
+| Below threshold | muted, "N more points" | none |
+| Reached, **unpurchased** | full colour, **padlock**, reward visible | none; the banner above is the way out |
+| Reached, purchased | full colour, **Claim** | `claimKibbleDriveRung(index:)` |
+| Claimed | tick, dimmed | none |
+
+   Reached-but-locked rows are the coercive part (§2): points and rewards visible, release behind the purchase. Card-pack rungs 10 and 15 show a pack glyph beside the kibble.
+4. **Footer caption**: *"Unclaimed rewards are lost when the Drive ends."* Honest disclosure of §7 Q4.
+
+**D-4 — Claiming is one tap per rung, no "Claim all".** §2 says the serial tapping is the payoff and must not be auto-claimed. Claim feedback should reuse whatever `MilestoneRowView` already does on a claim; I did not verify what that is, so check it when building rather than assuming a kibble-flight animation exists.
+
+**D-5 — Disclose the catch-up grant before the purchase (my addition).** When `kibbleDriveCatchUpGrant()` is above 0, the banner adds *"+N bonus points on purchase"*. §6d built the grant but nothing in the UI says it exists, and a player deciding on day 3 is the one it helps. Cheap, and on D9's side: it removes a reason to hesitate.
+
+**D-6 — The DEBUG button moves, not disappears.** §6d said the UI retires it. But a `simctl`-installed build has no StoreKit configuration, so the real buy button stays hidden (the same gap as Reward Ladder rung 1). Move the simulated purchase inside the panel under `#if DEBUG` and remove the HUD one, so the panel is testable without StoreKit.
+
+**D-7 — Verification constraint.** No Drive is live on the day this was written: the 11 Sep window closed on 14 Sep and the next, `kibble_drive_20261009`, opens on **9 Oct 2026**. The Simulator has no date override (§6c), so on-screen checks either wait for that window or seed `kibbleDrive` through the existing debug path, as §6b/§6d did.
+
+**Tasks** (one per session, game playable after each):
+- **6.1** `TaskSheet.kibbleDrive`, the tile, and a placeholder panel (header only).
+- **6.2** Buy banner, including the grant line (D-5), and moving the DEBUG purchase (D-6).
+- **6.3** Rung rows and claiming.
+- **6.4** On-screen acceptance (step 7).
+
+**Resolved 8 Oct 2026:** D-2's tile is **not** gated on `isMonetizationUnlocked` (it shows whenever a Drive is running), and D-5's bonus-points line is wanted. One consequence to settle in 6.2: with the tile visible before D7 unlocks, the panel's **buy banner should still respect `isMonetizationUnlocked`**, or D7's "no monetization in session one" is bypassed through the Drive.
+
+**Task 6.1 IMPLEMENTED (8 Oct 2026):** `TaskSheet.kibbleDrive`, `kibbleDriveTile` in the tray's conditional group, and `KibbleDrivePanelView` with the header only (name, countdown, points, progress bar with rung ticks; a short "ended" message if the window closed under an open sheet). No schema change. Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded.
+
+**Task 6.2 IMPLEMENTED (8 Oct 2026):** the buy banner in `KibbleDrivePanelView`, shown only while unpurchased: headline *"Earn up to 540 Kibble"*, one line explaining that points accrue either way, the *"+N bonus points on purchase"* line when `kibbleDriveCatchUpGrant()` is above 0, and the store price button. The button sets `pendingKibbleDriveEventID` before purchasing (the TOCTOU guard's input) and renders only when `isMonetizationUnlocked` and the product loaded, so the tile showing early does not bypass D7. The HUD DEBUG button is removed; a `#if DEBUG` "Simulate purchase" button now lives in the banner (D-6). Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded. Rung rows (6.3) not started.
+
+**Task 6.3 IMPLEMENTED (8 Oct 2026):** the 15 rung rows in `KibbleDrivePanelView`, in the four states of §6f D-3 (below threshold: "N more"; reached and unpurchased: padlock; reached and purchased: Claim!; claimed: tick), plus the *"Unclaimed rewards are lost when the Drive ends"* caption. One tap per rung, no "Claim all". **D-4's check came back empty:** `MilestoneRowView` has no claim animation, only the row flipping to "Claimed", so there is no existing kibble-flight to reuse and none was added; the board-animation burst of `Spec_BoardAnimation_Draft.md` §3 stays unused here. Whether the claim needs more feedback is an on-screen question. Written without a Swift toolchain, so CI is the first build; no on-screen check until a Drive is live (9 Oct) or state is seeded. Task 6.4 (acceptance) remains.
+
+### 6g. Step 5 retention argument (8 Oct 2026) — written for D9; recommends deferring
+
+D9 (retention outranks monetization) says a change that costs revenue must be justified by retention, and one that raises revenue at a retention cost must say so. §3.4's reposition of `energyLarge`/`energyXL` was decided on 4 Sep, before D9, and for a revenue reason: the pack should not lose a kibble-per-dollar comparison to the Drive. This section tests it against D9 using the code at `2254afc`. **Design only, nothing built.**
+
+**What the reposition changes, computed.** `DogTagKibbleExchange` sells 100 kibble per exchange at 15 / 30 / 60 tags, then 60 flat, resetting daily. Exchanges are whole, so leftover tags are stranded. Kibble-equivalent = instant kibble + 100 per affordable exchange:
+
+| Pack | Instant kibble | Kibble-equivalent, fresh ladder | Kibble-equivalent, ladder already used |
+|---|---|---|---|
+| Large today (120 k, 40 tags) | 120 | 220 | 120 |
+| Large proposed (60 k, 70 tags) | **60** | 260 | 160 |
+| XL today (250 k, 80 tags) | 250 | 450 | 350 |
+| XL proposed (120 k, 150 tags) | **120** | 420 | 320 |
+
+So total value is roughly preserved (Large up, XL slightly down). What changes is **how it arrives**: instant kibble roughly halves on both, and the rest becomes tags the player must spend through the exchange. Spawners go 1→2 and 2→3.
+
+**Against D9:**
+- **Against retention.** Phase 3 designed the wall as the moment of relief: hit zero kibble, see the ladder, buy a pack. A pack that now gives half the kibble instantly and asks the player to open the exchange for the rest makes the worst moment of a session feel stingier, which is the retention-negative direction D9 rules out.
+- **Against retention, second.** Extra `fosterHome` producers each take a board cell (`placeProducerReward` pays 10 kibble instead when none is free), on a board the economy model treats as congestion-limited. I did not verify how much a Foster Home is worth: `isShopProducer` marks the rescue-tier producers as superseded by family spawners, yet the packs still hand them out.
+- **For retention.** Little. More tags help a player who wants board items from the Dog Tag store, and a pack bought at the wall is somewhat richer on a fresh ladder. Neither is the reason the change was proposed.
+- **The motive is revenue protection**, not retention: it removes a comparison that may not exist. The Drive is a 3-day, earn-by-playing offer at 108 kibble/$ every ~4 weeks; the pack is instant relief at 24 kibble/$. They are different purchases, and there is no evidence yet that anyone would trade one for the other.
+
+**Options**
+- **A. Ship §3.4 as written.** Fails the D9 test above and is a live-SKU revenue experiment with no telemetry to read it.
+- **B. Add, don't subtract.** Keep instant kibble (120 / 250) and add the tags and spawner on top. Retention-positive and consistent with D9, but costs revenue per sale and needs `EconomySimulation` to price the extra tag volume (§3.6 already flags tags as a faucet by another route).
+- **C. Defer.** Leave the packs alone, ship the Drive, and revisit after the first live window using `PlayerCommerceState` (purchase count, average value, days since last purchase), which has recorded from first launch.
+
+**Recommendation: C.** It is the only option that needs no guess, and the thing it waits for (whether the Drive actually cannibalizes `energyLarge`) is cheap to observe. If the data shows cannibalization, B is the version that fits D9. §3.4's table stays as a recorded proposal, not an instruction.
+
+**Decided 8 Oct 2026 (Tim): C, defer.** The `energyLarge`/`energyXL` packs are left as they are. Step 5 is not built, and §3.4's table stays a recorded proposal. Revisit after the first live Drive window using `PlayerCommerceState`; if the data shows the Drive cannibalizing `energyLarge`, option B is the version to pick up.
+
+### 6h. Task 6.4 acceptance checklist (8 Oct 2026) — to be run on a build, results to be recorded here
+
+Steps 1–6.3 are on main and CI-green, but **no part of the Drive UI has been seen running**. This is the manual pass. Nothing below can be done from a cloud session: it needs an Xcode Debug build on a Simulator or device.
+
+**Timing facts that change how you test.**
+- Windows are parsed as UTC dates, so `kibble_drive_20261009` runs **2026-10-09 00:00 UTC to 2026-10-12 00:00 UTC**. Check what that is in your timezone.
+- **The Drive is created only on a cold launch** inside the window (`checkEventLifecycle` is launch-only, §6c). Backgrounding and reopening the app is not enough: terminate it and launch again.
+- Simulators have no date override, so the forfeit step (11) cannot be run on a Simulator until the window really ends.
+- Points per action: easy / medium / hard quest claim = 8 / 15 / 30; order claim = 1; sweeping all three daily tasks = 25. Rung 1 is at 10 points.
+
+| # | Do | Expect | Result |
+|---|---|---|---|
+| 1 | Cold launch after the window opens, **monetization still locked** | An orange box tile in the tray with an empty progress bar. It shows even though monetization is locked (decided 8 Oct). | **PASS.** Cold launch with monetization locked: orange box tile, empty bar, no red dot. The tray starts collapsed to one column, so the tile needed a swipe to find. |
+| 2 | Tap the tile | Sheet titled "Kibble Drive": name, countdown such as `2d 11h left`, `0 / 300`, a progress bar with 15 tick marks, 15 rows all reading "N more", and the caption "Unclaimed rewards are lost when the Drive ends." | **PASS.** Sheet title, `2d 21h left`, `0 / 300`, 15-segment bar, 15 rows reading "N more", and the caption. |
+| 3 | Look at the buy banner | "Earn up to 540 Kibble" and the explanatory line. **No price button** on a `simctl`/Debug build (no StoreKit configuration, so the product never loads). A Debug-only "Simulate purchase" button is present. | **PASS.** "Earn up to 540 Kibble" and the Debug button present; no price button. |
+| 4 | Claim a medium quest from the quest sheet | Drive points rise by 15 and the weekly Care Points bar rises by the same 15 (credited to both, not split). Tile bar moves; panel shows `15 / 300`. | **PASS (partial).** Two Easy claims: Drive points and `carePointsThisWeek` each +8, then +16, read from the save file (not the tile bar). A Medium claim was not tested. |
+| 5 | Reopen the panel with 15 points, unpurchased | Rung 1 (10) is full colour with a **padlock**, not a Claim button. Rung 2 (22) still reads "7 more". | **PASS.** At 20 points unpurchased: padlock on rung 1, rung 2 reads "2 more". |
+| 6 | Check for the bonus line | "+N bonus points on purchase" shows only if time has elapsed in the window and you are behind par (105 points per day), at most half your banked points. At window open it should be absent. | **PASS.** Absent at 20 points (ahead of par, about 9.7 at that hour); "+2 bonus points on purchase" shown when seeded at 4 points. |
+| 7 | Unlock monetization (Debug lock button), then tap "Simulate purchase" | Banner disappears. Points rise by the bonus shown in step 6 (or not at all if none). Reached rungs show **Claim!**. The tile gets a red dot. | **PASS.** Banner gone, rung 1 shows Claim!. Purchase with 4 points seeded went 4 to 6, matching the +2 shown. The red dot was not captured before the claim; seen at step 10. |
+| 8 | Tap Claim on rung 1 | Kibble rises by 30. The row flips to a tick and "Claimed". The Claim button cannot be pressed again. The red dot clears once no rung is claimable. | **PASS.** Kibble 111 to 141, green tick and "Claimed", red dot cleared. A second Claim press was not tried (covered by `KibbleDriveLadderTests`). |
+| 9 | Terminate and cold launch again, still inside the window | Points, purchased state and the claimed rung are all unchanged. The Drive was not recreated. | **PASS.** Points, purchased state and claimed rung survived a terminate and cold launch; the Drive was not recreated. |
+| 10 | **Seed the top of the ladder.** With the app terminated, edit `kibbleDrive` in `gameState.json` to `points: 300, purchased: true, claimedRungs: []` (the technique §6b and §6d used), then launch | All 15 rows show Claim!. Claim them one by one: kibble rises by 540 in total, rung 10 queues a star4 card pack and rung 15 a star5 pack, and the tile bar is full. | **PASS.** Seeded 300 and purchased: full bar, red dot, 15 Claim! rows. Kibble 141 to 681 (+540); `pendingCardPacks` gained star4 and star5. |
+| 11 | After 2026-10-12 00:00 UTC, cold launch | The tile is gone and the sheet, if reached, says "This Kibble Drive has ended." Unclaimed rungs are forfeit. Covered by `KibbleDriveLifecycleTests`; this is the on-device confirmation. | **SKIPPED.** Window ends 2026-10-12 00:00 UTC. |
+
+**Layout checks, any step:** all 15 rows scroll inside the sheet without clipping; the reward pills ("+40 Kibble", "5-Star Pack") stay on one line; nothing overlaps at your largest Dynamic Type setting.
+
+**What this pass cannot verify.**
+- **The `isMonetizationUnlocked` gate on the real price button, by eye.** On a build with no StoreKit configuration the product never loads, so the button is hidden whatever the gate says, and a pass in step 3 proves nothing about the gate. **Now covered by `KibbleDriveGateTests` (8 Oct 2026):** the condition moved out of the view into `MergeBoardViewModel.isKibbleDriveBuyAvailable` (running, unpurchased, `isMonetizationUnlocked`) so it can be tested; six tests cover wall-only, level-only, both, already purchased, no Drive, and that it tracks the shared D7 condition. Seeing the button itself still needs an Xcode Run with a StoreKit configuration file.
+- **The real StoreKit purchase**, `pendingKibbleDriveEventID` surviving the purchase sheet, and redelivery through `listenForTransactions()`. Same outstanding gap as the Reward Ladder.
+- **A purchase sheet straddling the window boundary.** Needs a controllable clock as well as StoreKit.
+
+Write results into the table, and record anything unexpected under the step it appeared in.
+
+**Seeding without hand-editing JSON:** `scripts/seed_kibble_drive.sh POINTS true|false` (added 9 Oct 2026) finds the booted Simulator's save, backs up the original once, and sets points, purchase and an empty claimed list; `--restore` puts the original back. Stop the app before running it. It defaults to the Debug Simulator bundle ID `com.timothyherburger.pawsanctuary1`.
+
+**Run of 9 Oct 2026** (iPhone 17 Pro simulator, iOS 26.5, Debug build of `main`, window open with 2d 21h left). Steps 1–10 passed. Three findings, all fixed in the follow-up PR:
+- **Reward pills wrapped at the default text size.** On rungs 10 and 15, "+40 Kibble" wrapped to two lines beside the star-pack pill, and with a Claim button showing "4-Star Pack"/"5-Star Pack" wrapped too. Fixed by stacking a rung's pills vertically and giving the action control a fixed size.
+- **The largest Dynamic Type size broke the sheet.** The header wrapped ("Kibble / Drive", "300 / / 300"), "10 points" split, "+30 Kibble" clipped to "+3", "Claimed" clipped to "Claime / d" and "Claim!" was clipped. Fixed with a separate stacked layout at accessibility sizes for both the header and the rows. **A large blank gap above the header at the top of the sheet was also seen and is not addressed**: its cause is unknown (no code in the panel adds top space), so recheck it after this fix.
+
+**Recheck after the fixes, 9 Oct 2026 (Mac session, main at `74b455b`, iPhone 17 Pro iOS 26.5, Debug).**
+- **Default size: pass.** Rows 1–15 render with no wrapping. The kibble and pack pills stack vertically on rungs 10 and 15 and nothing clips. Scrolling is clean.
+- **Pack note: pass.** Claiming rung 10 flipped the row to the tick and "Claimed" and showed "Pack added to your cards".
+- **Largest size (accessibility-extra-extra-extra-large): pass.** Header stacks as icon / "Kibble Drive" / "2d 10h left" / "300 / 300" with none of the earlier splits. Rows stack the threshold, the reward and a full-width "Claim!" with no clipping.
+- **Blank gap above the header: not a bug.** It appeared only in a screenshot taken mid-bounce after a scroll-to-top swipe. A screenshot taken a moment later showed the header directly under the nav bar. It was rubber-band overscroll; the earlier sighting was most likely the same. Nothing to fix.
+- **Not done:** a Medium-quest claim, the haptic (not observable in the Simulator), and step 11 (needs the clock past 2026-10-12 00:00 UTC).
+- **`scripts/seed_kibble_drive.sh` ran for the first time on a real Simulator:** `300 true` seeded correctly (claimedRungs cleared, original kept) and `--restore` put the original back. Its simctl container lookup works.
+- **A claim needed more feedback than the row flipping to "Claimed"**, and nothing said a pack had been queued on rungs 10 and 15. Added a success haptic on each claim and a "Pack added to your cards" note on claimed pack rungs.
+
+Other notes from the run: the Debug simulator build installed as `com.timothyherburger.pawsanctuary1`, not `…pawsanctuary` as the instructions said (the `…1` suffix is not limited to device builds); `claimedRungs` is 0-indexed in the save; the screenshot lags a tap by about a second. The simulator was a fresh install with no prior save. **Still to verify:** the layout fixes at both default and largest text sizes, a Medium-quest claim, and step 11 after the window closes.
+
 ## 7. Open questions
 
 1. ~~**§3.4's price collision with `energyLarge`**~~ — **resolved 4 Sep 2026: reposition the pack.** Contents proposal in §3.4; the live-SKU revenue risk is accepted, not eliminated.

@@ -443,7 +443,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         switch self {
         case .rescueCrate:  return 30; case .shelterPod: return 45; case .fosterHome: return 60
         case .groomingBox, .feedBox, .shelterBox: return 25
-        case .familySpawner: return 45
+        case .familySpawner: return familySpawnerCooldownSeconds
         }
     }
     /// The chain category this producer emits into.
@@ -554,6 +554,11 @@ struct ProducerTile: Identifiable, Equatable, Codable {
     var speedBurstEndsAt: Date? = nil
     var nextDropGuaranteedHighTier: Bool = false
 
+    /// Family spawners only: kibble spent at this spawner since its last cooldown
+    /// began (specs/Spec_SpawnerCooldown.md). Carries the remainder over when a
+    /// cooldown starts rather than resetting to zero.
+    var kibbleSpentSinceCooldown: Int = 0
+
     // Phase 6 — Avians Scout preview: non-nil when Scout is unlocked and a spawn has just fired.
     // true = next spawn from this tile will be a sub-object, false = animal.
     var scoutPreviewIsSubObject: Bool? = nil
@@ -569,7 +574,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, level, readyAt, chargesRemaining, species, speedBurstEndsAt
-        case nextDropGuaranteedHighTier, scoutPreviewIsSubObject
+        case nextDropGuaranteedHighTier, scoutPreviewIsSubObject, kibbleSpentSinceCooldown
         // Legacy keys — decode-only. Old saves persisted a hand-ticked
         // `cooldownRemaining` Double and `speedBurstActive`/`speedBurstRemaining`
         // instead of the Date-based fields above; encode(to:) never writes
@@ -604,6 +609,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         }
         nextDropGuaranteedHighTier = try c.decodeIfPresent(Bool.self, forKey: .nextDropGuaranteedHighTier) ?? false
         scoutPreviewIsSubObject    = try c.decodeIfPresent(Bool.self, forKey: .scoutPreviewIsSubObject)
+        kibbleSpentSinceCooldown   = try c.decodeIfPresent(Int.self, forKey: .kibbleSpentSinceCooldown) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
@@ -616,6 +622,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         try c.encodeIfPresent(speedBurstEndsAt, forKey: .speedBurstEndsAt)
         try c.encode(nextDropGuaranteedHighTier, forKey: .nextDropGuaranteedHighTier)
         try c.encodeIfPresent(scoutPreviewIsSubObject, forKey: .scoutPreviewIsSubObject)
+        try c.encode(kibbleSpentSinceCooldown, forKey: .kibbleSpentSinceCooldown)
     }
 
     var isReady: Bool { readyAt <= Date() }
@@ -628,6 +635,19 @@ struct ProducerTile: Identifiable, Equatable, Codable {
 
     var speedBurstActive: Bool { (speedBurstEndsAt ?? .distantPast) > Date() }
     var speedBurstRemaining: Double { max(0, (speedBurstEndsAt ?? .distantPast).timeIntervalSinceNow) }
+
+    /// Records `cost` kibble spent at this family spawner and starts its
+    /// cooldown if that crosses `familySpawnerCooldownKibble`. Returns true when
+    /// a cooldown began. A zero or negative cost (a free bonus spawn) is a no-op.
+    @discardableResult
+    mutating func recordKibbleSpent(_ cost: Int, now: Date = Date()) -> Bool {
+        guard cost > 0 else { return false }
+        kibbleSpentSinceCooldown += cost
+        guard kibbleSpentSinceCooldown >= familySpawnerCooldownKibble else { return false }
+        kibbleSpentSinceCooldown -= familySpawnerCooldownKibble
+        startCooldown(now: now)
+        return true
+    }
 
     /// Starts (or restarts) this producer's cooldown at its level's full duration.
     mutating func startCooldown(now: Date = Date()) {
@@ -929,6 +949,9 @@ let adoptionFamilies: [AdoptionFamily] = [
     AdoptionFamily(name: "The Singh Seniors", sfSymbol: "figure.walk.motion",              color: Color(red: 0.65, green: 0.45, blue: 0.20)),
 ]
 
+/// Items still owed on a basket when its family says "Almost there!".
+let orderAlmostThereRemaining = 1
+
 /// Duration (seconds) an active urgent order stays open before it's missed
 /// (Phase 5, Task 5.2). The 4 persistent order slots have no timer at all — this
 /// is now the only order-side countdown in the game.
@@ -1059,6 +1082,15 @@ struct AdoptionOrder: Identifiable, Codable {
     /// Every line filled. An empty basket is *not* complete — it would otherwise
     /// read as instantly claimable if one ever slipped through.
     var isComplete: Bool { !lines.isEmpty && lines.allSatisfy(\.isComplete) }
+
+    /// One item short of a basket of two or more — the moment the family speaks
+    /// up ("Almost there!", `Spec_TravelTownReview_Draft.md` §5). A single-item
+    /// order has no "almost": it is either unfilled or done. Claimed orders and
+    /// complete ones never nudge.
+    var isAlmostThere: Bool {
+        guard !isClaimed, !isComplete, wantedCount >= 2 else { return false }
+        return wantedCount - fulfilled == orderAlmostThereRemaining
+    }
 
     var progressFraction: Double {
         let wanted = wantedCount
@@ -1425,6 +1457,21 @@ let carePointsPerDailySweep = 25
 /// mechanic exists to surface.
 let carePointsPerOrder = 1
 
+// MARK: - iCloud Key-Value Storage
+
+/// Whether the iCloud Key-Value Storage capability is provisioned for this build.
+///
+/// **Flip to `true` only after adding the capability in Xcode** (Signing &
+/// Capabilities → + Capability → iCloud → Key-value storage), which is blocked on
+/// paid Apple Developer enrollment (`TODO.md`). `GameStore` used to guard its
+/// `NSUbiquitousKeyValueStore` calls with `FileManager.ubiquityIdentityToken`
+/// alone, but that only says the *user* is signed into iCloud, not that *this
+/// app* holds the entitlement. A signed-in device without the entitlement
+/// therefore logged "Unable to find entitlement for KVS store" and "BUG IN
+/// CLIENT OF KVS" on every load and save. Sync never worked in that state, so
+/// gating it off changes no behaviour; saves stay local.
+let iCloudKVSProvisioned = false
+
 // MARK: - Kibble Drive (specs/Spec_KibbleDrive_Draft.md)
 
 /// Drive Points an engaged player banks per day at the projection level,
@@ -1706,10 +1753,24 @@ let loyaltyClubCycle: [LoyaltyReward] = [
 let passDailyKibble        = 20    // kibble granted on each daily pass claim
 let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble rewards
 
+// ── Board themes (specs/Spec_BoardThemes.md) ─────────────────────
+// Built Sanctuary areas needed to unlock the two non-starter themes. Mine,
+// not measured: reachable (the map has 15) without being session-one.
+let boardThemeAutumnAreas  = 3
+let boardThemeBlossomAreas = 6
+
 // ── Parallel Board energy (Phase 6b, Task 3.2) ──────────────────
 // First-cut numbers, not derived from a model — see Spec_Phase6b_ParallelBoard.md §4.
 let parallelBoardEnergyCap      = 30
 let parallelBoardEnergyRegenSecs = 90   // full refill in 45 minutes
+
+// Main-board orders feed it (specs/Spec_ParallelOrderEnergy.md — this pair, unlike
+// the numbers above, WAS run through the economy model, 9 Oct 2026).
+/// Energy a claimed main-board order adds while a Parallel Board event is live.
+let parallelBoardEnergyPerOrder = 1
+/// Most energy the pool will bank, above the regen cap. Regen alone never takes
+/// it past `parallelBoardEnergyCap`; only the order bonus can.
+let parallelBoardEnergyBankCap  = parallelBoardEnergyCap * 2
 
 // ── Parallel Board grid + generator (Phase 6b, Task 3.3) ────────
 // Same first-cut posture as the energy constants above.
@@ -2194,6 +2255,24 @@ let freeChestCooldownHours = 4.0
 /// already in the shop, not a real alternative to waiting.
 let freeChestSkipCostDogTags = 10
 
+/// Seconds a spawned item takes to arc from its producer to its cell
+/// (specs/Spec_SpawnFlight.md). Measured at 80-120 ms in the reference titles.
+let spawnFlightDuration = 0.11
+
+// Family spawner cooldown (specs/Spec_SpawnerCooldown.md, decided 9 Oct 2026).
+// Per spawner: every `familySpawnerCooldownKibble` kibble it has spent starts a
+// `familySpawnerCooldownSeconds` wait, skippable for Dog Tags. The skip price is
+// a tuning guess, to revisit with play data.
+
+/// Kibble one family spawner spends before it cools down.
+let familySpawnerCooldownKibble = 150
+
+/// Length of that cooldown, in seconds.
+let familySpawnerCooldownSeconds = 30.0
+
+/// Dog Tag price to skip a family spawner's remaining cooldown.
+let familySpawnerCooldownSkipDogTags = 2
+
 /// Kibble cost to build one item at `tier`, times `count` — the quantity both
 /// coin channels are denominated in.
 func buildCost(tier: Int, count: Int = 1) -> Int {
@@ -2306,6 +2385,44 @@ func levelUpReward(for level: Int) -> LevelUpReward {
     default: break
     }
     return r
+}
+
+// ── Total Days track (specs/Spec_TotalDaysTrack.md) ──────────────
+//
+// A slower, forgiving counter under the 7-day login cycle: it counts days the
+// player opened the game, never resets on a gap, and runs in repeating cycles.
+// The thresholds (8 / 15 / 22 / 30) are measured from the reference; the
+// rewards are PawSanctuary's own and unmeasured.
+
+/// Length of one Total Days cycle, in days.
+let loginTotalDaysCycle = 30
+
+struct LoginMilestone {
+    let day: Int
+    let kibble: Int
+    let dogTags: Int
+    let cardPack: CardPackType?
+}
+
+let loginTotalDaysMilestones: [LoginMilestone] = [
+    LoginMilestone(day: 8,  kibble: 40,  dogTags: 5,  cardPack: nil),
+    LoginMilestone(day: 15, kibble: 60,  dogTags: 10, cardPack: .star1),
+    LoginMilestone(day: 22, kibble: 80,  dogTags: 15, cardPack: nil),
+    LoginMilestone(day: 30, kibble: 100, dogTags: 25, cardPack: .star2),
+]
+
+/// Where `totalDays` falls in the 30-day cycle, 1...30. Zero days (never
+/// opened) reads as day 1 so the strip never shows "Day 0".
+func loginCycleDay(forTotalDays totalDays: Int) -> Int {
+    guard totalDays > 0 else { return 1 }
+    return (totalDays - 1) % loginTotalDaysCycle + 1
+}
+
+/// The milestone `totalDays` lands exactly on, if any.
+func loginMilestone(forTotalDays totalDays: Int) -> LoginMilestone? {
+    guard totalDays > 0 else { return nil }
+    let day = loginCycleDay(forTotalDays: totalDays)
+    return loginTotalDaysMilestones.first { $0.day == day }
 }
 
 let loginDailyRewards: [(kibble: Int, dogTags: Int, label: String)] = [

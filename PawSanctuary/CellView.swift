@@ -31,6 +31,11 @@ struct CellView: View {
     /// (`Spec_BoardAnimation_Draft.md` §5). Ignored for every other cell
     /// content; `ProducerTileContent` only reads it on the family-spawner path.
     var isFamilySpawnerAffordable: Bool = false
+    @Environment(\.boardTheme) private var boardTheme
+    /// True while a spawned item is still arcing in from its producer
+    /// (specs/Spec_SpawnFlight.md): the item is already in `cell`, but the
+    /// overlay is drawing it mid-air, so it stays hidden here until it lands.
+    var isFlightLanding: Bool = false
     /// Whether an unclaimed daily hand-in task wants what is standing in this
     /// cell, and whether that task is fully stocked
     /// (`Spec_DailyHandInTasks.md` D-B). Drives the muted/bright blue tint
@@ -112,7 +117,7 @@ struct CellView: View {
                         .opacity(isDragging ? 0.25 : 1.0)
                 } else if let item = cell.item {
                     itemContent(item)
-                        .opacity(isDragging ? 0.25 : 1.0)
+                        .opacity(isFlightLanding ? 0 : (isDragging ? 0.25 : 1.0))
                         .grayscale(item.tier == 0 ? 0.6 : 0.0)   // base tier looks faded
                         .overlay(bubbleOverlay(for: item))
                         .offset(mergeHintOffset)
@@ -184,6 +189,13 @@ struct CellView: View {
             }
             .padding(3)
 
+            // Tier number (Feature_Parity_Audit.md §1): a small "Lv.N" in the
+            // bottom-left so the ladder reads at a glance. Bottom-right is the
+            // superpower badge's corner and top-right is `def.badge`'s.
+            if let level = Self.tierBadgeLevel(for: item) {
+                TierBadge(level: level, cellSize: cellSize)
+            }
+
             // Superpower badge — shown when this family has unlocked its superpower.
             if hasUnlockedSuperpower, let sp = itemSpecies {
                 Group {
@@ -199,6 +211,16 @@ struct CellView: View {
                 .background(Circle().fill(Color.purple.opacity(0.85)))
                 .offset(x: 2, y: 2)
             }
+        }
+    }
+
+    /// The number to show on a tile's tier badge, or nil for chains that are not
+    /// a ladder the player climbs: currencies (a value, not a rank), power-ups,
+    /// superpower pieces and the wildcard. Tier 0 reads "Lv.1".
+    static func tierBadgeLevel(for item: BoardItem) -> Int? {
+        switch item.chain?.category {
+        case .animal, .supply, .material, .tool, .subObject: return item.tier + 1
+        default: return nil
         }
     }
 
@@ -307,7 +329,7 @@ struct CellView: View {
         }
         if let p = cell.producer { return p.level.tintColor.opacity(0.12) }
         if let item = cell.item  { return (item.def?.color ?? .gray).opacity(0.12) }
-        return Color.white.opacity(0.7)
+        return boardTheme.emptyCellFill
     }
     private var borderColor: Color {
         if isSelected            { return Color.yellow }
@@ -506,7 +528,12 @@ struct ProducerTileContent: View {
             }
         }
         .overlay {
-            if isAffordable {
+            // Cooling down (specs/Spec_SpawnerCooldown.md): a ring and countdown
+            // replace the shimmer. The `TimelineView` exists only while there is
+            // a wait to show, so an idle spawner still costs no per-second work.
+            if !producer.isReady {
+                SpawnerCooldownOverlay(producer: producer, tint: tint, size: cellSize)
+            } else if isAffordable {
                 SpawnerShimmerView(tint: tint, size: cellSize)
             }
         }
@@ -580,6 +607,62 @@ struct ProducerTileContent: View {
         case 2:  return .orange
         default: return producer.level.tintColor
         }
+    }
+}
+
+// ============================================================
+// MARK: - FAMILY SPAWNER COOLDOWN
+// ============================================================
+
+/// Dims a cooling family spawner and shows how long is left
+/// (specs/Spec_SpawnerCooldown.md). The remaining time derives from
+/// `producer.readyAt`; the one-second `TimelineView` only repaints it.
+private struct SpawnerCooldownOverlay: View {
+    let producer: ProducerTile
+    let tint: Color
+    let size: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.16)
+                    .fill(Color.black.opacity(0.35))
+                Circle()
+                    .trim(from: 0, to: 1 - producer.cooldownFraction)
+                    .stroke(tint.opacity(0.9), lineWidth: max(2, size * 0.06))
+                    .rotationEffect(.degrees(-90))
+                    .padding(size * 0.14)
+                Text("\(Int(producer.cooldownRemaining.rounded(.up)))s")
+                    .font(.system(size: size * 0.26, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .shadow(radius: 1)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
+
+// ============================================================
+// MARK: - TIER BADGE
+// ============================================================
+
+/// "Lv.N" in a tile's bottom-left corner. Sized off the cell so it stays legible
+/// on the board's smallest cells without crowding the art, and drawn on a dark
+/// capsule so it reads against any item's colours.
+private struct TierBadge: View {
+    let level: Int
+    let cellSize: CGFloat
+
+    var body: some View {
+        Text("Lv.\(level)")
+            .font(.system(size: max(7, cellSize * 0.17), weight: .heavy, design: .rounded))
+            .foregroundColor(.white)
+            .padding(.horizontal, 3).padding(.vertical, 1)
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(2)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

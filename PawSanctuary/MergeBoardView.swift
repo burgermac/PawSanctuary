@@ -35,6 +35,27 @@ struct MergeBoardView: View {
     /// Full-screen, not a sheet (Phase 6b, Task 3.7) — kept separate from
     /// `activeRoute`/`SheetRoute`, which only ever drive `.sheet`.
     @State private var showParallelBoard = false
+    /// The one-time "Make it yours" sheet (specs/Spec_BoardThemes.md).
+    @State private var showThemeChoice = false
+
+    /// Offered once, after the tutorial is done, when nothing else is on top:
+    /// not over the Good Morning popup or any sheet.
+    private var shouldOfferThemeChoice: Bool {
+        viewModel.isLoaded && !viewModel.boardThemePrompted && tutorialStep == .done
+            && !viewModel.showLoginReward && activeRoute == nil && !showThemeChoice
+    }
+    /// Measured on-screen frames the reward flights run between
+    /// (specs/Spec_RewardFlight.md).
+    @State private var hudFrames: [RewardFlightKind: CGRect] = [:]
+    @State private var orderCardFrames: [UUID: CGRect] = [:]
+    /// Spawn flights are skipped (the item just appears) under Reduce Motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Drives the "Skip the wait?" alert from the view model's pending position.
+    private var spawnerSkipBinding: Binding<Bool> {
+        Binding(get: { viewModel.pendingSpawnerSkip != nil },
+                set: { if !$0 { viewModel.pendingSpawnerSkip = nil } })
+    }
 
     /// Used to flush a final save when the app leaves the foreground.
     @Environment(\.scenePhase) private var scenePhase
@@ -95,11 +116,8 @@ struct MergeBoardView: View {
 
     @ViewBuilder private var gameBody: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.85, green: 0.95, blue: 0.85),
-                         Color(red: 0.95, green: 0.88, blue: 0.75)],
-                startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
+            viewModel.boardTheme.backdrop
+                .ignoresSafeArea()
 
             // Gated on isLoaded: the board and most of the panel/task-strip
             // view layer scan board[r][c] for r/c up to viewModel.rows/.cols,
@@ -224,6 +242,23 @@ struct MergeBoardView: View {
                 .zIndex(97)
             }
 
+            // Care Points milestone takeover (specs/Spec_MilestoneTakeover.md).
+            if let tier = viewModel.pendingMilestone {
+                MilestoneTakeoverView(
+                    tier: tier,
+                    onClaim: { viewModel.claimMilestone() },
+                    onLater: { viewModel.dismissMilestone() })
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
+
+            // Order payouts flying to their HUD counters (specs/Spec_RewardFlight.md).
+            RewardFlightOverlay(bursts: reduceMotion ? [] : viewModel.rewardBursts,
+                                hudFrames: hudFrames,
+                                orderFrames: orderCardFrames,
+                                fallbackSource: CGPoint(x: UIScreen.main.bounds.midX, y: 170))
+                .zIndex(96)
+
             // Leap mode overlay hint — armed by merging a Leap piece onto a target
             // (see applyLeapPiece), so leapSourceCell is always already set here;
             // this is purely "pick the destination" now, no source-selection step.
@@ -283,14 +318,55 @@ struct MergeBoardView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.68), value: MilestoneManager.shared.pendingMilestone != nil)
         .animation(.spring(response: 0.5, dampingFraction: 0.65), value: viewModel.showAmbassadorBanner)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showLevelUpBanner)
+        .animation(.easeInOut(duration: 0.25), value: viewModel.pendingMilestone)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showSuperpowerUnlockBanner)
         .animation(.easeInOut(duration: 0.25), value: viewModel.leapMode)
         .animation(.easeInOut(duration: 0.35), value: tutorialStep)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+        .onPreferenceChange(HUDFrameKey.self) { hudFrames = $0 }
+        .environment(\.boardTheme, viewModel.boardTheme)
+        .onChange(of: shouldOfferThemeChoice) { _, offer in
+            guard offer else { return }
+            Task { @MainActor in
+                // A beat after the tutorial or popup clears, so it does not
+                // land on top of the moment that just ended.
+                try? await Task.sleep(for: .seconds(1))
+                if shouldOfferThemeChoice { showThemeChoice = true }
+            }
+        }
+        .onAppear {
+            if shouldOfferThemeChoice {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if shouldOfferThemeChoice { showThemeChoice = true }
+                }
+            }
+        }
+        .sheet(isPresented: $showThemeChoice, onDismiss: { viewModel.markBoardThemePrompted() }) {
+            BoardThemeChoiceSheet(viewModel: viewModel, onDone: { showThemeChoice = false })
+        }
+        .onPreferenceChange(OrderCardFrameKey.self) { orderCardFrames = $0 }
         .sheet(item: $activeRoute) { route in routeContent(route) }
         .fullScreenCover(isPresented: $showParallelBoard) {
             if let coordinator = viewModel.activeParallelBoardEvent {
                 ParallelBoardView(coordinator: coordinator, onDismiss: { showParallelBoard = false })
+            }
+        }
+        .alert("Skip the wait?", isPresented: spawnerSkipBinding) {
+            if viewModel.kibbleEngine.dogTags >= familySpawnerCooldownSkipDogTags {
+                Button("Skip for \(familySpawnerCooldownSkipDogTags) Dog Tags") {
+                    if let pos = viewModel.pendingSpawnerSkip { viewModel.skipSpawnerCooldown(at: pos) }
+                    viewModel.pendingSpawnerSkip = nil
+                }
+                Button("Wait", role: .cancel) { viewModel.pendingSpawnerSkip = nil }
+            } else {
+                Button("OK", role: .cancel) { viewModel.pendingSpawnerSkip = nil }
+            }
+        } message: {
+            if viewModel.kibbleEngine.dogTags >= familySpawnerCooldownSkipDogTags {
+                Text("This spawner is catching its breath. Spend \(familySpawnerCooldownSkipDogTags) Dog Tags to use it right now.")
+            } else {
+                Text("This spawner is catching its breath. Skipping costs \(familySpawnerCooldownSkipDogTags) Dog Tags.")
             }
         }
         .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
@@ -551,13 +627,13 @@ struct MergeBoardView: View {
                 // next tick is 20 seconds out rather than four minutes changes
                 // whether you wait, and that is a decision made at a glance.
                 HStack(spacing: 6) {
-                    levelBadge
+                    levelBadge.reportHUDFrame(.xp)
 
                     Spacer(minLength: 4)
 
                     kibblePill
-                    coinPill
-                    dogTagPill
+                    coinPill.reportHUDFrame(.coins)
+                    dogTagPill.reportHUDFrame(.dogTags)
 
                     Spacer(minLength: 4)
 
@@ -590,23 +666,6 @@ struct MergeBoardView: View {
                                 .frame(width: 30, height: 30)
                                 .background(RoundedRectangle(cornerRadius: 10)
                                     .fill(Color(red: 0.55, green: 0.25, blue: 0.75)))
-                        }
-                    }
-                    // Temporary, until §6 step 6 gives the Drive a panel of
-                    // its own with a real buy button. Same justification as the
-                    // monetization toggle above — without it the catch-up grant
-                    // has no reachable surface at all, since StoreKit is not
-                    // attached to a simctl-installed build. Shown only while an
-                    // unpurchased Drive is actually running, so it disappears
-                    // the moment it has nothing to do.
-                    if let drive = viewModel.kibbleDrive, !drive.purchased {
-                        Button(action: { viewModel.simulateKibbleDrivePurchaseForTesting() }) {
-                            Image(systemName: "shippingbox.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(.white)
-                                .frame(width: 30, height: 30)
-                                .background(RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color(red: 0.85, green: 0.5, blue: 0.15)))
                         }
                     }
                     #endif
@@ -779,6 +838,8 @@ struct MergeBoardView: View {
             MonthlyGoalPanelView(viewModel: viewModel).padding()
         case .carePoints:
             CarePointsPanelView(viewModel: viewModel).padding()
+        case .kibbleDrive:
+            KibbleDrivePanelView(viewModel: viewModel, storeManager: storeManager).padding()
         case .event:
             EmptyView()
         }
@@ -847,6 +908,8 @@ struct MergeBoardView: View {
                                 isLeapSource: viewModel.leapSourceCell == pos,
                                 mergeHintOffset: mergeHintOffset,
                                 isFamilySpawnerAffordable: isSpawnerAffordable,
+                                isFlightLanding: !reduceMotion
+                                    && viewModel.spawnFlights.contains { $0.to == pos },
                                 dailyTaskHighlight: cell.item.flatMap {
                                     taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
                                 } ?? .none
@@ -932,9 +995,15 @@ struct MergeBoardView: View {
                 .zIndex(rowHasAnimatingCell ? 5 : 0)
             }
         }
+        // Before the padding and background below, so the overlay shares the
+        // grid's own origin and a cell's centre is a pure function of row/col.
+        .overlay(alignment: .topLeading) {
+            SpawnFlightOverlay(flights: reduceMotion ? [] : viewModel.spawnFlights,
+                               cellSize: cellSize, spacing: cellSpacing)
+        }
         .padding()
         .background(RoundedRectangle(cornerRadius: 20)
-            .fill(Color.white.opacity(0.5)).shadow(color: .black.opacity(0.1), radius: 8))
+            .fill(viewModel.boardTheme.panelFill).shadow(color: .black.opacity(0.1), radius: 8))
     }
 
     // MARK: Bottom bar

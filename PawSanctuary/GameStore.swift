@@ -125,6 +125,12 @@ struct GameState: Codable {
     var lastLoginDate: Date?
     var loginStreak: Int
     var loginDayIndex: Int
+    /// Lifetime days the game was opened (v43), for the Total Days track.
+    var loginTotalDays: Int = 0
+    /// The player's board look (v44, specs/Spec_BoardThemes.md), and whether the
+    /// one-time first-choice sheet has been offered.
+    var boardTheme: BoardTheme = .meadow
+    var boardThemePrompted: Bool = false
     var lastDailyChallengeReset: Date?
     var lastSpotlightWeek: Int
 
@@ -372,7 +378,14 @@ enum GameStore {
     /// (The v40 and v41 entries above were reconstructed 12 Sep 2026 from the
     /// dispatch table and `Spec_DailyHandInTasks.md`; they were never recorded
     /// when those versions shipped, which left this history jumping v39 → v42.)
-    static let currentVersion = 42
+    /// v43: loginTotalDays added (`specs/Spec_TotalDaysTrack.md`). Non-Optional,
+    ///      so it has an `additiveDefaultsSinceV8` entry; a migrating save starts
+    ///      the track at zero.
+    /// v44: boardTheme + boardThemePrompted added (`specs/Spec_BoardThemes.md`).
+    ///      Both non-Optional, so both have `additiveDefaultsSinceV8` entries; a
+    ///      migrating save starts on Meadow and has not yet been offered the
+    ///      first-choice sheet.
+    static let currentVersion = 44
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -444,8 +457,12 @@ enum GameStore {
     /// is signed into iCloud. Accessing NSUbiquitousKeyValueStore.default without
     /// the entitlement logs "BUG IN CLIENT OF KVS" on-device, so we guard every
     /// call site behind this check and never touch .default when it returns false.
+    ///
+    /// `ubiquityIdentityToken` alone only proves the *user* is signed in, not that
+    /// this app holds the entitlement, so the provisioning flag is checked first
+    /// (`iCloudKVSProvisioned`, `AnimalSpecies.swift`).
     private static var isCloudAvailable: Bool {
-        FileManager.default.ubiquityIdentityToken != nil
+        iCloudKVSProvisioned && FileManager.default.ubiquityIdentityToken != nil
     }
 
     /// Guards write ordering: `save()`/`saveAndSync()` each capture state
@@ -689,6 +706,8 @@ enum GameStore {
         if version == 39 { return migrateByInjecting(from: 39, defaults: [:], into: data) }   // daily hand-in tasks: reset runs in finishMigration for every sourceVersion < 40
         if version == 40 { return migrateByInjecting(from: 40, defaults: [:], into: data) }   // playtestMetrics covered by additiveDefaultsSinceV8
         if version == 41 { return migrateByInjecting(from: 41, defaults: [:], into: data) }   // kibbleDrive is Optional — no default needed
+        if version == 42 { return migrateByInjecting(from: 42, defaults: [:], into: data) }   // loginTotalDays covered by additiveDefaultsSinceV8
+        if version == 43 { return migrateByInjecting(from: 43, defaults: [:], into: data) }   // boardTheme / boardThemePrompted covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -786,6 +805,10 @@ enum GameStore {
         "carePointsThisWeek": 0, "claimedCarePointTiers": [Int](),
         // v39 — Smile points. A migrating save starts its first bundle empty.
         "smilePointsBanked": 0,
+        // v43 — Total Days login track. A migrating save starts it at zero.
+        "loginTotalDays": 0,
+        // v44 — Board themes. A migrating save starts on Meadow, un-prompted.
+        "boardTheme": "meadow", "boardThemePrompted": false,
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

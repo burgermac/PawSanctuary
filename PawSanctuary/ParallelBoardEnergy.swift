@@ -41,6 +41,22 @@ final class ParallelBoardEnergy {
         }
     }
 
+    /// True while the balance sits above the regen cap — bonus energy from
+    /// main-board orders that regen could not have produced.
+    var isBanked: Bool { balance > parallelBoardEnergyCap }
+
+    /// Adds order-bonus energy, banking above the regen cap up to
+    /// `parallelBoardEnergyBankCap`. Returns how much was actually added (0 once
+    /// the bank is full). Never lowers the balance, even if a restored save
+    /// somehow holds more than the bank cap.
+    @discardableResult
+    func addBonus(_ amount: Int) -> Int {
+        guard amount > 0, balance < parallelBoardEnergyBankCap else { return 0 }
+        let added = min(amount, parallelBoardEnergyBankCap - balance)
+        balance += added
+        return added
+    }
+
     @discardableResult
     func spend(_ amount: Int) -> Bool {
         guard balance >= amount else { return false }

@@ -40,6 +40,18 @@ struct ProfileView: View {
             .background(RoundedRectangle(cornerRadius: 14)
                 .fill(Color(red: 0.97, green: 0.97, blue: 0.95)))
 
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Board theme")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                BoardThemePicker(selected: viewModel.boardTheme,
+                                 builtAreas: viewModel.builtAreaCount) { viewModel.selectBoardTheme($0) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 14)
+                .fill(Color(red: 0.97, green: 0.97, blue: 0.95)))
+
             if viewModel.isPassActive {
                 HStack(spacing: 8) {
                     Image(systemName: "medal.fill")

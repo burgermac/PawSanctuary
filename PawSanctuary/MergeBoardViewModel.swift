@@ -566,6 +566,13 @@ class MergeBoardViewModel {
         get { quests.loginDayIndex }
         set { quests.loginDayIndex = newValue }
     }
+    var loginTotalDays: Int {
+        get { quests.loginTotalDays }
+        set { quests.loginTotalDays = newValue }
+    }
+    /// The Total Days milestone today's count lands on, shown beside the day
+    /// reward in the Good Morning popup (specs/Spec_TotalDaysTrack.md).
+    var loginMilestoneToday: LoginMilestone? { loginMilestone(forTotalDays: loginTotalDays) }
     var spotlightProgressFraction: Double { quests.spotlightProgressFraction }
     var dailyChallengeResetText: String   { quests.dailyChallengeResetText }
 
@@ -1139,7 +1146,28 @@ class MergeBoardViewModel {
         saveTickCounter = (saveTickCounter + 1) % 5
         if saveTickCounter == 0 { save() }
         updateMergeHint()
+        #if DEBUG
+        MemoryLog.tick { memoryLogContext() }
+        #endif
     }
+
+    #if DEBUG
+    /// Board facts recorded beside each memory sample, so a climb can be
+    /// matched against what was on screen (`MemoryLog.swift`).
+    private func memoryLogContext() -> MemoryLog.Context {
+        var spawners = 0, affordable = 0, occupied = 0
+        for cell in flatBoard where cell.isUnlocked {
+            if !cell.isEmpty { occupied += 1 }
+            if let species = cell.producer?.species {
+                spawners += 1
+                if canAffordSpawnerTap(species: species) { affordable += 1 }
+            }
+        }
+        return MemoryLog.Context(spawnersOnBoard: spawners,
+                                 spawnersAffordable: affordable,
+                                 occupiedCells: occupied)
+    }
+    #endif
 
     // MARK: Merge hint (idle nudge)
     //
@@ -1268,6 +1296,8 @@ class MergeBoardViewModel {
         s.pityStates = pityStates
         s.unlockedSuperpowerSpecies = unlockedSuperpowerSpecies
         s.superpowerCooldownEnds    = superpowerCooldownEnds
+        s.boardTheme                = boardTheme
+        s.boardThemePrompted        = boardThemePrompted
         s.lagomorphMergeCount       = lagomorphMergeCount
         s.lastMergeTimestamp        = lastMergeTimestamp
         s.lastMergedSpeciesRaw      = lastMergedSpeciesRaw
@@ -1315,6 +1345,8 @@ class MergeBoardViewModel {
         ambassadorQuestProgress = s.ambassadorQuestProgress
         pendingMaterialLots     = s.pendingMaterialLots
         completedAreaIDs    = s.completedAreaIDs
+        boardTheme          = s.boardTheme
+        boardThemePrompted  = s.boardThemePrompted
         areaUpgradeLevels   = s.areaUpgradeLevels
         cardInventory       = s.cardInventory
         starCount           = s.starCount
@@ -1461,17 +1493,18 @@ class MergeBoardViewModel {
         inventoryStore.producerStorage = [:]
         inventoryStore.overflowProducerStorage = Array(repeating: nil, count: totalProducerOverflowSlots)
         completedAreaIDs = []; areaUpgradeLevels = [:]
+        boardTheme = .meadow; boardThemePrompted = false
         coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0; freeChestReadyAt = .distantPast
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
-        carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0
+        carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0; pendingMilestone = nil
         kibbleDrive = nil
         cachedActiveBonuses = UpgradeBonus()
         selectedCell = nil; draggingFrom = nil
         quests.dailyChallengeStreak = 0; quests.dailyChallengeBonusClaimed = false
         quests.spotlightMergesThisWeek = 0
-        quests.lastLoginDate = nil; quests.loginStreak = 0; quests.loginDayIndex = 0
+        quests.lastLoginDate = nil; quests.loginStreak = 0; quests.loginDayIndex = 0; quests.loginTotalDays = 0
         quests.lastDailyChallengeReset = nil; quests.lastSpotlightWeek = 0
         passLastClaimDate = nil
         loyaltyClubDayIndex = 0; loyaltyClubLastClaimDate = nil; loyaltyClubStreak = 0
@@ -1546,7 +1579,23 @@ class MergeBoardViewModel {
     /// by every rescue-producer path in `activateProducer` (currency spend, notification
     /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
     /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
-    private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int) {
+    /// A spawned item in flight from its producer to the cell it landed in
+    /// (specs/Spec_SpawnFlight.md). The item is already in board state; the view
+    /// hides it in `to` and draws the arc until `spawnFlightDuration` passes.
+    struct SpawnFlight: Identifiable, Equatable {
+        let id = UUID()
+        let from: GridPosition
+        let to: GridPosition
+        let item: BoardItem
+    }
+
+    /// Flights currently in the air. A list, not one slot: a boosted tap can
+    /// land a free bonus spawn right behind the main one.
+    var spawnFlights: [SpawnFlight] = []
+
+    /// `from` is the producer that spawned the item; nil (or the same cell)
+    /// places it with no flight.
+    private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int, from: GridPosition? = nil) {
         boardState.setItem(item, at: target.position)
         kibbleEngine.kibble -= cost
         updateAllAfterSpend(kind: .kibble, amount: cost)
@@ -1556,7 +1605,23 @@ class MergeBoardViewModel {
         grantXP(xpPerRescue)
         updateAllAfterRescue()
         updateOrdersAfterMerge(chainID: item.chainID, tier: item.tier)
-        animatingCell = target.position
+        if let from, from != target.position {
+            // The landing pop and sparkle wait for the arc to arrive.
+            let flight = SpawnFlight(from: from, to: target.position, item: item)
+            spawnFlights.append(flight)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(spawnFlightDuration))
+                self.spawnFlights.removeAll { $0.id == flight.id }
+                self.popCell(target.position)
+            }
+        } else {
+            popCell(target.position)
+        }
+    }
+
+    /// The scale-and-sparkle pop on a cell, cleared after 600 ms.
+    private func popCell(_ pos: GridPosition) {
+        animatingCell = pos
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
             self.animatingCell = nil
@@ -1569,7 +1634,7 @@ class MergeBoardViewModel {
     /// board has no room; a bonus should never itself trigger a "Board Full"
     /// complaint. Free (cost: 0) and routed through `finishSpawn` so it still
     /// counts as a rescue, grants XP, and can fulfil a matching order.
-    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int) {
+    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int, from: GridPosition? = nil) {
         let chance = bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
         guard chance > 0, Double.random(in: 0..<1) < chance,
               let target = emptyUnlockedCells.randomElement() else { return }
@@ -1578,7 +1643,7 @@ class MergeBoardViewModel {
         let bonusTier = isLegendary ? min(spawnTier + 1, maxTier) : spawnTier
         let label = ContentRegistry.shared.tier(chainID, bonusTier)?.name ?? species.name
         enqueueToast(Toast(kind: .info(isLegendary ? "✨ Legendary! +1 \(label)" : "🍀 Lucky! +1 \(label)")))
-        finishSpawn(item: BoardItem(chainID: chainID, tier: bonusTier), at: target, cost: 0)
+        finishSpawn(item: BoardItem(chainID: chainID, tier: bonusTier), at: target, cost: 0, from: from)
     }
 
     /// Task 1.4 (Phase 1) — records a kibble-wall event (hit zero kibble while
@@ -1619,6 +1684,13 @@ class MergeBoardViewModel {
         guard var producer = boardState.producer(at: pos) else { return }
 
         if producer.level == .familySpawner, let species = producer.species {
+            // Cooling down (specs/Spec_SpawnerCooldown.md): a tap offers the skip
+            // instead of spawning. Checked first so the wait is never bypassed.
+            guard producer.isReady else {
+                requestSpawnerSkip(at: pos)
+                selectedCell = pos
+                return
+            }
             // Family spawner — kibble-based, unlimited, species-specific animal chain
             let chainID = ContentRegistry.animalChainID(species)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
@@ -1686,8 +1758,16 @@ class MergeBoardViewModel {
                     boardState.setProducer(p, at: pos)
                 }
             }
-            finishSpawn(item: spawnedItem, at: target, cost: cost)
-            maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier)
+            finishSpawn(item: spawnedItem, at: target, cost: cost, from: pos)
+            maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier, from: pos)
+            // Re-read the tile: the Scout preview above rewrote it, and a stale
+            // local copy would overwrite that. The bonus spawn is free, so only
+            // this tap's `cost` counts toward the cooldown.
+            if var tile = boardState.producer(at: pos) {
+                let startedCooldown = tile.recordKibbleSpent(cost)
+                boardState.setProducer(tile, at: pos)
+                if startedCooldown { scheduleSpawnerCooldownRefresh(at: pos, readyAt: tile.readyAt) }
+            }
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
             // Task 2.1: priced from the selected tier, same as the family spawner.
@@ -3480,19 +3560,37 @@ class MergeBoardViewModel {
 
     // MARK: Daily login
 
+    /// Registers today's visit and, on a new day, **pays the reward on the spot**
+    /// (specs/Spec_LoginGrantAtCheck.md). It used to wait for a Claim tap, but the
+    /// visit date is saved by the next ordinary save while the reward was only
+    /// paid on the tap -- so quitting between the two lost the day's reward for
+    /// good. Paying here puts the date and the balance in the same save: they
+    /// either both persist or neither does, and a next launch pays once.
     func checkDailyLogin() {
         let isNew = quests.checkDailyLogin()
-        showLoginReward = isNew
         loginStreakDay = quests.loginStreakDay
+        if isNew { grantLoginReward() }
+        showLoginReward = isNew
     }
 
-    func claimLoginReward() {
+    /// Pays the day reward and any Total Days milestone bonus. Called once per
+    /// new day, from `checkDailyLogin` only.
+    private func grantLoginReward() {
         let idx    = max(0, min(loginStreakDay - 1, loginDailyRewards.count - 1))
         let reward = loginDailyRewards[idx]
         kibbleEngine.kibble  += reward.kibble
         kibbleEngine.dogTags += reward.dogTags
+        if let milestone = loginMilestoneToday {
+            kibbleEngine.kibble  += milestone.kibble
+            kibbleEngine.dogTags += milestone.dogTags
+            if let pack = milestone.cardPack { earnCardPack(pack) }
+        }
+    }
+
+    /// Closes the Good Morning popup. The reward was already paid by
+    /// `checkDailyLogin`; this only dismisses the celebration.
+    func dismissLoginReward() {
         showLoginReward = false
-        persist()
     }
 
     // MARK: Adoption Order Board
@@ -3552,6 +3650,40 @@ class MergeBoardViewModel {
         }
     }
 
+    /// Order payouts in flight to the HUD (specs/Spec_RewardFlight.md). Purely
+    /// presentational: the rewards were already applied when this is appended.
+    var rewardBursts: [RewardBurst] = []
+
+    /// Records an order's payout for the flight overlay, then drops it once the
+    /// longest sprite has landed.
+    private func emitRewardBurst(for order: AdoptionOrder) {
+        var items: [RewardBurstItem] = []
+        for reward in order.rewards {
+            switch reward.kind {
+            case .coins:
+                let amount = reward.amount + cachedActiveBonuses.coinsPerOrderFulfil
+                if amount > 0 { items.append(RewardBurstItem(kind: .coins, amount: amount)) }
+            case .dogTags:
+                if reward.amount > 0 { items.append(RewardBurstItem(kind: .dogTags, amount: reward.amount)) }
+            default: break
+            }
+        }
+        items.append(RewardBurstItem(kind: .xp, amount: xpPerOrderFulfil))
+        let burst = RewardBurst(sourceID: order.id, items: items)
+        rewardBursts.append(burst)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.8))
+            self.rewardBursts.removeAll { $0.id == burst.id }
+        }
+    }
+
+    /// A claimed order feeds the live Parallel Board event's energy
+    /// (specs/Spec_ParallelOrderEnergy.md). No event live means no coordinator,
+    /// so this does nothing outside one.
+    private func feedParallelBoardEnergy() {
+        activeParallelBoardEvent?.energy.addBonus(parallelBoardEnergyPerOrder)
+    }
+
     func autoClaimOrder(at index: Int) {
         guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index),
               adoptionBoardCoordinator.adoptionOrders[index].isComplete,
@@ -3562,6 +3694,8 @@ class MergeBoardViewModel {
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
+        emitRewardBurst(for: order)
+        feedParallelBoardEnergy()
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
         // Persistent slots have no timer, so claiming one doesn't touch the
@@ -3588,6 +3722,8 @@ class MergeBoardViewModel {
         SoundManager.shared.playRescueClaim()
         grantXP(xpPerOrderFulfil)
         applyRewards(order.rewards)
+        emitRewardBurst(for: order)
+        feedParallelBoardEnergy()
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
         order.isClaimed = true
@@ -3705,6 +3841,38 @@ class MergeBoardViewModel {
         kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
             self?.kibbleEngine.kibble += amount
         }
+    }
+
+    // MARK: Board themes (specs/Spec_BoardThemes.md)
+
+    /// The player's board look. Free, and changeable at any time.
+    var boardTheme: BoardTheme = .meadow
+    /// Whether the one-time "Make it yours" sheet has been offered.
+    var boardThemePrompted: Bool = false
+
+    /// Built Sanctuary areas, the currency-free key to the two later themes.
+    var builtAreaCount: Int { completedAreaIDs.count }
+
+    func isBoardThemeUnlocked(_ theme: BoardTheme) -> Bool {
+        theme.isUnlocked(builtAreas: builtAreaCount)
+    }
+
+    /// Switches the board look. Refuses (and changes nothing) for a theme the
+    /// player has not yet unlocked.
+    @discardableResult
+    func selectBoardTheme(_ theme: BoardTheme) -> Bool {
+        guard isBoardThemeUnlocked(theme) else { return false }
+        boardTheme = theme
+        persist()
+        return true
+    }
+
+    /// Records that the first-choice sheet was shown, so it never returns by
+    /// itself.
+    func markBoardThemePrompted() {
+        guard !boardThemePrompted else { return }
+        boardThemePrompted = true
+        persist()
     }
 
     // MARK: Sanctuary map
@@ -3835,6 +4003,49 @@ class MergeBoardViewModel {
     /// Derived live from `freeChestReadyAt`, never ticked by hand — see
     /// `ProducerTile.readyAt`'s doc comment for why.
     var freeChestTimeRemaining: Double { max(0, freeChestReadyAt.timeIntervalSinceNow) }
+
+    // MARK: Family spawner cooldown (specs/Spec_SpawnerCooldown.md)
+
+    /// Where the "skip the wait?" alert is pending; nil when none is.
+    var pendingSpawnerSkip: GridPosition?
+
+    /// Tapping a cooling family spawner. The skip is a Dog Tag spend, so it is a
+    /// monetization surface and stays silent until D7's gate opens — before that
+    /// the tap just selects and the 30 seconds run out on their own.
+    func requestSpawnerSkip(at pos: GridPosition) {
+        guard isMonetizationUnlocked else { return }
+        pendingSpawnerSkip = pos
+    }
+
+    /// Pays `familySpawnerCooldownSkipDogTags` to end the cooldown at `pos` now.
+    /// Returns false (charging nothing) if there is no cooling family spawner
+    /// there or the player cannot afford it.
+    @discardableResult
+    func skipSpawnerCooldown(at pos: GridPosition) -> Bool {
+        guard isMonetizationUnlocked,
+              var tile = boardState.producer(at: pos),
+              tile.level == .familySpawner, !tile.isReady,
+              kibbleEngine.dogTags >= familySpawnerCooldownSkipDogTags else { return false }
+        kibbleEngine.dogTags -= familySpawnerCooldownSkipDogTags
+        updateAllAfterSpend(kind: .dogTags, amount: familySpawnerCooldownSkipDogTags)
+        tile.readyAt = .distantPast
+        boardState.setProducer(tile, at: pos)
+        return true
+    }
+
+    /// A tile's readiness is derived from `readyAt`, so nothing re-renders the
+    /// board when a cooldown simply runs out. Rewriting the tile once at that
+    /// moment brings the tap shimmer back on time. Skipped if the wait was
+    /// skipped or restarted meanwhile (`readyAt` no longer matches).
+    private func scheduleSpawnerCooldownRefresh(at pos: GridPosition, readyAt: Date) {
+        let delay = max(0, readyAt.timeIntervalSinceNow) + 0.1
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, let tile = self.boardState.producer(at: pos),
+                  tile.readyAt == readyAt else { return }
+            self.boardState.setProducer(tile, at: pos)
+        }
+    }
 
     /// Claims the chest for free if ready, or pays `freeChestSkipCostDogTags`
     /// to claim it early. Either way, delivers a toolbox item (Gap_Analysis_
@@ -4016,6 +4227,7 @@ class MergeBoardViewModel {
         // Unclaimed tiers are forfeited with the points, same as the coin goal.
         carePointsThisWeek      = 0
         claimedCarePointTiers   = []
+        pendingMilestone        = nil   // its tier was just forfeited with the points
         // `kibbleDrive` is deliberately NOT reset here, and adding it to this
         // list would destroy a purchase. A Drive window can straddle the weekly
         // boundary; its ladder is scoped to the event, not to the week, and is
@@ -4122,8 +4334,44 @@ class MergeBoardViewModel {
     /// each of them.
     func awardCarePoints(_ amount: Int) {
         guard amount > 0 else { return }
+        let before = carePointsThisWeek
         carePointsThisWeek += amount
         kibbleDrive?.points += amount
+        raiseMilestoneIfCrossed(from: before, to: carePointsThisWeek)
+    }
+
+    // MARK: Milestone takeover (specs/Spec_MilestoneTakeover.md)
+
+    /// The Care Points tier whose takeover is on screen, or nil. Ephemeral by
+    /// design: if the app closes before it is seen, the tier is simply still
+    /// claimable in the panel.
+    var pendingMilestone: CarePointTier?
+
+    /// Raises the takeover for the highest unclaimed tier whose threshold the
+    /// award just crossed. One takeover, never a queue; a later crossing while
+    /// one is showing can only raise it.
+    private func raiseMilestoneIfCrossed(from before: Int, to after: Int) {
+        let crossed = CarePointTier.allCases.filter {
+            before < $0.pointsNeeded && after >= $0.pointsNeeded && !isCarePointTierClaimed($0)
+        }
+        guard let highest = crossed.last else { return }
+        if let current = pendingMilestone, current.rawValue >= highest.rawValue { return }
+        pendingMilestone = highest
+    }
+
+    /// "Later": close it; the tiers stay claimable in the Care Points panel.
+    func dismissMilestone() {
+        pendingMilestone = nil
+    }
+
+    /// "Claim": every claimable tier up to the one shown, through the same
+    /// chokepoint the panel uses, then close.
+    func claimMilestone() {
+        guard let shown = pendingMilestone else { return }
+        for tier in claimableCarePointTiers where tier.rawValue <= shown.rawValue {
+            claimCarePointTier(tier)
+        }
+        pendingMilestone = nil
     }
 
     // MARK: Kibble Drive (specs/Spec_KibbleDrive_Draft.md)
@@ -4174,6 +4422,49 @@ class MergeBoardViewModel {
         drive.points += kibbleDriveCatchUpGrant(at: date)
         drive.purchased = true
         kibbleDrive = drive
+    }
+
+    /// Whether the Drive's real buy control may be offered right now: a Drive
+    /// is running, it is unbought, and monetization is unlocked.
+    ///
+    /// The tile is deliberately visible before monetization unlocks (decided
+    /// 8 Oct 2026), so this is the one place D7's "no monetization in session
+    /// one" is kept for the Drive. It lives on the view model rather than
+    /// inline in the panel so it can be unit-tested: a Debug build has no
+    /// StoreKit configuration, so the price button never renders and the gate
+    /// cannot be checked by eye (`Spec_KibbleDrive_Draft.md` §6h).
+    var isKibbleDriveBuyAvailable: Bool {
+        guard let drive = kibbleDrive, !drive.purchased else { return false }
+        return isMonetizationUnlocked
+    }
+
+    /// Rungs of the running Drive the player could claim right now: purchased,
+    /// enough points, not already claimed. Empty when no Drive is running or it
+    /// has not been bought — points accrue regardless (§2), but nothing is
+    /// claimable until the purchase.
+    var kibbleDriveClaimableRungs: [TrackMilestone] {
+        guard let drive = kibbleDrive, drive.purchased else { return [] }
+        return KibbleDriveLadder.rungs.filter {
+            drive.points >= $0.threshold && !drive.claimedRungs.contains($0.index)
+        }
+    }
+
+    /// Claims one rung of the running Drive (§2: tapped one at a time, never
+    /// auto-claimed). Paid straight through `applyRewards`, so kibble lands
+    /// raw — no Pass bonus, since §3.5's margin is computed against the
+    /// listed 540.
+    ///
+    /// Marks the rung claimed before paying, so a re-entrant or repeated tap
+    /// cannot pay twice.
+    func claimKibbleDriveRung(index: Int) {
+        guard var drive = kibbleDrive, drive.purchased,
+              let rung = KibbleDriveLadder.rungs.first(where: { $0.index == index }),
+              drive.points >= rung.threshold,
+              !drive.claimedRungs.contains(index) else { return }
+        drive.claimedRungs.append(index)
+        kibbleDrive = drive
+        applyRewards(rung.paidRewards)
+        persist()
     }
 
     /// Highest tier reached, and whether each is claimable right now.
