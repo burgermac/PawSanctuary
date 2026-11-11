@@ -218,4 +218,33 @@ final class MergeImplosionTests: XCTestCase {
         XCTAssertLessThanOrEqual(mergeImplodeDuration, 0.12)
         XCTAssertEqual(mergeImplosionDuration, mergeSlideDuration + mergeImplodeDuration, accuracy: 1e-9)
     }
+
+    // MARK: - Task 8.3: the Tier A pop waits for the implosion
+
+    func testTheMergePopWaitsForTheImplosion() async {
+        let vm = makeViewModel()
+        place(vm, chainID: catChain, tier: 0, at: a)
+        place(vm, chainID: catChain, tier: 0, at: b)
+
+        vm.attemptMergeOrMove(from: a, to: b)
+        XCTAssertNil(vm.animatingCell, "no pop straight after release")
+
+        await settle(mergeImplosionDuration + 0.15)
+        XCTAssertEqual(vm.animatingCell, b, "the pop fires once the implosion window ends")
+    }
+
+    func testASettledImplosionNeverFiresItsPop() async {
+        let vm = makeViewModel()
+        place(vm, chainID: catChain, tier: 0, at: a)
+        place(vm, chainID: catChain, tier: 0, at: b)
+        vm.attemptMergeOrMove(from: a, to: b)
+
+        // Drag the hidden result away to a free cell: settles the implosion.
+        let c = GridPosition(row: 1, col: 3)
+        vm.attemptMergeOrMove(from: b, to: c)
+        XCTAssertTrue(vm.mergeImplosions.isEmpty)
+
+        await settle(mergeImplosionDuration + 0.15)
+        XCTAssertNil(vm.animatingCell, "a settled implosion fires no stray burst")
+    }
 }

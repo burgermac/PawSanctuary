@@ -2302,16 +2302,21 @@ class MergeBoardViewModel {
         // Tier B (Spec_BoardAnimation_Draft.md §8, task 8.1): record the two
         // source items for the view while the board is still pre-merge. Nothing
         // reads this list yet; the Tier A pulse below is unchanged.
+        var implosionRecorded = false
         if let sourceItem = boardState.item(at: outcome.from),
            let targetItem = boardState.item(at: outcome.to) {
             let implosion = MergeImplosion(from: outcome.from, to: outcome.to,
                                            sourceItem: sourceItem, targetItem: targetItem)
             mergeImplosions.append(implosion)
+            implosionRecorded = true
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(mergeImplosionDuration))
                 // By id, so a record already removed — including one settled
                 // by attemptMergeOrMove (task 8.2) — is a no-op.
+                guard self.mergeImplosions.contains(where: { $0.id == implosion.id }) else { return }
                 self.mergeImplosions.removeAll { $0.id == implosion.id }
+                // Task 8.3: the Tier A pop waits for the implosion to end.
+                self.popCell(outcome.to)
             }
         }
 
@@ -2395,11 +2400,8 @@ class MergeBoardViewModel {
             }
         }
 
-        animatingCell = outcome.to
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(600))
-            self.animatingCell = nil
-        }
+        // No implosion recorded (cannot normally happen): pop at once, as before.
+        if !implosionRecorded { popCell(outcome.to) }
         preMoveSnapshot = BoardSnapshot(board: preMergeBoard, inventory: preMergeInventory)
     }
 
