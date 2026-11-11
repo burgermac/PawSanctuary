@@ -847,11 +847,12 @@ final class FullCalendarRegressionTests: XCTestCase {
     /// second calendar's additions as they land (Spec_Phase7_Calendar2.md
     /// §3.1: +3 seasons = 23; §3.2: +4 December weekly events = 27;
     /// §3.3: +5 January weekly events = 32; §3.4: +4 February weekly events
-    /// = 36, the batch's final EventRegistry total). Bump this in the same
-    /// commit that adds entries.
+    /// = 36, the batch's final EventRegistry total). Third calendar
+    /// (Spec_Phase7_Calendar3.md §3.1: +3 seasons = 39). Bump this in the
+    /// same commit that adds entries.
     func testRegistryHasExpectedRunningTotalOfUniqueEventIDsNoDuplicates() {
         let allIDs = EventRegistry.allEvents.map(\.id)
-        XCTAssertEqual(allIDs.count, 36)
+        XCTAssertEqual(allIDs.count, 39)
         XCTAssertEqual(Set(allIDs).count, allIDs.count, "duplicate event ID(s) found in EventRegistry.allEvents")
     }
 }
@@ -963,6 +964,118 @@ final class SanctuaryCircleSeasons2Tests: XCTestCase {
             ("2026-12-03", "sanctuary_circle_s4_20261203"),
             ("2027-01-02", "sanctuary_circle_s5_20270102"),
             ("2027-02-01", "sanctuary_circle_s6_20270201"),
+        ]
+        for (iso, expectedID) in boundaries {
+            let active = Set(scheduler.activeEvents(at: date(iso))).intersection(allSeasonIDs)
+            XCTAssertEqual(active, [expectedID], "at boundary \(iso)")
+        }
+    }
+}
+
+/// Spec_Phase7_Calendar3.md §3.1 — the third calendar's continuous track:
+/// Sanctuary Circle seasons 7-9 (2027-03-03...2027-06-01). Static authored
+/// data queried at synthetic, injected dates only — never the wall clock —
+/// with every day-count Calendar pinned to UTC (S7 spans both the US 03-14
+/// and EU 03-28 spring DST changes).
+@MainActor
+final class SanctuaryCircleSeasons3Tests: XCTestCase {
+
+    private let seasonIDs = [
+        "sanctuary_circle_s7_20270303",
+        "sanctuary_circle_s8_20270402",
+        "sanctuary_circle_s9_20270502",
+    ]
+
+    private let allSeasonIDs: Set<String> = [
+        "sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004", "sanctuary_circle_s3_20261103",
+        "sanctuary_circle_s4_20261203", "sanctuary_circle_s5_20270102", "sanctuary_circle_s6_20270201",
+        "sanctuary_circle_s7_20270303", "sanctuary_circle_s8_20270402", "sanctuary_circle_s9_20270502",
+    ]
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private var utcCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+
+    private func season(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing season \(id)")
+    }
+
+    func testAllThreeNewSeasonsExistWithTheSpecifiedDates() throws {
+        let expected: [(String, String, String)] = [
+            ("sanctuary_circle_s7_20270303", "2027-03-03", "2027-04-02"),
+            ("sanctuary_circle_s8_20270402", "2027-04-02", "2027-05-02"),
+            ("sanctuary_circle_s9_20270502", "2027-05-02", "2027-06-01"),
+        ]
+        for (id, start, end) in expected {
+            let s = try season(id)
+            XCTAssertEqual(s.startDate, date(start), "\(id) start")
+            XCTAssertEqual(s.endDate, date(end), "\(id) end")
+            XCTAssertEqual(s.name, "Sanctuary Circle")
+        }
+    }
+
+    /// The batch seam: Season 7 opens the exact instant Season 6 closes.
+    func testSeasonSixEndEqualsSeasonSevenStart() throws {
+        let s6 = try season("sanctuary_circle_s6_20270201")
+        let s7 = try season(seasonIDs[0])
+        XCTAssertEqual(s6.endDate, s7.startDate, "Season 6 -> 7 must hand off with zero gap and zero overlap")
+    }
+
+    func testSeasonsSevenToNineAreContiguousWithZeroGapAndZeroOverlap() throws {
+        let s7 = try season(seasonIDs[0])
+        let s8 = try season(seasonIDs[1])
+        let s9 = try season(seasonIDs[2])
+        XCTAssertEqual(s7.endDate, s8.startDate, "Season 7 -> 8 must be contiguous, zero gap")
+        XCTAssertEqual(s8.endDate, s9.startDate, "Season 8 -> 9 must be contiguous, zero gap")
+    }
+
+    func testSeasonsSevenToNineSpanExactlyNinetyDaysThirtyEach() throws {
+        let s7 = try season(seasonIDs[0])
+        let s9 = try season(seasonIDs[2])
+        XCTAssertEqual(utcCalendar.dateComponents([.day], from: s7.startDate, to: s9.endDate).day, 90)
+        for id in seasonIDs {
+            let s = try season(id)
+            XCTAssertEqual(utcCalendar.dateComponents([.day], from: s.startDate, to: s.endDate).day, 30,
+                           "\(id) must be 30 days")
+        }
+    }
+
+    func testEachNewSeasonsMilestoneTableIsAVerbatimCopyOfFoundersCircles() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["founders_circle_aug2026"])
+        XCTAssertEqual(reference.count, 10)
+        for id in seasonIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Founders' Circle's")
+        }
+    }
+
+    func testExactlyTheMatchingSeasonIsActiveAtMidSeasonSampleDates() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let samples: [(String, String)] = [
+            ("2027-03-15", "sanctuary_circle_s7_20270303"),
+            ("2027-04-15", "sanctuary_circle_s8_20270402"),
+            ("2027-05-15", "sanctuary_circle_s9_20270502"),
+        ]
+        for (iso, expectedID) in samples {
+            let active = Set(scheduler.activeEvents(at: date(iso))).intersection(allSeasonIDs)
+            XCTAssertEqual(active, [expectedID], "at \(iso), exactly \(expectedID) should be active")
+        }
+    }
+
+    func testExactlyOneSeasonIsActiveAtEachSeasonBoundaryInstant() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let boundaries: [(String, String)] = [
+            ("2027-03-03", "sanctuary_circle_s7_20270303"),
+            ("2027-04-02", "sanctuary_circle_s8_20270402"),
+            ("2027-05-02", "sanctuary_circle_s9_20270502"),
         ]
         for (iso, expectedID) in boundaries {
             let active = Set(scheduler.activeEvents(at: date(iso))).intersection(allSeasonIDs)
@@ -1703,7 +1816,9 @@ final class FullCalendar2RegressionTests: XCTestCase {
         let parallelIDs = ParallelBoardEventRegistry.allEvents.map(\.id)
         let driveIDs = KibbleDriveRegistry.allEvents.map(\.id)
 
-        XCTAssertEqual(eventIDs.count, 36)
+        // Subset, not exact: later calendars append to EventRegistry. The exact
+        // running total lives in FullCalendarRegressionTests (Calendar 3 §3.1).
+        XCTAssertGreaterThanOrEqual(eventIDs.count, 36)
         XCTAssertEqual(parallelIDs.count, 6)
         XCTAssertEqual(driveIDs.count, 7)
         XCTAssertEqual(Set(eventIDs).count, eventIDs.count, "duplicate ID in EventRegistry.allEvents")
@@ -1718,7 +1833,8 @@ final class FullCalendar2RegressionTests: XCTestCase {
         XCTAssertTrue(existingKibbleDriveIDs.isSubset(of: Set(driveIDs)),
                       "missing existing Drive windows: \(existingKibbleDriveIDs.subtracting(driveIDs))")
 
-        XCTAssertEqual(Set(eventIDs), existingEventIDs.union(newBatchEventIDs))
+        XCTAssertTrue(existingEventIDs.union(newBatchEventIDs).isSubset(of: Set(eventIDs)),
+                      "missing Calendar 2 events: \(existingEventIDs.union(newBatchEventIDs).subtracting(eventIDs))")
         XCTAssertEqual(Set(parallelIDs), existingSecondChancesIDs.union(newSecondChancesIDs))
         XCTAssertEqual(Set(driveIDs), existingKibbleDriveIDs.union(newKibbleDriveIDs))
     }
