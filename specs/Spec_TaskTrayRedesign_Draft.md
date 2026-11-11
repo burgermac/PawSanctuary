@@ -1,6 +1,8 @@
 # PawSanctuary — Task tray redesign (draft)
 
-**Status: draft, no code written.** Fifth in the reference-review series, after `Spec_PartyBoard_Draft.md`, `Spec_BoardAnimation_Draft.md`, `Spec_OrdersAndTasks_Draft.md` and `Spec_TravelTownReview_Draft.md`. Not yet entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log.
+**Status: implemented 31 Aug – 1 Sep 2026 (§6 tasks 6.1–6.7 all done).** Header corrected 10 Nov 2026; it said "draft, no code written" long after the build. Proof: `11283de` (6.1, HUD row and `ProfileView.swift`), `ec1688d` (6.2, tile primitive), `083b98c`/`8044905`/`de33104` (6.3 and the §8.6 collapse reversal, `TaskTrayView.swift`), `2451c63` (6.4), `fdaabe7` (6.5), `386ff4b` (6.6, `OrderLaneView.swift`), `7e4408a` (6.7, task strip deleted), `5b1e0e4` (§8.4 collapse gestures). **Still unverified on screen:** the Loyalty tile (6.4) and the Pass-daily and ambassador-trio tiles (6.5), as recorded under those tasks. The original header follows.
+
+**Originally: draft, no code written.** Fifth in the reference-review series, after `Spec_PartyBoard_Draft.md`, `Spec_BoardAnimation_Draft.md`, `Spec_OrdersAndTasks_Draft.md` and `Spec_TravelTownReview_Draft.md`. Not yet entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log.
 
 This spec closes `Spec_TravelTownReview_Draft.md` §3, which flagged `TaskStripView` as real UX debt but offered three options without evaluating them. None of those three is what this spec proposes — the design here came from a new Tasty Travels capture plus a set of decisions taken in review on 31 Aug 2026, recorded in §3.
 

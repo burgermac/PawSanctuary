@@ -1,5 +1,7 @@
 # PawSanctuary — Standing-Quest Spend Goals (D6 follow-up)
 
+**Status: implemented 18 Aug 2026** (header corrected 10 Nov 2026; the paragraph below still ends "Ready to implement"). Task 3.1 in `94e7d06`: all four `generateQuest` pools carry `.spendCurrency` (`QuestCoordinator.swift`, kibble 40/70/110/220 and Dog Tags 8/14/22/44). Task 3.2 in `d60ae52`: `QuestCoordinator.updateQuestsAfterSpend`, called from `MergeBoardViewModel.updateAllAfterSpend`. 3.3 and 3.4 needed no code. §5's on-screen check was accepted as covered by the unit tests (`da8ffc0`), because the roll is random and was impractical to force. §4's numbers are still deferred to playtest.
+
 **Self-contained brief.** Assumes no prior conversation.
 
 > **Not atomic.** Suggested landing order in §3 — land as separate commits, verify each on screen before the next, stop if one resists.
