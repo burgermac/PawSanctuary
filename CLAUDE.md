@@ -48,7 +48,7 @@ Specs are written to be self-contained. If a spec seems to conflict with the cod
 2. **Keep the game playable at every commit.** No commit should leave a build that won't run.
 3. **Respect the out-of-scope list.** Each spec has one. Later-phase plumbing lands early by design; using it early is how phases bleed into each other.
 4. **Never break the migration chain.** `GameStore` has an unbroken migration path back to v8 (check the current schema version in code). Any change to a persisted shape needs a version bump, a migration, and a test in `PersistenceTests.swift`.
-5. **Ask before large refactors.** The `BoardStateManager` extraction is deliberately deferred as a dedicated sprint — don't start it opportunistically.
+5. **Ask before large refactors.** Any structural refactor is its own dedicated sprint — don't start one opportunistically. (The `BoardStateManager` extraction, Phases A–D, is complete.)
 
 ## Architecture
 
