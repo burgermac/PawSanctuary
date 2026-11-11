@@ -1,6 +1,8 @@
 # PawSanctuary — Travel Town review (draft)
 
-**Status: draft, no code written.** Fourth in the reference-review series, after `Spec_PartyBoard_Draft.md`, `Spec_BoardAnimation_Draft.md` and `Spec_OrdersAndTasks_Draft.md`. Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log.
+**Status: all four deltas acted on (header corrected 10 Nov 2026; it said "draft, no code written").** §2 reward flights shipped 9 Oct 2026 (`Spec_RewardFlight.md`, `RewardFlightView.swift`, commit `09594fa`, PR #48). §3 task rail closed by `Spec_TaskTrayRedesign_Draft.md` (tray built 31 Aug – 1 Sep, `TaskTrayView.swift`; the strip was deleted in `7e4408a`). §4's milestone celebration shipped 9 Oct as the Care Points takeover (`Spec_MilestoneTakeover.md`, `MilestoneTakeoverView.swift`, commit `897f6d8`); §4's longer milestone horizon was not changed. §5 "Almost there!" shipped 9 Oct (§5a below, commit `d39d6aa`, PR #44). §6's capture questions remain open. The original header follows.
+
+**Originally: draft, no code written.** Fourth in the reference-review series, after `Spec_PartyBoard_Draft.md`, `Spec_BoardAnimation_Draft.md` and `Spec_OrdersAndTasks_Draft.md`. Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log.
 
 Unlike the earlier three, most of this recording **confirms** work already shipped rather than opening new gaps. §1 records that confirmation briefly; §2–§5 are the four genuine deltas.
 

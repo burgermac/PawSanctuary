@@ -52,4 +52,4 @@ Seen on the Simulator with the save seeded as "yesterday was login day 7": the p
 
 **Test pitfall worth recording:** a fresh game runs the first-day login check immediately, so the counter reads 1 after a reset, not 0.
 
-**Still open:** decision 1 above — a force-quit before Claim forfeits that day's reward, now including a milestone's.
+~~**Still open:** decision 1 above — a force-quit before Claim forfeits that day's reward, now including a milestone's.~~ **Fixed 9 Oct 2026** by `Spec_LoginGrantAtCheck.md` (commit `825601d`, PR #49): `MergeBoardViewModel.checkDailyLogin()` now pays the day reward and any milestone bonus through `grantLoginReward()` the moment a new day registers, and the popup's "Got it!" only dismisses. `LoginGrantAtCheckTests` covers the relaunch. Corrected 10 Nov 2026.
