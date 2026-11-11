@@ -30,7 +30,7 @@ Each spec carries its own status (done / draft / parked) at the top — read the
 | `specs/Spec_OrdersAndTasks_Draft.md` | Order baskets, Smile Points, Care Points — implemented |
 | `specs/Spec_TravelTownReview_Draft.md` | Travel Town review — draft |
 | `specs/Spec_ParallelBoardReview_Draft.md` | Travel Town Greek Fest capture — draft, no decisions |
-| `specs/Spec_TaskTrayRedesign_Draft.md` | Task tray + HUD flattening — implemented; Loyalty, Pass-daily and ambassador-trio tiles still unverified on screen |
+| `specs/Spec_TaskTrayRedesign_Draft.md` | Task tray + HUD flattening — implemented; Loyalty and ambassador-trio tiles verified on screen 11 Nov 2026, Pass-daily tile still unverified (needs the StoreKit run) |
 | `specs/Spec_QuestLaneCards_Draft.md` | Quest cards in the order lane (a design decision, not a reference reading); amends TaskTrayRedesign §3.4–3.6 |
 | `specs/Spec_KibbleDrive_Draft.md` | $4.99 activity-fed "Kibble Drive" ladder — steps 1–3 done, steps 4–7 not started; StoreKit unverified |
 | `specs/Spec_DailyHandInTasks.md` | Daily hand-in baskets — implemented (schema v40); overrides Gap Analysis Round 2 §3.1 near-miss stagger |
