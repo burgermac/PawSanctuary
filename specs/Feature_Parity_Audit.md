@@ -136,4 +136,4 @@ None of this is a gap any more; it is listed so the table above can be read agai
 
 **Rows still unverified** (unchanged from 13 Aug; they need a dedicated read, not a guess): the album set-vs-completion reward ratio, card purchase by rarity, the days-per-building-level ramp, the price-ladder value curve, and whether top-tier tiles should show persistent "maxed" text.
 
-**Not code:** the real ad SDK behind the wall, Push Notifications, iCloud and Game Center capabilities, and the App Store submission items — see `TODO.md`.
+**Not code:** the real ad SDK behind the wall (AdMob, decided 10 Nov 2026), iCloud and Game Center capabilities, and the App Store submission items — see `TODO.md`.
