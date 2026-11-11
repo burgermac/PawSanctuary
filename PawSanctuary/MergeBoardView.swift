@@ -455,10 +455,7 @@ struct MergeBoardView: View {
         // 1. Kibble full
         viewModel.rescheduleKibbleFullNotification()
 
-        // 2. Daily rewards (persistent daily — schedule once, keeps firing)
-        NotificationManager.shared.scheduleDailyRewards()
-
-        // 3. Urgent order expiry warning — the persistent slots have no timer
+        // 2. Urgent order expiry warning — the persistent slots have no timer
         // (Phase 5, Task 5.2), so there's exactly one order left that can expire.
         if let urgent = viewModel.urgentOrder, !urgent.isComplete && !urgent.isClaimed {
             NotificationManager.shared.scheduleOrderExpiry(
@@ -467,8 +464,11 @@ struct MergeBoardView: View {
                 summary:       urgent.orderDescription)
         }
 
-        // 4. Re-engagement nudge (48 hours)
-        NotificationManager.shared.scheduleReengagement()
+        // 3. Standing notifications: daily rewards, daily-challenges reset,
+        // streak reminder, 48-hour re-engagement. The `.active` case above
+        // cancels everything, so all of these must be put back on every
+        // background, not only at cold launch.
+        NotificationManager.shared.scheduleStandingOnBackground()
     }
 
     /// Playing the board gets the tray out of the way (spec §8.4).
