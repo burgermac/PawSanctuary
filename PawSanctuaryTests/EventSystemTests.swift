@@ -848,11 +848,11 @@ final class FullCalendarRegressionTests: XCTestCase {
     /// §3.1: +3 seasons = 23; §3.2: +4 December weekly events = 27;
     /// §3.3: +5 January weekly events = 32; §3.4: +4 February weekly events
     /// = 36, the batch's final EventRegistry total). Third calendar
-    /// (Spec_Phase7_Calendar3.md §3.1: +3 seasons = 39). Bump this in the
-    /// same commit that adds entries.
+    /// (Spec_Phase7_Calendar3.md §3.1: +3 seasons = 39; §3.2: +4 March weekly
+    /// events = 43). Bump this in the same commit that adds entries.
     func testRegistryHasExpectedRunningTotalOfUniqueEventIDsNoDuplicates() {
         let allIDs = EventRegistry.allEvents.map(\.id)
-        XCTAssertEqual(allIDs.count, 39)
+        XCTAssertEqual(allIDs.count, 43)
         XCTAssertEqual(Set(allIDs).count, allIDs.count, "duplicate event ID(s) found in EventRegistry.allEvents")
     }
 }
@@ -1080,6 +1080,141 @@ final class SanctuaryCircleSeasons3Tests: XCTestCase {
         for (iso, expectedID) in boundaries {
             let active = Set(scheduler.activeEvents(at: date(iso))).intersection(allSeasonIDs)
             XCTAssertEqual(active, [expectedID], "at boundary \(iso)")
+        }
+    }
+}
+
+/// Spec_Phase7_Calendar3.md §3.2 — the third calendar's weekly track, month
+/// 1 (March, instances 1-4). Static authored data queried at synthetic,
+/// injected dates only — never the wall clock — with every day-count
+/// Calendar pinned to UTC.
+@MainActor
+final class WeeklyEvents3Month1Tests: XCTestCase {
+
+    /// In calendar order: Rescue Relay, Playtime Rush, Rescue Relay, Playtime Rush.
+    private let weeklyIDs = [
+        "rescue_relay_20270305",
+        "playtime_rush_20270312",
+        "rescue_relay_20270319",
+        "playtime_rush_20270326",
+    ]
+
+    private let seasonSevenID = "sanctuary_circle_s7_20270303"
+
+    private let allSeasonIDs: Set<String> = [
+        "sanctuary_circle_s6_20270201",
+        "sanctuary_circle_s7_20270303", "sanctuary_circle_s8_20270402", "sanctuary_circle_s9_20270502",
+    ]
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private var utcCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+
+    private func event(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing event \(id)")
+    }
+
+    private func days(from a: Date, to b: Date) -> Int? {
+        utcCalendar.dateComponents([.day], from: a, to: b).day
+    }
+
+    func testAllFourExistWithTheSpecifiedDatesAndNames() throws {
+        let expected: [(String, String, String, String)] = [
+            ("rescue_relay_20270305",  "Rescue Relay",  "2027-03-05", "2027-03-09"),
+            ("playtime_rush_20270312", "Playtime Rush", "2027-03-12", "2027-03-16"),
+            ("rescue_relay_20270319",  "Rescue Relay",  "2027-03-19", "2027-03-23"),
+            ("playtime_rush_20270326", "Playtime Rush", "2027-03-26", "2027-03-30"),
+        ]
+        for (id, name, start, end) in expected {
+            let e = try event(id)
+            XCTAssertEqual(e.name, name, "\(id) name")
+            XCTAssertEqual(e.startDate, date(start), "\(id) start")
+            XCTAssertEqual(e.endDate, date(end), "\(id) end")
+        }
+    }
+
+    func testEachIsFourDaysLong() throws {
+        for id in weeklyIDs {
+            let e = try event(id)
+            XCTAssertEqual(days(from: e.startDate, to: e.endDate), 4, "\(id) must be 4 days")
+        }
+    }
+
+    func testEachIsFollowedByAThreeDayGapToTheNext() throws {
+        for (a, b) in zip(weeklyIDs, weeklyIDs.dropFirst()) {
+            let first = try event(a)
+            let next = try event(b)
+            XCTAssertEqual(days(from: first.endDate, to: next.startDate), 3, "\(a) -> \(b) gap must be 3 days")
+        }
+    }
+
+    /// The cross-batch seam: the second calendar's last weekly event to the
+    /// third calendar's first is the ordinary 3-day off-period.
+    func testCrossBatchSeamFromPlaytimeRush20270226IsExactlyThreeDays() throws {
+        let lastOfBatchTwo = try event("playtime_rush_20270226")
+        let firstOfBatchThree = try event(weeklyIDs[0])
+        XCTAssertEqual(days(from: lastOfBatchTwo.endDate, to: firstOfBatchThree.startDate), 3)
+    }
+
+    /// Batch 2 ends on Playtime Rush, so batch 3 starts on Rescue Relay and
+    /// alternates from there.
+    func testFlavorAlternationContinuesAcrossTheBatchSeam() throws {
+        let lastOfBatchTwo = try event("playtime_rush_20270226")
+        var names = [lastOfBatchTwo.name]
+        for id in weeklyIDs { names.append(try event(id).name) }
+        XCTAssertEqual(names, ["Playtime Rush", "Rescue Relay", "Playtime Rush", "Rescue Relay", "Playtime Rush"])
+        for (a, b) in zip(names, names.dropFirst()) {
+            XCTAssertNotEqual(a, b, "consecutive weekly events must alternate flavor")
+        }
+    }
+
+    func testNoTwoOfTheFourOverlap() throws {
+        let events = try weeklyIDs.map { try event($0) }
+        for i in events.indices {
+            for j in events.indices where j > i {
+                let a = events[i], b = events[j]
+                XCTAssertFalse(a.startDate < b.endDate && b.startDate < a.endDate,
+                               "\(a.id) overlaps \(b.id)")
+            }
+        }
+    }
+
+    /// Each lies wholly inside Season 7, and on every day it runs exactly
+    /// Season 7 (no other season) is active underneath.
+    func testEachOverlapsExactlySeasonSevenThroughout() throws {
+        let s7 = try event(seasonSevenID)
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        for id in weeklyIDs {
+            let e = try event(id)
+            XCTAssertGreaterThanOrEqual(e.startDate, s7.startDate, "\(id) starts before Season 7")
+            XCTAssertLessThanOrEqual(e.endDate, s7.endDate, "\(id) ends after Season 7")
+            var day = e.startDate
+            var sampled = 0
+            while day < e.endDate {
+                let active = Set(scheduler.activeEvents(at: day))
+                XCTAssertTrue(active.contains(id), "\(id) should be active at \(day)")
+                XCTAssertEqual(active.intersection(allSeasonIDs), [seasonSevenID], "\(id) at \(day)")
+                sampled += 1
+                day = try XCTUnwrap(utcCalendar.date(byAdding: .day, value: 1, to: day))
+            }
+            XCTAssertEqual(sampled, 4, "\(id) sampled days")
+        }
+    }
+
+    func testEachMilestoneTableIsAVerbatimCopyOfAdoptionDrives() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["adoption_drive_aug2026"])
+        XCTAssertEqual(reference.count, 3)
+        for id in weeklyIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Adoption Drive's")
         }
     }
 }
