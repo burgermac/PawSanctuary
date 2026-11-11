@@ -70,6 +70,13 @@ final class NotificationManager: NSObject {
     private let centre: any NotificationCentre
     private let now: () -> Date
 
+    /// The day the login streak last registered a visit (`GameState.lastLoginDate`,
+    /// set by `QuestCoordinator.checkDailyLogin()`). The streak reminder is
+    /// skipped when this is today: the streak is already safe, so there is
+    /// nothing to remind about. `MergeBoardView` points this at its view model
+    /// on appear; until then it reads nil, which schedules as before.
+    var lastLoginDate: @MainActor () -> Date? = { nil }
+
     override init() {
         centre = UNUserNotificationCenter.current()
         now = Date.init
@@ -81,11 +88,13 @@ final class NotificationManager: NSObject {
     /// Test seam: a manager over a stand-in centre and clock. It neither
     /// becomes the system centre's delegate nor reads the real authorisation
     /// status, so `isAuthorised` stays exactly what the caller passed.
-    init(centre: any NotificationCentre, now: @escaping () -> Date, isAuthorised: Bool) {
+    init(centre: any NotificationCentre, now: @escaping () -> Date, isAuthorised: Bool,
+         lastLoginDate: @escaping @MainActor () -> Date? = { nil }) {
         self.centre = centre
         self.now = now
         super.init()
         self.isAuthorised = isAuthorised
+        self.lastLoginDate = lastLoginDate
     }
 
     /// Fetches just the authorization status, never letting the non-Sendable
@@ -294,11 +303,17 @@ final class NotificationManager: NSObject {
 
     /// Cancels any existing streak reminder and schedules a fresh one for 8 PM tonight.
     /// Call on every app launch/foreground. If it's already past 8 PM, skips (no retroactive fire).
+    /// If the streak already registered a visit today (`lastLoginDate` is today),
+    /// skips too: the player has played, so "don't lose your streak" would be
+    /// wrong (owner decision, 10 Nov 2026). The reminder stays a one-shot for
+    /// today only, as before; it is not moved to tomorrow.
     func cancelAndRescheduleStreakReminder() {
         cancel(ids: [NotificationID.streakReminder])
         guard isAuthorised else { return }
 
         let current = now()
+        if let lastLogin = lastLoginDate(),
+           Calendar.current.isDate(lastLogin, inSameDayAs: current) { return }   // played today — skip
         var comps   = Calendar.current.dateComponents([.year, .month, .day], from: current)
         comps.hour  = 20
         comps.minute = 0

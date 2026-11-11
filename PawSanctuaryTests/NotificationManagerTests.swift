@@ -80,6 +80,98 @@ final class NotificationManagerTests: XCTestCase {
         XCTAssertFalse(centre.pendingIDs.contains(NotificationID.streakReminder))
     }
 
+    // MARK: Streak reminder skipped on days already played (owner decision, 10 Nov 2026)
+
+    private let otherThree: Set<String> = [
+        NotificationID.dailyReset,
+        NotificationID.dailyRewards,
+        NotificationID.reengagement,
+    ]
+
+    /// Login registered today, before 20:00: no streak reminder, the other three stay.
+    func testPlayedTodaySkipsStreakReminder() throws {
+        let centre = RecordingCentre()
+        let clock = try today(atHour: 10)
+        let login = Calendar.current.startOfDay(for: clock)   // checkDailyLogin stores start of day
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true,
+                                          lastLoginDate: { login })
+
+        manager.scheduleStandingOnBackground()
+
+        XCTAssertEqual(centre.pendingIDs, otherThree)
+    }
+
+    /// Last login was yesterday: today's 20:00 reminder is scheduled as before.
+    func testNotPlayedTodaySchedulesStreakReminderForTonight() throws {
+        let centre = RecordingCentre()
+        let clock = try today(atHour: 10)
+        let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1,
+                                                            to: Calendar.current.startOfDay(for: clock)))
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true,
+                                          lastLoginDate: { yesterday })
+
+        manager.scheduleStandingOnBackground()
+
+        XCTAssertEqual(centre.pendingIDs, otherThree.union([NotificationID.streakReminder]))
+        let trigger = try XCTUnwrap(centre.pending[NotificationID.streakReminder]?.trigger
+                                    as? UNCalendarNotificationTrigger)
+        // Read the components, not nextTriggerDate(): that uses the real clock.
+        let today = Calendar.current.dateComponents([.year, .month, .day], from: clock)
+        XCTAssertEqual(trigger.dateComponents.year, today.year)
+        XCTAssertEqual(trigger.dateComponents.month, today.month)
+        XCTAssertEqual(trigger.dateComponents.day, today.day)
+        XCTAssertEqual(trigger.dateComponents.hour, 20)
+        XCTAssertFalse(trigger.repeats)
+    }
+
+    /// Past 20:00 nothing changes: skipped whether or not the player played today.
+    func testAfterEightPMSkipsStreakReminderEitherWay() throws {
+        let clock = try today(atHour: 21)
+        let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: clock))
+        for login in [Optional(clock), Optional(yesterday), nil] {
+            let centre = RecordingCentre()
+            let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true,
+                                              lastLoginDate: { login })
+            manager.scheduleStandingOnBackground()
+            XCTAssertEqual(centre.pendingIDs, otherThree)
+        }
+    }
+
+    /// Warm-return sequence on a day already played: the other three survive
+    /// every background pass and no streak reminder is ever pending.
+    func testWarmReturnOnPlayedDayKeepsOtherThree() throws {
+        let centre = RecordingCentre()
+        let clock = try today(atHour: 10)
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true,
+                                          lastLoginDate: { clock })
+
+        manager.scheduleAll()                    // cold launch
+        XCTAssertFalse(centre.pendingIDs.contains(NotificationID.streakReminder))
+        manager.scheduleStandingOnBackground()   // first .background
+        XCTAssertEqual(centre.pendingIDs, otherThree)
+        manager.cancelAll()                      // warm return
+        manager.scheduleStandingOnBackground()   // next .background
+        XCTAssertEqual(centre.pendingIDs, otherThree)
+    }
+
+    /// Across midnight: skipped on the day played, scheduled again the next
+    /// day once the clock moves on and the login date has not.
+    func testSkipDoesNotCarryOverToNextDay() throws {
+        let centre = RecordingCentre()
+        let day1 = try today(atHour: 10)
+        var clock = day1
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true,
+                                          lastLoginDate: { Calendar.current.startOfDay(for: day1) })
+
+        manager.scheduleStandingOnBackground()
+        XCTAssertFalse(centre.pendingIDs.contains(NotificationID.streakReminder))
+
+        clock = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: day1))
+        manager.cancelAll()
+        manager.scheduleStandingOnBackground()
+        XCTAssertTrue(centre.pendingIDs.contains(NotificationID.streakReminder))
+    }
+
     /// Without permission the pass schedules nothing.
     func testBackgroundWithoutPermissionSchedulesNothing() throws {
         let centre = RecordingCentre()
