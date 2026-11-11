@@ -1,6 +1,6 @@
 # PawSanctuary — Board Animation (draft)
 
-**Status: §3 Tier A IMPLEMENTED (29 Aug 2026) and CI-screenshot-confirmed, including its §3a-correction cross-row `zIndex` fix's underlying burst/bloom mechanism (30 Aug 2026, after one false-negative run — see §3a). §5 (producer shimmer, 30 Aug 2026) was CI-screenshot-confirmed for its core function (see §5a/§5b), then **retimed 11 Sep 2026 against measured reference motion and confirmed moving on screen (see §5c)** — the earlier 0.5–0.8s and 2.6–3.6s timings were one structural bug at two speeds, and §5c also corrects §4's own reading of the reference's drift direction and lifetimes. A suspected real-device OOM traced to the shimmer's rendering was mitigated same-day, not yet retested (see §5a).** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
+**Status: §3 Tier A IMPLEMENTED (29 Aug 2026) and CI-screenshot-confirmed, including its §3a-correction cross-row `zIndex` fix's underlying burst/bloom mechanism (30 Aug 2026, after one false-negative run — see §3a). §5 (producer shimmer, 30 Aug 2026) was CI-screenshot-confirmed for its core function (see §5a/§5b), then **retimed 11 Sep 2026 against measured reference motion and confirmed moving on screen (see §5c)** — the earlier 0.5–0.8s and 2.6–3.6s timings were one structural bug at two speeds, and §5c also corrects §4's own reading of the reference's drift direction and lifetimes. A suspected real-device OOM traced to the shimmer's rendering was mitigated same-day, not yet retested (see §5a).** **§3 Tier B (merge phases 1–2): un-parked 10 Nov 2026; planned 11 Nov 2026 as a numbered task list in §8 — ready to implement, nothing built yet, task list awaiting owner merge of its PR.** Not entered into `PawSanctuary_Alignment_Plan.md`'s D1–D8 decision log — that log is made in the design-authority chat. Assembled at the implementation surface from reference-video review (26 Aug 2026). Companion to `Spec_PartyBoard_Draft.md`, still fully parked.
 
 ## 0. Source material
 
@@ -58,7 +58,7 @@ Built to the three bullets above, all in `CellView.swift`, no view-model or sche
 
 **CI-screenshot verification (30 Aug 2026) — confirmed, after one false negative.** `PawSanctuaryTests/BoardAnimationSnapshotTests.swift` (see §5b) hosts a mini 2×2 board reproducing this exact structure and screenshots it at four points across the merge's ~1.2s choreography. The *first* real-content run (`8a093b0`) came back showing a plain, unscaled grid with no visible burst at all, and this doc originally recorded that as a likely `drawHierarchy`-can't-capture-one-shot-animations limitation. **That theory turned out to be wrong.** Two later runs — `8f08f72` (a doc-only commit, no code changed) and `438fe97` — both show the burst clearly: `merge_burst_1_peak_overshoot` has the item visibly scaled up with 3–4 gold sparkle stars and a soft white halo; `merge_burst_2_mid_drift` shows the item back at resting size with two faint sparkles drifted well outside the grid and fading. Since no test or product code differed between the miss and the two hits, the real explanation is CI-runner timing variance against this test's fixed millisecond offsets (see §5b), not a capture-technique ceiling or a product bug — credit to a second Claude session also watching this PR for catching the contradiction and re-checking rather than letting the first (wrong) conclusion stand. **Not independently confirmed by these frames:** whether the overshoot specifically bleeds across the row boundary the `zIndex` correction targets — the scale-up in the captured frames reads as moderate at this test's 100pt cell size, not obviously breaching into the row below, though nothing in the frames contradicts the fix either. That one detail is still worth a direct look if convenient, but is no longer blocking.
 
-**Not attempted:** Tier B (phases 1–2, the pre-merge slide/implode) — per this section's own recommendation, still deferred to `BoardStateManager` Phase D. (10 Nov 2026: Phase D was complete on 15 Aug, `3b060ea`; see §7 Q5.)
+**Not attempted:** Tier B (phases 1–2, the pre-merge slide/implode) — per this section's own recommendation, still deferred to `BoardStateManager` Phase D. (10 Nov 2026: Phase D was complete on 15 Aug, `3b060ea`; see §7 Q5. 11 Nov 2026: planned as §8.)
 
 ---
 
@@ -195,8 +195,280 @@ Also note the shimmer must coexist with the existing golden `speedBurstActive` g
 2. ~~**Does the shimmer extend to other producer types**~~ — **Resolved, see §5a.** Family spawners only.
 3. ~~**Non-mammal motif**~~ — **Resolved, see §5a.** One universal tuft, tinted per species — matches this section's own recommended option.
 4. ~~**Spawn-flight animation** — adopt the reference's fly-from-producer-to-cell arc with a trail? PawSanctuary currently places spawned items directly. Not specified above; would need its own pass. Still open.~~ **Resolved 9 Oct 2026: shipped** as `Spec_SpawnFlight.md` (`SpawnFlightView.swift`, commit `d94169b`, PR #47). Corrected 10 Nov 2026.
-5. **Merge Tier B sequencing** — confirm the recommendation to defer phases 1–2 until `BoardStateManager` Phase D, rather than building a parallel animation-state mechanism first. Reconfirmed at §5a's implementation pass; still deferred. **Update 10 Nov 2026: the precondition is met and was met before this spec was written.** Phase D finished 15 Aug 2026 (`3b060ea`; `BoardStateManager_Phase_D_Plan.md` status line; `attemptMergeOrMove` now computes a `MergeResult`, `MergeResult.swift`). The owner un-parked Tier B on 10 Nov 2026. Next step is turning §3 Tier B into a numbered task list; nothing built yet.
+5. **Merge Tier B sequencing** — confirm the recommendation to defer phases 1–2 until `BoardStateManager` Phase D, rather than building a parallel animation-state mechanism first. Reconfirmed at §5a's implementation pass; still deferred. **Update 10 Nov 2026: the precondition is met and was met before this spec was written.** Phase D finished 15 Aug 2026 (`3b060ea`; `BoardStateManager_Phase_D_Plan.md` status line; `attemptMergeOrMove` now computes a `MergeResult`, `MergeResult.swift`). The owner un-parked Tier B on 10 Nov 2026. **Update 11 Nov 2026: turned into a numbered task list — see §8 (tasks 8.1–8.7 in §8d, out-of-scope list §8e, owner questions §8f). Nothing built yet.**
 
-## 8. Suggested next step
+## 8. Tier B — implementation plan (merge phases 1–2)
+
+**Status: Ready to implement — task list awaiting owner merge of this PR.** Written 11 Nov 2026 from a read of the code at `b900435` (origin/main). Docs only; no Swift changed. Each task below is one session, one commit, per `CLAUDE.md` rule 1, and leaves the game playable.
+
+**Goal, restated from §1/§3.** When two items merge, show phases 1–2 of the reference: the two source items sit side by side in the destination cell, slide together (~0.06s), then shrink toward a point at ~25% scale (~0.06–0.12s). Only then does the existing Tier A burst (§3a) fire on the new item. Total pre-burst window: ~0.15s. The model does not wait. Board state is written at once, exactly as today. The view keeps drawing the two sources for ~0.15s after the model has moved on.
+
+### 8a. What the code gives Tier B today
+
+**`MergeResult` (`PawSanctuary/MergeResult.swift:27–64`)** is the dispatch enum. Only one case is a merge:
+
+- `.merge(MergeOutcome)` (`MergeResult.swift:42`). The other cases (`producerUpgrade`, `producerSwap`, `producerMove`, `producerBlocked`, `superpowerPieceSpent`, `itemSwap`, `itemMove`) are not Tier B's business (see §8e).
+
+**`MergeOutcome` (`PawSanctuary/MergeOutcome.swift:40–59`)** carries:
+
+| Field | Line | Useful to Tier B? |
+|---|---|---|
+| `from: GridPosition` | :41 | **Yes**: the source cell. |
+| `to: GridPosition` | :42 | **Yes**: the destination cell, where the result lands. |
+| `resultChainID`, `resultTier` | :43–44 | The result item, which is already on the board. |
+| `mergedSpecies`, `scoreDelta`, `xpDelta`, `isTopTierCompletion`, `isBubbleEligible` | :48–58 | No. |
+
+**What it does not carry:**
+
+1. **The two source items.** For a normal merge both are `(resultChainID, resultTier − 1)` in practice. That is not true for a wildcard merge: one source is the wildcard, a different chain and tier (`MergeOutcome.swift:79–90`). To render the sources faithfully, Tier B needs the real `BoardItem`s.
+2. **Any on-screen geometry.** Positions are grid cells only. There is no drop point and no drag offset. This is fine; see §8c.
+3. **The merge's final fate.** `applyMergeOutcome` can still bubble the result, move it to Supplies (power-up or completed sub-object routing), or swap in a superpower piece, all after the board write (`MergeBoardViewModel.swift:2288–2358`). `MergeOutcome` is decided before any of that.
+4. **A return value to the caller.** `attemptMergeOrMove` (`MergeBoardViewModel.swift:2154–2196`) returns `Void`. It computes and applies internally (`apply(.merge(outcome))` at :2185). The view cannot see the result.
+
+**Where the source items are available:** `attemptMergeOrMove` has `srcItem` and `dstItem` in scope (:2168, :2171). Inside `applyMergeOutcome` (:2272), the board is still pre-merge until the write at :2280, so `boardState.item(at: outcome.from)` and `boardState.item(at: outcome.to)` both return the sources there. The Nine Lives snapshot already captures there for the same reason (:2277–2278).
+
+**Schema: unaffected.** `GameStore.currentVersion` is `44` (`GameStore.swift:388`). `animatingCell` (`MergeBoardViewModel.swift:165`) and `spawnFlights` (:1594) are plain view-model properties. Neither is in `GameState`, and the new state below follows the same pattern. Nothing in §8 touches a persisted shape, so no migration and no `PersistenceTests` case.
+
+**The precedent to copy: spawn flight (PR #47, `d94169b`).** It solves the same problem: the item is already in board state, but the view must pretend otherwise for a moment. Its parts:
+
+- `SpawnFlight` record and `spawnFlights: [SpawnFlight]` list (`MergeBoardViewModel.swift:1585–1594`).
+- `finishSpawn` writes the board, appends the record, then schedules a `Task` that removes it after `spawnFlightDuration` and only then calls `popCell` (:1598–1620).
+- `popCell` is the shared 600ms Tier A pulse (:1622–1629).
+- The view hides the landed item with `isFlightLanding` → `opacity(0)` (`CellView.swift:120`; wired at `MergeBoardView.swift:913–914`). The view draws the motion in `SpawnFlightOverlay`, an overlay on the grid before padding (`MergeBoardView.swift:1002–1005`; `SpawnFlightView.swift`). Both are gated on `reduceMotion`.
+- Tested in `PawSanctuaryTests/SpawnFlightTests.swift` with an `await Task.sleep` pattern.
+
+Tier B is the same shape with a different overlay. Building it any other way would be the "parallel mechanism" §3 warned against.
+
+### 8b. Where this spec disagrees with the code
+
+1. **§2's line numbers are stale.** `CellView.swift:110` → the `scaleEffect(isAnimating ? 1.5 : 1.0)` is now at `CellView.swift:178–179`. `MergeBoardViewModel.swift:1423` → the merge's 600ms pulse is now at `MergeBoardViewModel.swift:2360–2364`, inside `applyMergeOutcome`. Spawns and passive tiles use `popCell` (:1622–1629) and `placeFreeTile` (:3078–3090).
+2. **§3's Tier B paragraph names the wrong function.** It says "`attemptMergeOrMove` mutates board state and then sets `animatingCell`." Since Phase D, `attemptMergeOrMove` is pure dispatch (:2154–2196). The board write and the `animatingCell` set both happen in `applyMergeOutcome` (:2272–2366), reached through `apply(_:)` (:2209). The point §3 was making still holds: the sources are gone from the model before any animation runs.
+3. **§3 expected Phase D to "return a structured result describing what merged and from where."** It half does. `MergeOutcome` describes *where* (from/to) and *what resulted*, but not the source items, and nothing returns it to the view (§8a items 1 and 4). So "Tier B becomes cheap" holds, with one extra step: capture the sources at apply time.
+4. **Not in the spec at all: the drop is animated.** `MergeBoardView.swift:986–988` wraps `attemptMergeOrMove` in `withAnimation(.spring(response: 0.3, dampingFraction: 0.6))`. Every state change from a drag-merge therefore runs inside a spring transaction. Tier B has to opt out of that in two places (task 8.4); otherwise the hidden result fades out over ~0.3s instead of vanishing, and the overlay fades in instead of appearing.
+5. **`BoardStateManager_Phase_D_Plan.md` §3.4 undercounts `animatingCell` writers.** It says three (producer upgrade, `applyMergeOutcome`, `placeFreeTile`). Today there are six assignment sites: `popCell` :1624, a supply-producer charge at :1808, `.producerUpgrade` :2214, `applyMergeOutcome` :2360, `placeFreeTile` :3083, and the family-unlock spawner placement at :3929. Same single-slot clobbering, more writers. Recorded here, not fixed (§8e).
+6. **Minor, code only:** the doc comment at `MergeBoardViewModel.swift:1578–1581` ("Places a freshly-resolved spawn item…") belongs to `finishSpawn` but sits above `struct SpawnFlight`, because PR #47 inserted the struct between them. Cosmetic. Worth moving while task 8.1 is editing next to it, if the implementer is there anyway.
+7. **Adjacent observation, not a disagreement:** the drag ghost always renders the SF Symbol, never the item's art (`MergeBoardView.swift:921–935`), while `CellView` and `SpawnFlightSprite` both prefer `artImage`. When the overlay below starts drawing art-based sources at release, the hand-off from ghost to source sprite will show a change of picture for items that have art. Out of scope for Tier B (§8e). Flagged because it will be visible in the Simulator check.
+
+### 8c. Design
+
+**A transient record, appended at apply time.** Proposed shape, in `MergeBoardViewModel.swift` beside `SpawnFlight`:
+
+```swift
+/// Merge phases 1–2 (Spec_BoardAnimation_Draft.md §8): the two source items,
+/// already gone from board state, still drawn sliding together and imploding
+/// in `to` until `mergeImplosionDuration` passes. Session-only, never persisted.
+struct MergeImplosion: Identifiable, Equatable {
+    let id = UUID()
+    let from: GridPosition      // where the dragged source came from
+    let to: GridPosition        // where both converge and the result lands
+    let sourceItem: BoardItem   // the dragged item (may be a wildcard)
+    let targetItem: BoardItem   // the item it was dropped on
+}
+var mergeImplosions: [MergeImplosion] = []
+```
+
+- **A list, not one slot**, for the same reason as `spawnFlights`: two quick merges in different cells overlap.
+- **Captured in `applyMergeOutcome`, not threaded through `MergeOutcome`/`MergeResult`.** Read both cells at the top, beside the existing `preMergeBoard` capture (:2277), before the write at :2280. `MergeOutcome` stays the pure, `Equatable` decision type its 19 tests pin. Source items are rendering data, not merge-decision data, the same reasoning Phase D §3.3 used to keep the Nine Lives snapshot out of it.
+- **Only `.merge` records one.** Swaps, moves, producer upgrades and superpower spends do not (§8e).
+- **Removed by a `Task` after `mergeImplosionDuration`**, which then fires the Tier A pop. This is the `finishSpawn` pattern verbatim (:1612–1616).
+
+**Where the sources start (no drop point needed).** Reference phase 1 has both items already co-located in the destination cell, side by side, before they slide together. That is where the player's finger released anyway: the drop rounds to the nearest cell (`MergeBoardView.swift:978–985`). So the overlay derives the start position from grid cells alone:
+
+- The source sprite starts in `to`, offset toward `from` by `cellSize * 0.22`. That is the same magnitude `mergeHintOffset` already uses to nudge a mergeable pair together (`MergeBoardView.swift:863`), so the gesture reads as a continuation of a motion the game already shows.
+- The target sprite starts at `to`'s own centre, so the item the player dropped onto does not jump on release.
+
+Both converge to `to`'s centre. Whether the target should also slide is an owner feel question (§8f Q2). The record stays in grid units, like `SpawnFlight`, and the view model needs no `CGSize`.
+
+**One animation per sprite, no timers.** Each source sprite runs a single `withAnimation(.linear(duration: mergeImplosionDuration)) { progress = 1 }` in `.onAppear`. A small `Animatable` view modifier then maps `progress` piecewise: slide over the first `mergeSlideDuration / mergeImplosionDuration` of the run, then scale `1 → mergeImplodeMinScale` and fade over the rest. This mirrors `SpawnArcEffect` (`SpawnFlightView.swift:86–104`). Per §6: no `TimelineView` and no per-frame timer. Nothing runs when no merge is in flight.
+
+**Hiding the result.** `CellView` gains an `isMergeImploding: Bool = false` parameter. It ORs into the existing `isFlightLanding ? 0 : …` opacity at `CellView.swift:120`, and that opacity change must be non-animated (`.animation(nil, value:)` or a transaction override; see §8b item 4). Otherwise the drop's spring transaction fades the result out instead of hiding it, and it shows through the implosion. The overlay's sprites likewise need `.transition(.identity)`, or the same spring fades them in.
+
+**Proposed new tuning constants** (bottom of `AnimalSpecies.swift`, next to `spawnFlightDuration` at :2255). These are proposals from §1's measured phase durations, for the owner to confirm (§8f Q1):
+
+```swift
+/// Merge phase 1 (Spec_BoardAnimation_Draft.md §1, §8): the two sources slide together.
+let mergeSlideDuration = 0.06
+/// Merge phase 2: both shrink toward a point. Reference measured 0.06–0.12s.
+let mergeImplodeDuration = 0.09
+/// The whole pre-burst window; the Tier A pop fires when it ends.
+let mergeImplosionDuration = mergeSlideDuration + mergeImplodeDuration   // 0.15
+/// Scale the sources shrink to at the tightest frame (reference: ~25%).
+let mergeImplodeMinScale = 0.25
+```
+
+The 0.22-cell start offset is view geometry, not game tuning. It stays in the view file, following §5c's precedent for particle geometry.
+
+**Effect on the whole merge.** Today the burst starts on release. With Tier B it starts 0.15s later, so the choreography runs ~0.15s + Tier A's ~0.9s of sparkle life. That is ≈1.05s, inside §1's measured 1.0–1.1s. Nothing about Tier A changes: `CellView`'s `.onChange(of: isAnimating)` (:132–141) fires the bloom and sparkles whenever `animatingCell` lands, regardless of when.
+
+**Input during the animation.** The model is authoritative; the animation yields.
+
+- *The source cell (`from`).* Empty in the model straight after the merge, so a drag starting there does nothing (`attemptMergeOrMove`'s `guard let srcItem` at :2168). A passive power may legitimately place a tile there (`placeFreeTile` picks from `emptyUnlockedCells`; Aquatics Current slides into `emptyPos == from`, :3092–3125). It renders normally, with the source sprite leaving over it. No rule needed.
+- *The destination cell (`to`).* Holds the hidden result. If a new `attemptMergeOrMove` names a cell that an in-flight implosion targets, as either `from` or `to`, that implosion is **settled** first: removed from `mergeImplosions`, with its delayed pop cancelled. The new action then proceeds normally. Two cases this covers: dragging another matching item onto a result still imploding (a rapid chain merge), and dragging the hidden result away. In both, the earlier overlay vanishes and the board shows truth. The delayed `Task` must check that its record is still in the list before it pops, so a settled implosion never fires a stray burst. This is task 8.2.
+- *Rapid merges in different cells.* Each gets its own record and overlay; they do not interact. Their Tier A pops still share the single `animatingCell`, which is the §3.4 quirk, below.
+- *Taps on `to` during the window* (select, sell panel): harmless. They act on the real, hidden result. Not settled; 0.15s is shorter than a deliberate second tap.
+- *Other board writers at `to` during the window* (send-to-Supplies drag, Nine Lives undo, bubble pop): not settled. The overlay finishes its remaining ≤0.15s over whatever the cell now holds, then the pop fires there. Purely cosmetic, and this is the same exposure spawn flight already accepts. Settling those too is listed in §8e.
+
+**Interaction with the Phase D §3.4 `animatingCell` quirk (left unfixed by choice).** Today, on a merge that triggers a passive power, `applyPassivePowers` → `placeFreeTile` sets `animatingCell = P` (the free tile) and schedules a clear at +0.6s. In the same run-loop pass, `applyMergeOutcome` overwrites it with `animatingCell = to` and schedules its own clear. Tile P never visibly pops, and both clears land at about +0.6s.
+
+Tier B defers only the merge's own pop, to +0.15s. Consequences:
+
+1. **Tile P now visibly pops for 0.15s**, and because Tier A's sparkles outlive `isAnimating` (§3a), it gets its full sparkle burst. Arguably that is what `placeFreeTile` always meant to do.
+2. **At +0.15s the merge pop overwrites P's**, so the merge cell gets its overshoot and burst as intended.
+3. **At +0.6s, P's clear sets `animatingCell = nil`**, ending the merge cell's `isAnimating` after 0.45s instead of 0.6s. The spring (`response: 0.3`) has passed its overshoot peak by then, so the visible cost is an earlier spring-back. The burst sparkles are unaffected, because they run on their own clock.
+4. **At +0.75s the merge's own clear fires.** Usually a no-op. It can cut short an unrelated pop that started in between, as rapid merges already can today.
+
+No data or gameplay impact; the same cosmetic class §3.4 already accepted. **Tier B does not fix it and must not paper over it**, for example by special-casing the clear. A generation counter or `Set<GridPosition>` remains the real fix, as a separate owner decision. Task 8.3's tests pin only the merge's own pop timing on a board with no passive powers unlocked, so they do not encode the quirk as intended behaviour.
+
+**Reduce Motion.** Follow the spawn-flight precedent exactly:
+
+- The view passes `reduceMotion ? [] : viewModel.mergeImplosions` to the overlay, and gates `isMergeImploding` on `!reduceMotion`. With Reduce Motion on, no sources are drawn and the result is visible immediately.
+- The view model does not know about Reduce Motion, so the Tier A pop still waits 0.15s. Spawn flight already does the same: its pop waits `spawnFlightDuration` with no flight drawn.
+- Note Tier A itself is not gated on Reduce Motion today (`CellView` has no `reduceMotion`). Changing that is out of scope here (§8e); see §8f Q4.
+
+**Memory and performance on device.** The shimmer OOM suspect (§5a, `TODO.md`) is offscreen passes from `.blur`/`.shadow` on always-running animations. Tier B is the opposite profile:
+
+- Two sprites per merge, alive for 0.15s, then gone.
+- Offset, scale and opacity only. **No `.blur`, no `.shadow`, no `.mask`, no `.compositingGroup`.** This is a hard rule for tasks 8.4 and 8.6.
+- Art comes from the existing cached `artImage` (`ArtImageCacheTests` covers the cache), so no new image loads.
+- The record holds two `BoardItem` values and a UUID, and is removed on a timer, so the list is bounded by merge rate × 0.15s.
+
+The reference's phase 2 glow halo is the one part that would naturally reach for blur. It is split out as optional task 8.6, built from a `RadialGradient` fill, which costs no offscreen pass.
+
+**Testability split.**
+
+| Can be unit-tested in the view model (XCTest, no UI) | Needs a Simulator look (or CI frames, with §3a's timing caveat) |
+|---|---|
+| A merge appends exactly one `MergeImplosion` with the right `from`/`to`/source items, including a wildcard source | The sources read as side by side, then slide, then implode, at 0.15s total |
+| Non-merge outcomes append none | No flash of the result before the burst (the spring-transaction gotcha, §8b item 4) |
+| The record clears after `mergeImplosionDuration` | The burst lands where the implosion converged, with no visual seam |
+| `animatingCell` stays `nil` until the implosion ends, then equals `to` | Reduce Motion on: no overlay, result visible at once |
+| Settling: a second action on `to` removes the first record, and its pop never fires | Rapid chain merge on the same cell looks clean |
+| Unrelated merges do not settle each other | Feel: the timing and offset questions in §8f |
+| Constants sit inside the measured reference range | Long-session memory (part of the existing device retest, not new) |
+
+### 8d. Task list
+
+Each task is one commit and one session (`CLAUDE.md` rule 1), and keeps the game playable (rule 2). The universal **DoD for every task**:
+
+- The `PawSanctuary` scheme builds with zero new warnings.
+- The full test suite is green, with no existing test changed in meaning.
+- `GameStore.currentVersion` is still 44, and no `GameState` field is added.
+- This section's status line is updated to name the task done, with its commit.
+
+Task-specific DoD below adds to that.
+
+**8.1 — `MergeImplosion` record, no visual change.**
+
+- Add the `MergeImplosion` struct and the `mergeImplosions` list (§8c), plus the four constants at the bottom of `AnimalSpecies.swift`.
+- In `applyMergeOutcome`, read both source items before the write at :2280, append a record, and schedule its removal after `mergeImplosionDuration`.
+- Leave the existing immediate `animatingCell = outcome.to` pulse exactly as it is. Nothing reads the list yet, so nothing on screen changes.
+- Optionally move the misplaced `finishSpawn` doc comment (§8b item 6).
+
+*New tests,* `PawSanctuaryTests/MergeImplosionTests.swift`, built on `SpawnFlightTests`' fixture pattern (an empty unlocked grid assigned to `vm.board`, no `loadGame()`):
+
+- `testAMergeRecordsAnImplosionWithBothSourceItems`
+- `testTheImplosionClearsAfterItsDuration` (async)
+- `testSwapsMovesAndProducerActionsRecordNoImplosion`
+- `testAWildcardMergeRecordsTheWildcardAsItsSource`
+- `testTheImplosionTimingsSitInsideTheMeasuredReferenceRange`, which asserts `0.04 ≤ mergeSlideDuration ≤ 0.08` and `0.06 ≤ mergeImplodeDuration ≤ 0.12`, mirroring `testTheFlightDurationMatchesTheMeasuredReferenceRange`.
+
+*Also check:* all 26 `AttemptMergeOrMoveCharacterizationTests` and all `MergeOutcomeTests`/`MergeResultTests` pass unchanged.
+
+**8.2 — Settle-on-input rule, no visual change.**
+
+- At the top of `attemptMergeOrMove`, after its guard at :2155–2158, remove any `MergeImplosion` whose `to` equals the new `from` or `to`.
+- In 8.1's removal `Task`, nothing pops yet. Ensure the removal is by `id` and is a no-op if the record is already gone.
+
+*New tests,* in `MergeImplosionTests.swift`:
+
+- `testASecondMergeOntoAnImplodingCellSettlesTheFirst`
+- `testMovingTheResultAwaySettlesItsImplosion`
+- `testAnUnrelatedMergeLeavesAnInFlightImplosionAlone`
+
+**8.3 — Defer the Tier A pop until the implosion ends.**
+
+- In `applyMergeOutcome`, replace the inline pulse (:2360–2364) with the `finishSpawn` pattern. When the removal `Task` fires, if the record is still present, remove it and call `popCell(outcome.to)`. If it was settled, do nothing.
+- Keep `preMoveSnapshot`'s assignment as the literal last statement (Phase D §3.3). It is not deferred.
+- Visible change: the existing burst starts 0.15s after release. No overlay yet; the result is visible throughout, so the game reads as before with a barely perceptible beat.
+
+*New tests:*
+
+- `testTheMergePopWaitsForTheImplosion`: `animatingCell` is `nil` straight after the merge and equals `to` after `mergeImplosionDuration` + slack. Use a board with no superpowers unlocked, so the §3.4 quirk does not enter.
+- `testASettledImplosionNeverFiresItsPop`.
+
+*DoD addition:* re-read §8c's §3.4 interaction note against the final code, and correct it if the timeline differs.
+
+**8.4 — The visible Tier B: overlay plus hidden result.**
+
+- New file `PawSanctuary/MergeImplosionView.swift` holding `MergeImplosionOverlay` and its sprite. Shape it like `SpawnFlightOverlay`: positioned in the grid's own coordinate space, `.allowsHitTesting(false)`, `.accessibilityHidden(true)`, sprites with `.transition(.identity)`.
+- Render the item with the same art-or-symbol logic as `SpawnFlightSprite.sprite`. Prefer extracting that into one shared `BoardItemSprite` view, internal, in `SpawnFlightView.swift`, over copying it.
+- Mount it in `boardGridView` as a second `.overlay(alignment: .topLeading)` beside `SpawnFlightOverlay` (`MergeBoardView.swift:1002–1005`), gated on `reduceMotion`.
+- Add `CellView.isMergeImploding`, non-animated (§8c), wired as `!reduceMotion && viewModel.mergeImplosions.contains { $0.to == pos }`.
+- No `.blur`/`.shadow`/`.mask` anywhere in the new file.
+
+*Tests:* if the start-offset maths is pulled into a pure function, for example `mergeImplosionStartOffset(from:to:cellSize:) -> CGSize`, add `testTheSourceStartsInTheTargetCellOffsetTowardItsOrigin`. Otherwise nothing new is unit-testable here.
+
+*DoD addition, required:* a Simulator check, iPhone 17 Pro, Debug. Screen-record a drag-merge and step through it frame by frame, as in §5c. Confirm:
+
+- (a) both sources visible in `to` at release, then converging, then shrinking;
+- (b) no frame shows the result before the burst;
+- (c) the burst starts where they converged;
+- (d) Reduce Motion on → no overlay, result shown at once;
+- (e) a rapid second merge onto the same cell is clean;
+- (f) a merge in the top and bottom rows and the edge columns is not clipped.
+
+Record what was seen in this section.
+
+**8.5 — CI frames for Tier B.** Optional but cheap, since the pipeline exists (§5b).
+
+- Extend `BoardAnimationSnapshotTests` with a `MergeImplosionHarness` and `testMergeImplosionSlideAndCollapse`.
+- Capture frames at about +30ms (side by side), +100ms (mid-implode) and +200ms (burst begun).
+- Expect the same CI timing variance §3a hit with fixed millisecond offsets. One run that misses a phase is not evidence of a bug; it took three runs to confirm Tier A.
+
+*DoD addition:* frames retrieved from `ci-snapshots/latest`, and the verdict recorded here, including any misses.
+
+**8.6 — Phase 2 halo.** Only if the owner says yes (§8f Q5).
+
+- A soft glow disc behind the converging sources, growing as they shrink and handing off to Tier A's white bloom.
+- Built as a `Circle().fill(RadialGradient(...))` animated on scale and opacity only. **No `.blur`, no `.shadow`.**
+- Colour per §8f Q5.
+
+*DoD addition:* a Simulator look, plus a short Instruments Allocations pass over ~50 merges, confirming no growth that persists after the merges stop. Device retest piggybacks on the existing OOM retest in `TODO.md`.
+
+**8.7 — Close-out.**
+
+- Update this spec's top status header and §3/§3a to say Tier B shipped, with commits.
+- Strike §8b items 1–2 by correcting §2 and §3's text in place.
+- Add the on-screen-check record from 8.4, and from 8.5 if run.
+- Add `TODO.md` lines for anything left unverified on a real device. That task may edit `TODO.md`; this planning PR does not.
+
+*DoD:* docs only, suite still green.
+
+### 8e. Out of scope for Tier B
+
+- **Fixing the Phase D §3.4 `animatingCell` single-slot quirk.** No `Set<GridPosition>`, no generation counter, no special-casing of the clears. §8c describes the interaction; fixing it is its own owner decision.
+- **Any change to `MergeOutcome`, `computeMergeOutcome`, `MergeResult` or `apply(_:)`'s dispatch**, beyond `applyMergeOutcome`'s own body.
+- **Tier B for other outcomes:** `.producerUpgrade` (two producers merging also pulses today, :2214), `.superpowerPieceSpent`, swaps and moves.
+- **The Parallel Board.** `ParallelBoardCoordinator.attemptMerge` (`ParallelBoardCoordinator.swift:95`) and `ParallelBoardView` have their own merge and drag path. Tier B there is a follow-on, if wanted.
+- **The drag ghost's SF-Symbol-only rendering** (§8b item 7).
+- **Moving merge sound, haptic, score toast or top-tier celebration timing** to the burst. They fire at release today (:2282–2289). Owner question §8f Q3; unchanged unless answered.
+- **§1's other supporting details:** selection brackets glowing during the burst, and the selected-item idle pulse.
+- **Gating Tier A itself on Reduce Motion.**
+- **Settling implosions on non-merge board writes at `to`** (send-to-Supplies, Nine Lives undo, bubble pop, board reload). These are cosmetic and ≤0.15s.
+- **Any persisted-state change.** Schema stays v44.
+- **The shimmer OOM investigation and §5c's second particle class.**
+
+### 8f. Open questions for the owner
+
+1. **Timings.** Is 0.06s slide + 0.09s implode = 0.15s right, with the burst therefore starting 0.15s after release? §1 measured phase 2 at 0.06–0.12s; 0.09s is its middle. Is a 25% minimum scale right? These are guesses until seen; 8.4's Simulator check is the place to tune them.
+2. **Does the target item slide too, or only the source?** The plan has only the source slide (from a 0.22-cell offset), so the item the player dropped onto never jumps. The reference shows both moving. The alternative splits the offset ±0.11 cell between them.
+3. **Merge sound and haptic: at release, or at the burst?** Today they fire at release. Release keeps drop feedback instant; moving them makes the "pop" land with the visual. The same question applies to the top-tier Ambassador celebration starting while the sources are still imploding.
+4. **Reduce Motion.** The plan follows spawn flight: no overlay, but the pop still waits 0.15s. Acceptable, or should the pop fire immediately when Reduce Motion is on? That would need the view model to read `UIAccessibility.isReduceMotionEnabled`. Separately, should Tier A's own overshoot and sparkles respect Reduce Motion? (Out of scope here either way.)
+5. **Build the phase 2 halo (task 8.6)?** If yes: the reference's cyan/teal, or the merged species' `tintColor`, matching how §5 handled the shimmer?
+6. **Source start position.** The plan uses a fixed in-cell offset, not the finger's actual release point. Using the real drop point would mean the view handing `attemptMergeOrMove` a visual offset, which leaks view geometry into the view model. Fixed offset unless the owner wants it.
+
+## 9. Suggested next step
+
+**§8 (Tier B) is planned and awaiting owner merge; start at task 8.1 once merged.** Earlier status, kept for the record:
 
 **§3 Tier A is done and CI-screenshot-confirmed (see §3a). §5 is done and CI-screenshot-confirmed for its core function (see §5a/§5b).** The CI screenshot pipeline (§5b) ended up closing the loop on both — the merge burst's one false-negative run was CI-timing flakiness, not a real gap, corrected once a later run (and a second Claude session's catch) showed it working. Two narrower things are still worth five minutes of a human's own eyes when convenient, not blocking: whether the overshoot visibly bleeds across the row boundary specifically (the frames captured read as a moderate scale-up, not an obvious cross-row breach, though nothing contradicts the fix), and whether the shimmer's puffs visibly rise over time (two frames 400ms apart looked near-identical). Also outstanding: a real-device OOM hit during a long play session on this branch, mitigated same-day (removed a redundant `.blur()` on the shimmer) but not yet retested — see §5a. Beyond that, remaining open items are Q4 (spawn-flight arc, since shipped 9 Oct 2026, see §7) — a self-contained follow-on, not blocking — and `Spec_PartyBoard_Draft.md`, still fully parked pending more reference footage, unrelated to this spec's own progress.
