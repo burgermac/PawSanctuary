@@ -214,7 +214,7 @@ enum AnimalSpecies: String, CaseIterable, Codable {
 
     /// The real illustrated art for this species/tier, or `nil` if it hasn't
     /// been delivered yet — callers must fall back to the SF Symbol
-    /// placeholder in that case. Checked at call time via `UIImage(named:)`
+    /// placeholder in that case. Checked at call time via the asset catalog
     /// rather than against a hand-maintained "which assets exist" table:
     /// today's delivery covers all 15 species x 12 tiers, but a table would
     /// still need updating by hand every time art is revised or replaced,
@@ -222,8 +222,8 @@ enum AnimalSpecies: String, CaseIterable, Codable {
     /// with no build-time signal. This way, dropping a new or replaced PNG
     /// into Assets.xcassets under the same name is picked up automatically.
     func artImage(tier: Int) -> Image? {
-        guard let name = assetName(tier: tier), UIImage(named: name) != nil else { return nil }
-        return Image(name)
+        guard let name = assetName(tier: tier) else { return nil }
+        return ArtImageCache.image(named: name)
     }
 
     // MARK: Illustrated art (Assets.xcassets/SubObjects)
@@ -246,9 +246,7 @@ enum AnimalSpecies: String, CaseIterable, Codable {
     /// if it hasn't been delivered yet — callers fall back to the SF Symbol
     /// placeholder in that case, same as `artImage(tier:)`.
     func subObjectArtImage(tier: Int, itemName: String) -> Image? {
-        let name = subObjectAssetName(tier: tier, itemName: itemName)
-        guard UIImage(named: name) != nil else { return nil }
-        return Image(name)
+        ArtImageCache.image(named: subObjectAssetName(tier: tier, itemName: itemName))
     }
 
     // MARK: Illustrated art (Assets.xcassets/Superpowers)
@@ -274,9 +272,7 @@ enum AnimalSpecies: String, CaseIterable, Codable {
     /// badge) and — for Active superpowers only, via `MergeChain.artImage(forTier:)`
     /// on the single-tier `.superpower` chain — as the draggable board-piece art.
     func superpowerBadgeImage(itemName: String) -> Image? {
-        let name = superpowerAssetName(itemName: itemName)
-        guard UIImage(named: name) != nil else { return nil }
-        return Image(name)
+        ArtImageCache.image(named: superpowerAssetName(itemName: itemName))
     }
 
     // MARK: Illustrated art (Assets.xcassets/SpecialSpawners)
@@ -295,8 +291,7 @@ enum AnimalSpecies: String, CaseIterable, Codable {
     /// asset catalog), so it resolves `nil` and falls back like any other
     /// not-yet-delivered species until the real file shows up.
     var spawnerArtImage: Image? {
-        guard UIImage(named: spawnerAssetName) != nil else { return nil }
-        return Image(spawnerAssetName)
+        ArtImageCache.image(named: spawnerAssetName)
     }
 }
 
