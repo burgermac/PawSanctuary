@@ -390,7 +390,7 @@ struct MergeBoardView: View {
                 if viewModel.mergeCount > 0 { tutorialStep = .quest }
                 else if viewModel.rescueCount > 0 { tutorialStep = .merge }
             }
-            // The streak reminder is skipped on days the streak already registered.
+            // On days the streak already registered, the streak reminder moves to tomorrow 20:00.
             NotificationManager.shared.lastLoginDate = { [viewModel] in viewModel.lastLoginDate }
             // Cancel stale notifications whenever the app becomes visible
             NotificationManager.shared.cancelAll()
