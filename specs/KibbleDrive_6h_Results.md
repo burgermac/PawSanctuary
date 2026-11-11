@@ -14,7 +14,23 @@ Build: `main` Debug, iPhone 17 Pro simulator (iOS 26.5), fresh install, run ~02:
 | 8 | PASS | Claim rung 1: kibble 111→141 (+30), row shows tick + "Claimed", red dot cleared. Pressing Claim a second time was not tried. |
 | 9 | PASS | Terminate + cold launch: points 20, purchased true, claimedRungs `[0]` all unchanged; Drive not recreated. |
 | 10 | PASS | Seeded 300 / purchased / `[]`: full tile bar + red dot, 15 × Claim!. After claiming all 15: kibble 141→681 (+540); `pendingCardPacks` `["star1"]` → `["star1","star4","star5"]`. |
-| 11 | SKIPPED | Window ends 2026-10-12 00:00 UTC; not yet reached. |
+| 11 | PASS (11 Nov 2026) | Run with a patched save after a real window had closed; see "Step 11 run" below. Drive state dropped on cold launch, no tile, no rewards paid out. |
+
+## Step 11 run — forfeit on close (11 Nov 2026)
+
+Build: `main` at `b900435`, Debug, built to derived data outside the project folder, iPhone 17 Pro simulator (iOS 26.5). Clock: 2026-11-11 16:28 UTC, so no Drive window is open (`kibble_drive_20261106` ended 2026-11-09 00:00 UTC; the next, `kibble_drive_20261204`, opens 2026-12-04).
+
+**Setup.** With the app not running, the existing Simulator save (schema 44, kibble 100, no `kibbleDrive`) was copied aside, then patched to `kibbleDrive = {eventID: "kibble_drive_20261106", points: 150, claimedRungs: [0, 1], purchased: true}`: a purchased Drive from the window that ended two days earlier, with points banked and several reached rungs still unclaimed. Installing the new build kept the save (the data container moved to a new path but the file came across intact). Launched with `simctl launch` so it was not reinstalled.
+
+**Result: PASS.**
+- **Save after launch.** `gameState.json` was rewritten at launch. `kibbleDrive` is absent: the state was dropped outright, not kept or carried forward. `pendingCardPacks` stayed `[]` and `pendingKibbleDriveEventID` stayed absent.
+- **No payout of unclaimed rungs.** Kibble went 100 to 110. The +10 is the daily login reward shown in the "Good Morning! Day 2 Reward, +10 Kibble" popup that opened at launch. The unclaimed rungs that 150 points had reached were not paid out.
+- **What the player sees.** After dismissing the login popup and swiping the tray open, the tray held exactly nine tiles over three rows: free chest ("Open", red dot), trophy, refresh arrows, target `0/3`, checklist `0/3`, star, sparkles, smiley face, heart. That is the nine always-present tiles and nothing else. There is no orange Kibble Drive tile with a progress bar. No message, toast or popup mentions the Drive.
+- **The "This Kibble Drive has ended." line was not seen, and cannot be reached this way.** With the Drive state gone, the tile is gone and nothing else opens the sheet. That line only shows if the sheet is already open when a window ends mid-session. That case was not tested, because the Simulator clock cannot be moved.
+
+**Observation, not a defect:** the forfeit is silent. A player who bought the Drive and left rungs unclaimed is told nothing on their next launch. That matches §2 and the panel caption ("Unclaimed rewards are lost when the Drive ends."), so nothing was filed. Whether a one-line "Your Kibble Drive has ended" notice is wanted is a design question for the owner.
+
+**Clean-up.** The original save was put back afterwards. A copy is kept at `/private/tmp/claude-501/-Users-timothyherburger-Documents-Claude-Claude-Code-PawSanctuary/4ba29701-3fff-4362-8193-69f643496285/scratchpad/gameState.original.json`. No app code changed.
 
 ## Layout and feedback judgements
 
