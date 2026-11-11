@@ -80,6 +80,14 @@ enum ParallelBoardEventRegistry {
     /// | 1 | `second_chances_20260911` | 2026-09-11 | 2026-09-14 |
     /// | 2 | `second_chances_20261011` | 2026-10-11 | 2026-10-14 |
     /// | 3 | `second_chances_20261110` | 2026-11-10 | 2026-11-13 |
+    /// | 4 | `second_chances_20261210` | 2026-12-10 | 2026-12-13 |
+    /// | 5 | `second_chances_20270109` | 2027-01-09 | 2027-01-12 |
+    /// | 6 | `second_chances_20270208` | 2027-02-08 | 2027-02-11 |
+    ///
+    /// Seasons 4-6 are the Phase 7 second calendar
+    /// (`specs/Spec_Phase7_Calendar2.md` §2.4): same rule, 7 days into
+    /// S4/S5/S6. The 2026-11-13 → 2026-12-10 dark period is by design (one
+    /// instance per season) and matches the existing 27-day gaps.
     ///
     /// The Season 1 instance is the same one §5 of `Spec_Phase6b_ParallelBoard.md`
     /// authored as the type's screen-verification test event — its dates
@@ -115,6 +123,30 @@ enum ParallelBoardEventRegistry {
             chainID: ContentRegistry.parallelBoardSecondChancesChainID,
             startDate: date("2026-11-10"),
             endDate:   date("2026-11-13")
+        ),
+        ParallelBoardEventDefinition(
+            id: "second_chances_20261210",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2026-12-10"),
+            endDate:   date("2026-12-13")
+        ),
+        ParallelBoardEventDefinition(
+            id: "second_chances_20270109",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2027-01-09"),
+            endDate:   date("2027-01-12")
+        ),
+        ParallelBoardEventDefinition(
+            id: "second_chances_20270208",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2027-02-08"),
+            endDate:   date("2027-02-11")
         ),
     ]
 

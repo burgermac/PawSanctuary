@@ -148,23 +148,30 @@ final class ParallelBoardCalendarLayerTests: XCTestCase {
         "second_chances_20260911",
         "second_chances_20261011",
         "second_chances_20261110",
+        // Phase 7 second calendar (Spec_Phase7_Calendar2.md §2.4/§3.5).
+        "second_chances_20261210",
+        "second_chances_20270109",
+        "second_chances_20270208",
     ]
 
     private let pairedSeasonIDs = [
         "second_chances_20260911": "sanctuary_circle_s1_20260904",
         "second_chances_20261011": "sanctuary_circle_s2_20261004",
         "second_chances_20261110": "sanctuary_circle_s3_20261103",
+        "second_chances_20261210": "sanctuary_circle_s4_20261203",
+        "second_chances_20270109": "sanctuary_circle_s5_20270102",
+        "second_chances_20270208": "sanctuary_circle_s6_20270201",
     ]
 
     private func instance(_ id: String) throws -> ParallelBoardEventDefinition {
         try XCTUnwrap(ParallelBoardEventRegistry.allEvents.first(where: { $0.id == id }), "missing instance \(id)")
     }
 
-    func testAllThreeSeasonalInstancesExistInTheRegistry() throws {
+    func testEverySeasonalInstanceExistsInTheRegistry() throws {
         for id in seasonalIDs {
             _ = try instance(id)
         }
-        XCTAssertEqual(ParallelBoardEventRegistry.allEvents.count, 3, "no extra or missing instances")
+        XCTAssertEqual(ParallelBoardEventRegistry.allEvents.count, 6, "no extra or missing instances (3 per 90-day calendar)")
     }
 
     func testEachRunsExactlyThreeDays() throws {
@@ -193,7 +200,7 @@ final class ParallelBoardCalendarLayerTests: XCTestCase {
         }
     }
 
-    func testAllThreeShareTheSameNameAndChain() throws {
+    func testEverySeasonalInstanceSharesTheSameNameAndChain() throws {
         for id in seasonalIDs {
             let event = try instance(id)
             XCTAssertEqual(event.name, "Second Chances")
@@ -201,7 +208,7 @@ final class ParallelBoardCalendarLayerTests: XCTestCase {
         }
     }
 
-    func testAllThreeHaveAMatchingProgressTrackWithTheIdenticalShape() throws {
+    func testEverySeasonalInstanceHasAMatchingProgressTrackWithTheIdenticalShape() throws {
         for id in seasonalIDs {
             let milestones = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing a progress track")
             XCTAssertEqual(milestones.count, 8)
