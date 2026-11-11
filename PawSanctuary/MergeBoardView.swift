@@ -923,14 +923,15 @@ struct MergeBoardView: View {
                             if isDragging {
                                 Group {
                                     if let item = cell.item {
-                                        Image(systemName: item.def?.symbol ?? "questionmark")
-                                            .foregroundColor(item.def?.tint ?? item.def?.color ?? .gray)
+                                        // The dragged piece itself (its own art, tier and all),
+                                        // not a generic icon for its family.
+                                        BoardItemSprite(item: item, cellSize: cellSize)
                                     } else if let producer = cell.producer {
                                         Image(systemName: producer.level.sfSymbol)
+                                            .font(.system(size: 44))
                                             .foregroundColor(producer.level.tintColor)
                                     }
                                 }
-                                .font(.system(size: 44))
                                 .scaleEffect(1.2)
                                 .shadow(color: .black.opacity(0.25), radius: 8)
                                 .offset(dragOffset)
