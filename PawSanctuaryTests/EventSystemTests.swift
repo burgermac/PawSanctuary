@@ -1469,3 +1469,283 @@ final class WeeklyEvents2Month3Tests: XCTestCase {
         }
     }
 }
+
+/// Spec_Phase7_Calendar2.md §3.6 / §4 — full-calendar regression tests for
+/// the second 90-day calendar (2026-12-03...2027-03-03). Cross-cutting
+/// invariants that only mean something once §3.1-§3.5 are all in: all four
+/// event surfaces (EventRegistry, ParallelBoardEventRegistry,
+/// KibbleDriveRegistry, ProgressTrackRegistry) queried together. Static
+/// authored data at synthetic, injected dates only — never `Date()`,
+/// `EventRegistry.activeEvents`, `currentEvent`, `isActive` or
+/// `timeRemaining` — and every day-stepping Calendar pinned to UTC. All
+/// transitions land on midnight-UTC day boundaries, so a daily sample at
+/// midnight UTC cannot miss one. Test-only; no production code.
+@MainActor
+final class FullCalendar2RegressionTests: XCTestCase {
+
+    private let newSeasonIDs: [String] = [
+        "sanctuary_circle_s4_20261203", "sanctuary_circle_s5_20270102", "sanctuary_circle_s6_20270201",
+    ]
+
+    private let allSeasonIDs: Set<String> = [
+        "sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004", "sanctuary_circle_s3_20261103",
+        "sanctuary_circle_s4_20261203", "sanctuary_circle_s5_20270102", "sanctuary_circle_s6_20270201",
+    ]
+
+    private let newWeeklyIDs: [String] = [
+        "playtime_rush_20261204", "rescue_relay_20261211", "playtime_rush_20261218", "rescue_relay_20261225",
+        "playtime_rush_20270101", "rescue_relay_20270108", "playtime_rush_20270115", "rescue_relay_20270122",
+        "playtime_rush_20270129",
+        "rescue_relay_20270205", "playtime_rush_20270212", "rescue_relay_20270219", "playtime_rush_20270226",
+    ]
+
+    /// Last weekly event of the first calendar — the batch seam.
+    private let lastFirstCalendarWeeklyID = "rescue_relay_20261127"
+
+    private let newSecondChancesIDs: [String] = [
+        "second_chances_20261210", "second_chances_20270109", "second_chances_20270208",
+    ]
+
+    private let newKibbleDriveIDs: [String] = [
+        "kibble_drive_20261204", "kibble_drive_20270101", "kibble_drive_20270129", "kibble_drive_20270226",
+    ]
+
+    /// The 20 EventRegistry entries that existed before this calendar.
+    private let existingEventIDs: Set<String> = [
+        "rescue_rush_jun2026", "adoption_drive_aug2026", "founders_circle_aug2026", "foster_weekend_aug2026",
+        "sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004", "sanctuary_circle_s3_20261103",
+        "rescue_relay_20260904", "playtime_rush_20260911", "rescue_relay_20260918", "playtime_rush_20260925",
+        "rescue_relay_20261002", "playtime_rush_20261009", "rescue_relay_20261016",
+        "playtime_rush_20261023", "rescue_relay_20261030",
+        "playtime_rush_20261106", "rescue_relay_20261113", "playtime_rush_20261120", "rescue_relay_20261127",
+    ]
+
+    private let existingSecondChancesIDs: Set<String> = [
+        "second_chances_20260911", "second_chances_20261011", "second_chances_20261110",
+    ]
+
+    private let existingKibbleDriveIDs: Set<String> = [
+        "kibble_drive_20260911", "kibble_drive_20261009", "kibble_drive_20261106",
+    ]
+
+    private var newBatchEventIDs: Set<String> { Set(newSeasonIDs).union(newWeeklyIDs) }
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private var utcCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+
+    /// Every midnight-UTC day in [from, to), stepped with a UTC-pinned Calendar.
+    private func days(from: String, to: String) -> [Date] {
+        var result: [Date] = []
+        var day = date(from)
+        let end = date(to)
+        while day < end {
+            result.append(day)
+            day = utcCalendar.date(byAdding: .day, value: 1, to: day)!
+        }
+        return result
+    }
+
+    private func event(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing \(id)")
+    }
+
+    /// Every active ID across all four surfaces at `day`: EventRegistry via
+    /// the injected-date scheduler, plus every Parallel Board and Drive
+    /// window counted with `filter` (not `activeEvent(at:)`, which returns
+    /// `.first` and would hide an overlap).
+    private func allSurfaceActiveIDs(at day: Date) -> (events: Set<String>, parallel: [String], drive: [String]) {
+        let events = Set(EventScheduler(events: EventRegistry.allEvents).activeEvents(at: day))
+        let parallel = ParallelBoardEventRegistry.allEvents
+            .filter { day >= $0.startDate && day < $0.endDate }.map(\.id)
+        let drive = KibbleDriveRegistry.allEvents
+            .filter { day >= $0.startDate && day < $0.endDate }.map(\.id)
+        return (events, parallel, drive)
+    }
+
+    // MARK: §4.1
+
+    /// Direct mirror of the first calendar's
+    /// `testAtNoPointAcrossTheFullNinetyDaysAreMoreThanTwoNewBatchEventsActive`.
+    func testAtNoPointAcrossTheFullNinetyDaysAreMoreThanTwoBatchTwoEventsActive() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        var maxCount = 0
+        var sampledDays = 0
+        for day in days(from: "2026-12-03", to: "2027-03-03") {
+            let active = Set(scheduler.activeEvents(at: day)).intersection(newBatchEventIDs)
+            maxCount = max(maxCount, active.count)
+            XCTAssertLessThanOrEqual(active.count, 2, "more than 2 batch-2 events active on \(day): \(active)")
+            sampledDays += 1
+        }
+        XCTAssertEqual(sampledDays, 90, "must actually sample all 90 days, not silently fewer")
+        XCTAssertEqual(maxCount, 2, "expected at least one day to genuinely hit 2, or this checks nothing")
+    }
+
+    // MARK: §4.2
+
+    func testExactlyOneOfSeasonsFourToSixIsActiveOnEveryDayOfTheNinetyDays() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let sampled = days(from: "2026-12-03", to: "2027-03-03")
+        XCTAssertEqual(sampled.count, 90)
+        for day in sampled {
+            let active = Set(scheduler.activeEvents(at: day)).intersection(newSeasonIDs)
+            XCTAssertEqual(active.count, 1, "expected exactly one of S4-S6 on \(day), got \(active)")
+        }
+    }
+
+    // MARK: §4.3
+
+    /// Across the batch seam: S3's 30 days plus the whole new batch —
+    /// proves S3 -> S4 hands off at 2026-12-03 with nothing missing.
+    func testExactlyOneSeasonIsActiveOnEveryDayAcrossTheBatchSeam() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let sampled = days(from: "2026-11-03", to: "2027-03-03")
+        XCTAssertEqual(sampled.count, 120)
+        for day in sampled {
+            let active = Set(scheduler.activeEvents(at: day)).intersection(allSeasonIDs)
+            XCTAssertEqual(active.count, 1, "expected exactly one season on \(day), got \(active)")
+        }
+    }
+
+    // MARK: §4.4
+
+    /// Asserted `== 3`, not `<= 3`, so the test checks real gaps — including
+    /// the 12-01 -> 12-04 seam between the two calendars.
+    func testWeeklyTrackIsNeverDarkLongerThanItsOwnThreeDayCadence() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let weeklyIDs = Set(newWeeklyIDs).union([lastFirstCalendarWeeklyID])
+        var longestDarkRun = 0
+        var currentRun = 0
+        for day in days(from: "2026-11-27", to: "2027-03-02") {
+            let anyWeekly = !Set(scheduler.activeEvents(at: day)).isDisjoint(with: weeklyIDs)
+            currentRun = anyWeekly ? 0 : currentRun + 1
+            longestDarkRun = max(longestDarkRun, currentRun)
+        }
+        XCTAssertEqual(longestDarkRun, 3, "weekly track must never be dark longer than its 3-day off-period")
+    }
+
+    // MARK: §4.5
+
+    func testNoTwoOfTheThirteenNewWeeklyEventsOverlapAndNoneOverlapsTheBatchOneTail() throws {
+        let events = try newWeeklyIDs.map { try event($0) }
+        XCTAssertEqual(events.count, 13)
+        for i in 0..<events.count {
+            for j in (i + 1)..<events.count {
+                let a = events[i], b = events[j]
+                XCTAssertTrue(a.endDate <= b.startDate || b.endDate <= a.startDate, "\(a.id) and \(b.id) overlap")
+            }
+        }
+        let tail = try event(lastFirstCalendarWeeklyID)
+        for e in events {
+            XCTAssertTrue(e.endDate <= tail.startDate || tail.endDate <= e.startDate,
+                          "\(e.id) overlaps \(tail.id)")
+        }
+    }
+
+    // MARK: §4.6
+
+    /// Rules 2-3 of spec §2.6 asserted day by day; the all-surface total is
+    /// recorded against the construction ceiling of 4 and pinned at this
+    /// calendar's observed peak of 3. The `== 3` is a pin on this calendar's
+    /// shape, not a product rule (§2.6: no all-surface cap exists) — if a
+    /// later calendar intends a 4-way overlap, change the pin.
+    func testPerRegistryConcurrencyAndAllSurfaceTotalAcrossTheNinetyDays() {
+        var maxAllSurface = 0
+        var sampledDays = 0
+        for day in days(from: "2026-12-03", to: "2027-03-03") {
+            let (events, parallel, drive) = allSurfaceActiveIDs(at: day)
+            XCTAssertLessThanOrEqual(parallel.count, 1, "more than 1 Parallel Board active on \(day): \(parallel)")
+            XCTAssertLessThanOrEqual(drive.count, 1, "more than 1 Kibble Drive active on \(day): \(drive)")
+            let total = events.intersection(newBatchEventIDs).count + parallel.count + drive.count
+            XCTAssertLessThanOrEqual(total, 4, "all-surface total above the construction ceiling on \(day)")
+            maxAllSurface = max(maxAllSurface, total)
+            sampledDays += 1
+        }
+        XCTAssertEqual(sampledDays, 90)
+        XCTAssertEqual(maxAllSurface, 3, "this calendar's all-surface peak is 3 (spec §2.6); a different " +
+                       "value means a window was re-dated")
+    }
+
+    // MARK: §4.7
+
+    func testEveryNewIDHasItsCorrectReferenceTable() throws {
+        let founders = try XCTUnwrap(ProgressTrackRegistry.tracks["founders_circle_aug2026"])
+        let adoption = try XCTUnwrap(ProgressTrackRegistry.tracks["adoption_drive_aug2026"])
+        let secondChances = try XCTUnwrap(ProgressTrackRegistry.tracks["second_chances_20260911"])
+        for id in newSeasonIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, founders, "\(id) must use Founders' Circle's table")
+        }
+        for id in newWeeklyIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, adoption, "\(id) must use Adoption Drive's table")
+        }
+        for id in newSecondChancesIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, secondChances, "\(id) must use second_chances_20260911's table")
+        }
+        XCTAssertEqual(newSeasonIDs.count + newWeeklyIDs.count, 16)
+        XCTAssertEqual(newSecondChancesIDs.count, 3)
+    }
+
+    // MARK: §4.8
+
+    func testRegistrySizesHaveNoDuplicatesAndKeepEveryExistingID() {
+        let eventIDs = EventRegistry.allEvents.map(\.id)
+        let parallelIDs = ParallelBoardEventRegistry.allEvents.map(\.id)
+        let driveIDs = KibbleDriveRegistry.allEvents.map(\.id)
+
+        XCTAssertEqual(eventIDs.count, 36)
+        XCTAssertEqual(parallelIDs.count, 6)
+        XCTAssertEqual(driveIDs.count, 7)
+        XCTAssertEqual(Set(eventIDs).count, eventIDs.count, "duplicate ID in EventRegistry.allEvents")
+        XCTAssertEqual(Set(parallelIDs).count, parallelIDs.count, "duplicate ID in ParallelBoardEventRegistry")
+        XCTAssertEqual(Set(driveIDs).count, driveIDs.count, "duplicate ID in KibbleDriveRegistry")
+
+        XCTAssertEqual(existingEventIDs.count, 20)
+        XCTAssertTrue(existingEventIDs.isSubset(of: Set(eventIDs)),
+                      "missing existing events: \(existingEventIDs.subtracting(eventIDs))")
+        XCTAssertTrue(existingSecondChancesIDs.isSubset(of: Set(parallelIDs)),
+                      "missing existing Parallel Board windows: \(existingSecondChancesIDs.subtracting(parallelIDs))")
+        XCTAssertTrue(existingKibbleDriveIDs.isSubset(of: Set(driveIDs)),
+                      "missing existing Drive windows: \(existingKibbleDriveIDs.subtracting(driveIDs))")
+
+        XCTAssertEqual(Set(eventIDs), existingEventIDs.union(newBatchEventIDs))
+        XCTAssertEqual(Set(parallelIDs), existingSecondChancesIDs.union(newSecondChancesIDs))
+        XCTAssertEqual(Set(driveIDs), existingKibbleDriveIDs.union(newKibbleDriveIDs))
+    }
+
+    // MARK: §4.9
+
+    /// Exact active set across all four registries on the spec's five
+    /// representative days. Whole EventRegistry, not just batch 2, so a
+    /// stray legacy window would also show up.
+    func testRepresentativeSpotChecksReturnTheExactActiveSetAcrossAllSurfaces() {
+        let expected: [(String, Set<String>)] = [
+            // S4 + weekly #1 + Drive
+            ("2026-12-04", ["sanctuary_circle_s4_20261203", "playtime_rush_20261204", "kibble_drive_20261204"]),
+            // a quiet day: S4 only
+            ("2026-12-09", ["sanctuary_circle_s4_20261203"]),
+            // S4 + weekly #2 + Second Chances
+            ("2026-12-11", ["sanctuary_circle_s4_20261203", "rescue_relay_20261211", "second_chances_20261210"]),
+            // straddle boundary: S5 + weekly #5; Drive still active
+            ("2027-01-02", ["sanctuary_circle_s5_20270102", "playtime_rush_20270101", "kibble_drive_20270101"]),
+            // S6 + weekly #9; Drive just ended (kibble_drive_20270129 ends 02-01, exclusive)
+            ("2027-02-01", ["sanctuary_circle_s6_20270201", "playtime_rush_20270129"]),
+        ]
+        for (iso, want) in expected {
+            let (events, parallel, drive) = allSurfaceActiveIDs(at: date(iso))
+            XCTAssertEqual(events.union(parallel).union(drive), want, "active set on \(iso)")
+            XCTAssertEqual(events.count + parallel.count + drive.count, want.count,
+                           "no surface reported a duplicate on \(iso)")
+        }
+    }
+}
