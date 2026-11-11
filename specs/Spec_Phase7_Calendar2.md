@@ -303,4 +303,4 @@ Per `CLAUDE.md`: where a spec and the code disagree, the code was checked and wi
 4. **`Spec_Phase6c_Calendar.md` §2.4/§5** describe `EventRegistry` as 20 entries, and `EventSystemTests.swift:846-850` hard-codes 20; `ParallelBoardEventsTests.swift:167` hard-codes 3. Both are correct today and both must change with this batch (§3.1, §3.5).
 5. **`Spec_Phase6c_Calendar.md` §1** still says "Parallel Board is not ready … not implemented". Stale since 17 Aug 2026; its own §7 addendum records the shipped Parallel Board layer.
 6. **`Spec_Phase6c_Calendar.md` §2.1** calls 12-01 → 12-03 a "tail gap". With the cadence continued across batches it is the ordinary 3-day weekly off-period (§2.3).
-7. **`CLAUDE.md` working rule 4** says `GameStore` is at schema v24; the code is at **v44** (`GameStore.swift:388`). Not touched by this spec; noted for whoever next edits `CLAUDE.md`.
+7. *(Withdrawn on PM review, 2026-11-10: `CLAUDE.md` does not claim the current schema is v24. Its "v8–v24" line refers to older, less-proven migrations, and rule 4 says to check the current version in code, which is **v44**, `GameStore.swift:388`.)*
