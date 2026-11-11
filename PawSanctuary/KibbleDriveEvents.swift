@@ -74,6 +74,15 @@ enum KibbleDriveRegistry {
     /// | `kibble_drive_20260911` | 2026-09-11 | 2026-09-14 |
     /// | `kibble_drive_20261009` | 2026-10-09 | 2026-10-12 |
     /// | `kibble_drive_20261106` | 2026-11-06 | 2026-11-09 |
+    /// | `kibble_drive_20261204` | 2026-12-04 | 2026-12-07 |
+    /// | `kibble_drive_20270101` | 2027-01-01 | 2027-01-04 |
+    /// | `kibble_drive_20270129` | 2027-01-29 | 2027-02-01 |
+    /// | `kibble_drive_20270226` | 2027-02-26 | 2027-03-01 |
+    ///
+    /// The last four are the Phase 7 second calendar
+    /// (`specs/Spec_Phase7_Calendar2.md` §2.5), continuing the shipped 28-day
+    /// spacing from `kibble_drive_20261106` unchanged (owner decision: keep
+    /// 28 days, no extra Drive before 1 Dec 2026).
     ///
     /// **The first window is deliberately live on the day 3a was written**, so
     /// the lifecycle could be verified on screen rather than only against an
@@ -112,6 +121,34 @@ enum KibbleDriveRegistry {
             icon: "shippingbox.fill",
             startDate: date("2026-11-06"),
             endDate:   date("2026-11-09")
+        ),
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20261204",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2026-12-04"),
+            endDate:   date("2026-12-07")
+        ),
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20270101",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2027-01-01"),
+            endDate:   date("2027-01-04")
+        ),
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20270129",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2027-01-29"),
+            endDate:   date("2027-02-01")
+        ),
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20270226",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2027-02-26"),
+            endDate:   date("2027-03-01")
         ),
     ]
 

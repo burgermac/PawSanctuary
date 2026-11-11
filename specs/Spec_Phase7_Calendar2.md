@@ -1,6 +1,6 @@
 # PawSanctuary — Phase 7: the second 90-day calendar (2026-12-03 → 2027-03-03)
 
-**Status: In progress — §3.1 done (10 Nov 2026), §3.2 done (10 Nov 2026), §3.3 done (10 Nov 2026), §3.4 done (10 Nov 2026), §3.5–§3.6 not started.** Written 10 Nov 2026.
+**Status: In progress — §3.1 done (10 Nov 2026), §3.2 done (10 Nov 2026), §3.3 done (10 Nov 2026), §3.4 done (10 Nov 2026), §3.5 done (10 Nov 2026), §3.6 not started.** Written 10 Nov 2026.
 
 **§3.1 — continuous track:** `sanctuary_circle_s4_20261203`, `sanctuary_circle_s5_20270102`, `sanctuary_circle_s6_20270201` added to `EventRegistry.allEvents` (after `rescue_relay_20261127`), plus their `ProgressTrackRegistry.tracks` entries — verbatim copies of Founders' Circle's 10-milestone table. Pinned count test renamed to `testRegistryHasExpectedRunningTotalOfUniqueEventIDsNoDuplicates` and set to 23 (§3.2–§3.4 take it to 36). 7 new tests (`SanctuaryCircleSeasons2Tests`, `EventSystemTests.swift`): exact dates, S3→S4 seam, S4→S5→S6 contiguity, 90-day / 30-each span on a UTC calendar, verbatim table equality, the matching season active at 12-15/01-15/02-15, and exactly one season at each boundary instant. Full suite 736/736 green. No schema change.
 
