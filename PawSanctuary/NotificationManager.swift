@@ -27,6 +27,31 @@ enum NotificationID {
     static func eventExpiry(_ id: String) -> String { "pawsanctuary.event.expiry.\(id)" }
 }
 
+// MARK: - Centre seam
+
+/// The slice of `UNUserNotificationCenter` the scheduling code uses. It exists
+/// so `NotificationManagerTests` can replay the foreground/background sequence
+/// against a recording stand-in; production always uses the system centre.
+/// Method names deliberately differ from the system API's, so the conformance
+/// below cannot collide with its default-argument overloads.
+protocol NotificationCentre: AnyObject {
+    func addRequest(_ request: UNNotificationRequest)
+    func removePending(ids: [String])
+    func removeDelivered(ids: [String])
+    func removeAllPending()
+    func removeAllDelivered()
+    func clearBadge()
+}
+
+extension UNUserNotificationCenter: NotificationCentre {
+    func addRequest(_ request: UNNotificationRequest) { add(request) }
+    func removePending(ids: [String]) { removePendingNotificationRequests(withIdentifiers: ids) }
+    func removeDelivered(ids: [String]) { removeDeliveredNotifications(withIdentifiers: ids) }
+    func removeAllPending() { removeAllPendingNotificationRequests() }
+    func removeAllDelivered() { removeAllDeliveredNotifications() }
+    func clearBadge() { setBadgeCount(0) }
+}
+
 // MARK: - Manager
 
 @Observable
@@ -42,10 +67,25 @@ final class NotificationManager: NSObject {
     /// True once the player has granted authorisation (alert + badge + sound).
     var isAuthorised: Bool = false
 
+    private let centre: any NotificationCentre
+    private let now: () -> Date
+
     override init() {
+        centre = UNUserNotificationCenter.current()
+        now = Date.init
         super.init()
         UNUserNotificationCenter.current().delegate = self
         Task { await refreshAuthStatus() }
+    }
+
+    /// Test seam: a manager over a stand-in centre and clock. It neither
+    /// becomes the system centre's delegate nor reads the real authorisation
+    /// status, so `isAuthorised` stays exactly what the caller passed.
+    init(centre: any NotificationCentre, now: @escaping () -> Date, isAuthorised: Bool) {
+        self.centre = centre
+        self.now = now
+        super.init()
+        self.isAuthorised = isAuthorised
     }
 
     /// Fetches just the authorization status, never letting the non-Sendable
@@ -109,7 +149,7 @@ final class NotificationManager: NSObject {
             identifier: NotificationID.kibbleFull, content: content, trigger: trigger)
 
         cancel(ids: [NotificationID.kibbleFull])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     /// Cancels any pending kibble-full notification (call when kibble is spent).
@@ -138,7 +178,7 @@ final class NotificationManager: NSObject {
             identifier: NotificationID.dailyRewards, content: content, trigger: trigger)
 
         cancel(ids: [NotificationID.dailyRewards])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     // MARK: Schedule — adoption order expiry
@@ -164,7 +204,7 @@ final class NotificationManager: NSObject {
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
 
         cancel(ids: [id])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     // MARK: Schedule — live-ops event expiry (Phase 6a — EventTimer)
@@ -191,7 +231,7 @@ final class NotificationManager: NSObject {
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
 
         cancel(ids: [id])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     /// Cancels any pending expiry notification for a specific event.
@@ -220,7 +260,7 @@ final class NotificationManager: NSObject {
             identifier: NotificationID.dailyReset, content: content, trigger: trigger)
 
         cancel(ids: [NotificationID.dailyReset])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     // MARK: Schedule — rescue expiring
@@ -242,7 +282,7 @@ final class NotificationManager: NSObject {
             identifier: NotificationID.rescueExpiring, content: content, trigger: trigger)
 
         cancel(ids: [NotificationID.rescueExpiring])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     /// Cancels any pending rescue-expiring notification.
@@ -258,11 +298,12 @@ final class NotificationManager: NSObject {
         cancel(ids: [NotificationID.streakReminder])
         guard isAuthorised else { return }
 
-        var comps   = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        let current = now()
+        var comps   = Calendar.current.dateComponents([.year, .month, .day], from: current)
         comps.hour  = 20
         comps.minute = 0
         guard let fireDate = Calendar.current.date(from: comps),
-              fireDate > Date() else { return }   // already past 8 PM — skip
+              fireDate > current else { return }   // already past 8 PM — skip
 
         let content       = UNMutableNotificationContent()
         content.title     = "Don't lose your streak!"
@@ -274,7 +315,7 @@ final class NotificationManager: NSObject {
             dateMatching: comps, repeats: false)
         let request = UNNotificationRequest(
             identifier: NotificationID.streakReminder, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     // MARK: Schedule — all persistent notifications
@@ -284,6 +325,22 @@ final class NotificationManager: NSObject {
     func scheduleAll() {
         scheduleDailyReset()
         cancelAndRescheduleStreakReminder()
+    }
+
+    /// The backgrounding pass's standing notifications: the ones that do not
+    /// depend on board state (kibble-full and order expiry stay with the view,
+    /// which owns that state).
+    ///
+    /// `MergeBoardView` cancels every notification when the app becomes active,
+    /// so whatever should be pending while the player is away has to be put
+    /// back here. `daily.reset` and `streak.reminder` used to be missing from
+    /// this pass: they were only scheduled at cold launch and by `AppEntry`'s
+    /// `.active` handler, which that same `cancelAll()` wiped, so a warm return
+    /// lost both until the next cold launch (found 10 Nov 2026, TODO.md).
+    func scheduleStandingOnBackground() {
+        scheduleDailyRewards()
+        scheduleAll()
+        scheduleReengagement()
     }
 
     // MARK: Schedule — re-engagement
@@ -305,24 +362,22 @@ final class NotificationManager: NSObject {
             identifier: NotificationID.reengagement, content: content, trigger: trigger)
 
         cancel(ids: [NotificationID.reengagement])
-        UNUserNotificationCenter.current().add(request)
+        centre.addRequest(request)
     }
 
     // MARK: Cancel
 
     /// Cancels all pending and delivered notifications.
     func cancelAll() {
-        let centre = UNUserNotificationCenter.current()
-        centre.removeAllPendingNotificationRequests()
-        centre.removeAllDeliveredNotifications()
-        centre.setBadgeCount(0)
+        centre.removeAllPending()
+        centre.removeAllDelivered()
+        centre.clearBadge()
     }
 
     /// Cancels specific notifications by ID.
     func cancel(ids: [String]) {
-        let centre = UNUserNotificationCenter.current()
-        centre.removePendingNotificationRequests(withIdentifiers: ids)
-        centre.removeDeliveredNotifications(withIdentifiers: ids)
+        centre.removePending(ids: ids)
+        centre.removeDelivered(ids: ids)
     }
 
     // MARK: Private helpers
