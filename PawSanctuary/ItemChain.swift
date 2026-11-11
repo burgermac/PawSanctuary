@@ -76,8 +76,7 @@ struct MergeChain: Identifiable {
             // `AnimalSpecies` lookup.
             if id == ContentRegistry.parallelBoardSecondChancesChainID {
                 let name = String(format: "special_second_chances_t%02d", index)
-                guard UIImage(named: name) != nil else { return nil }
-                return Image(name)
+                return ArtImageCache.image(named: name)
             }
             guard let species = AnimalSpecies(rawValue: id.replacingOccurrences(of: "animal.", with: "")) else { return nil }
             return species.artImage(tier: index)
@@ -88,11 +87,10 @@ struct MergeChain: Identifiable {
             guard let species = AnimalSpecies(rawValue: id.replacingOccurrences(of: "superpower.", with: "")) else { return nil }
             return species.superpower.badgeImage
         case .supply, .material, .currency, .tool:
-            guard let name = economyAssetName(forTier: index), UIImage(named: name) != nil else { return nil }
-            return Image(name)
+            guard let name = economyAssetName(forTier: index) else { return nil }
+            return ArtImageCache.image(named: name)
         case .wildcard:
-            guard UIImage(named: "special_wildcard_t00") != nil else { return nil }
-            return Image("special_wildcard_t00")
+            return ArtImageCache.image(named: "special_wildcard_t00")
         default:
             return nil
         }
