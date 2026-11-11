@@ -70,6 +70,13 @@ final class NotificationManager: NSObject {
     private let centre: any NotificationCentre
     private let now: () -> Date
 
+    /// The day the login streak last registered a visit (`GameState.lastLoginDate`,
+    /// set by `QuestCoordinator.checkDailyLogin()`). When this is today the
+    /// streak reminder moves to tomorrow's 20:00: today's streak is already
+    /// safe. `MergeBoardView` points this at its view model on appear; until
+    /// then it reads nil, which schedules tonight's 20:00 as before.
+    var lastLoginDate: @MainActor () -> Date? = { nil }
+
     override init() {
         centre = UNUserNotificationCenter.current()
         now = Date.init
@@ -81,11 +88,13 @@ final class NotificationManager: NSObject {
     /// Test seam: a manager over a stand-in centre and clock. It neither
     /// becomes the system centre's delegate nor reads the real authorisation
     /// status, so `isAuthorised` stays exactly what the caller passed.
-    init(centre: any NotificationCentre, now: @escaping () -> Date, isAuthorised: Bool) {
+    init(centre: any NotificationCentre, now: @escaping () -> Date, isAuthorised: Bool,
+         lastLoginDate: @escaping @MainActor () -> Date? = { nil }) {
         self.centre = centre
         self.now = now
         super.init()
         self.isAuthorised = isAuthorised
+        self.lastLoginDate = lastLoginDate
     }
 
     /// Fetches just the authorization status, never letting the non-Sendable
@@ -292,18 +301,35 @@ final class NotificationManager: NSObject {
 
     // MARK: Schedule — login streak reminder
 
-    /// Cancels any existing streak reminder and schedules a fresh one for 8 PM tonight.
-    /// Call on every app launch/foreground. If it's already past 8 PM, skips (no retroactive fire).
+    /// Cancels any existing streak reminder and schedules a fresh one-shot at 20:00.
+    /// Call on every app launch/foreground and on every background pass.
+    ///
+    /// - Not played today (`lastLoginDate` is not today): tonight's 20:00. If
+    ///   it is already past 20:00, skips (no retroactive fire).
+    /// - Played today (`lastLoginDate` is today): tomorrow's 20:00, whatever
+    ///   the time now. Today's streak is already safe, so "don't lose your
+    ///   streak" tonight would be wrong; tomorrow's is the next one at risk
+    ///   (owner decision, 10 Nov 2026). Opening the app cancels it, so it only
+    ///   fires if the player has not been back by 20:00 tomorrow.
+    ///
+    /// A player who stays away for several days gets that one reminder, then
+    /// only the 48-hour re-engagement nudge: nothing reschedules while the
+    /// app is closed.
     func cancelAndRescheduleStreakReminder() {
         cancel(ids: [NotificationID.streakReminder])
         guard isAuthorised else { return }
 
+        let calendar = Calendar.current
         let current = now()
-        var comps   = Calendar.current.dateComponents([.year, .month, .day], from: current)
+        let playedToday = lastLoginDate().map { calendar.isDate($0, inSameDayAs: current) } ?? false
+        guard let day = playedToday
+                ? calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: current))
+                : calendar.startOfDay(for: current) else { return }
+        var comps   = calendar.dateComponents([.year, .month, .day], from: day)
         comps.hour  = 20
         comps.minute = 0
-        guard let fireDate = Calendar.current.date(from: comps),
-              fireDate > current else { return }   // already past 8 PM — skip
+        guard let fireDate = calendar.date(from: comps),
+              fireDate > current else { return }   // not played and already past 8 PM — skip
 
         let content       = UNMutableNotificationContent()
         content.title     = "Don't lose your streak!"
