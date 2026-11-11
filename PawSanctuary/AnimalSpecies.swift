@@ -2254,6 +2254,18 @@ let freeChestSkipCostDogTags = 10
 /// (specs/Spec_SpawnFlight.md). Measured at 80-120 ms in the reference titles.
 let spawnFlightDuration = 0.11
 
+// Merge phases 1–2, "Tier B" (specs/Spec_BoardAnimation_Draft.md §1, §8).
+// Proposed from §1's measured phase durations; owner to confirm by feel (§8f Q1).
+
+/// Merge phase 1: the two sources slide together. Reference measured ~0.06s.
+let mergeSlideDuration = 0.06
+/// Merge phase 2: both shrink toward a point. Reference measured 0.06–0.12s.
+let mergeImplodeDuration = 0.09
+/// The whole pre-burst window; the Tier A pop is meant to fire when it ends (§8 task 8.3).
+let mergeImplosionDuration = mergeSlideDuration + mergeImplodeDuration   // 0.15
+/// Scale the sources shrink to at the tightest frame (reference: ~25%).
+let mergeImplodeMinScale = 0.25
+
 // Family spawner cooldown (specs/Spec_SpawnerCooldown.md, decided 9 Oct 2026).
 // Per spawner: every `familySpawnerCooldownKibble` kibble it has spent starts a
 // `familySpawnerCooldownSeconds` wait, skippable for Dog Tags. The skip price is

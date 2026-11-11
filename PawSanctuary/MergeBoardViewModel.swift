@@ -1575,10 +1575,6 @@ class MergeBoardViewModel {
 
     // MARK: Producer tiles
 
-    /// Places a freshly-resolved spawn item on the board and applies the bookkeeping shared
-    /// by every rescue-producer path in `activateProducer` (currency spend, notification
-    /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
-    /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
     /// A spawned item in flight from its producer to the cell it landed in
     /// (specs/Spec_SpawnFlight.md). The item is already in board state; the view
     /// hides it in `to` and draws the arc until `spawnFlightDuration` passes.
@@ -1593,6 +1589,25 @@ class MergeBoardViewModel {
     /// land a free bonus spawn right behind the main one.
     var spawnFlights: [SpawnFlight] = []
 
+    /// Merge phases 1–2 (Spec_BoardAnimation_Draft.md §8): the two source items,
+    /// already gone from board state, still drawn sliding together and imploding
+    /// in `to` until `mergeImplosionDuration` passes. Session-only, never persisted.
+    struct MergeImplosion: Identifiable, Equatable {
+        let id = UUID()
+        let from: GridPosition      // where the dragged source came from
+        let to: GridPosition        // where both converge and the result lands
+        let sourceItem: BoardItem   // the dragged item (may be a wildcard)
+        let targetItem: BoardItem   // the item it was dropped on
+    }
+
+    /// Implosions currently playing. A list, not one slot, for the same reason
+    /// as `spawnFlights`: two quick merges in different cells overlap.
+    var mergeImplosions: [MergeImplosion] = []
+
+    /// Places a freshly-resolved spawn item on the board and applies the bookkeeping shared
+    /// by every rescue-producer path in `activateProducer` (currency spend, notification
+    /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
+    /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
     /// `from` is the producer that spawned the item; nil (or the same cell)
     /// places it with no flight.
     private func finishSpawn(item: BoardItem, at target: BoardCell, cost: Int, from: GridPosition? = nil) {
@@ -2276,6 +2291,21 @@ class MergeBoardViewModel {
         // didSet, since this merge performs several more board mutations below.
         let preMergeBoard     = board
         let preMergeInventory = inventoryStore.inventory
+
+        // Tier B (Spec_BoardAnimation_Draft.md §8, task 8.1): record the two
+        // source items for the view while the board is still pre-merge. Nothing
+        // reads this list yet; the Tier A pulse below is unchanged.
+        if let sourceItem = boardState.item(at: outcome.from),
+           let targetItem = boardState.item(at: outcome.to) {
+            let implosion = MergeImplosion(from: outcome.from, to: outcome.to,
+                                           sourceItem: sourceItem, targetItem: targetItem)
+            mergeImplosions.append(implosion)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(mergeImplosionDuration))
+                // By id, so a record already removed is a no-op.
+                self.mergeImplosions.removeAll { $0.id == implosion.id }
+            }
+        }
 
         boardState.setItem(BoardItem(chainID: outcome.resultChainID, tier: outcome.resultTier), at: outcome.to)
         boardState.clearItem(at: outcome.from)
