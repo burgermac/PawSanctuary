@@ -439,6 +439,8 @@ So total value is roughly preserved (Large up, XL slightly down). What changes i
 
 **Decided 8 Oct 2026 (Tim): C, defer.** The `energyLarge`/`energyXL` packs are left as they are. Step 5 is not built, and §3.4's table stays a recorded proposal. Revisit after the first live Drive window using `PlayerCommerceState`; if the data shows the Drive cannibalizing `energyLarge`, option B is the version to pick up.
 
+**Trigger amended 10 Nov 2026 (owner decision):** three Drive windows ran before launch with no players, so `PlayerCommerceState` holds nothing to read. The revisit now happens after **the first Drive window after launch**. Decision C itself is unchanged.
+
 ### 6h. Task 6.4 acceptance checklist (8 Oct 2026) — to be run on a build, results to be recorded here
 
 Steps 1–6.3 are on main and CI-green, but **no part of the Drive UI has been seen running**. This is the manual pass. Nothing below can be done from a cloud session: it needs an Xcode Debug build on a Simulator or device.
