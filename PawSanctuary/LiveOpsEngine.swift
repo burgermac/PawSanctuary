@@ -821,6 +821,62 @@ enum ProgressTrackRegistry {
                                          OrderReward(kind: .cardPack, amount: 1,
                                                       payloadID: CardPackType.star4.rawValue)]),
         ],
+        // Weekly events, month 1 of the second calendar (EventSystem.swift) —
+        // Spec_Phase7_Calendar2.md §2.7/§3.2. Verbatim copies of Adoption
+        // Drive's 3-milestone free-lane-only table, re-keyed per window
+        // because progress and token wallets are ID-keyed. No new numbers.
+        "playtime_rush_20261204": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+        "rescue_relay_20261211": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+        "playtime_rush_20261218": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
+        "rescue_relay_20261225": [
+            TrackMilestone(index: 0, threshold: 60,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 50)],
+                           paidRewards: []),
+            TrackMilestone(index: 1, threshold: 140,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 75),
+                                         OrderReward(kind: .dogTags, amount: 3)],
+                           paidRewards: []),
+            TrackMilestone(index: 2, threshold: 220,
+                           freeRewards: [OrderReward(kind: .kibble, amount: 150),
+                                         OrderReward(kind: .dogTags, amount: 8)],
+                           paidRewards: []),
+        ],
         // "Reward Ladder" (D8, ShopView.swift's RewardLadderSection) — Phase
         // 6b, Task 3.5. Recalibrated numbers from Spec_Phase6b_RewardLadder.md
         // §4, confirmed by the design authority 18 Aug 2026 (not a first-cut
