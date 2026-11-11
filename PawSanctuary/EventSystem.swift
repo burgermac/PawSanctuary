@@ -492,6 +492,70 @@ enum EventRegistry {
                 Color(red: 0.96, green: 0.85, blue: 0.60),
             ]
         ),
+        // Phase 7 second calendar (Spec_Phase7_Calendar2.md §2.3/§3.2) —
+        // weekly track, month 1 (December, instances 1-4). The 7-day cadence
+        // and Playtime Rush / Rescue Relay alternation continue unbroken from
+        // rescue_relay_20261127 above: 4 days on, 3 days off, Friday starts,
+        // all inside Sanctuary Circle Season 4. Cosmetics copied verbatim
+        // from the existing entries; milestone tables are the same verbatim
+        // Adoption Drive reuse (ProgressTrackRegistry.tracks), re-keyed per
+        // window since progress/wallets are ID-keyed. Additive only.
+        EventDefinition(
+            id: "playtime_rush_20261204",
+            name: "Playtime Rush",
+            tagline: "Play it up — fulfil orders for bonus rewards this week!",
+            startDate: date("2026-12-04"),
+            endDate:   date("2026-12-08"),
+            milestones: [],
+            icon: "star.circle.fill",
+            accentColor: Color(red: 0.15, green: 0.55, blue: 0.45),
+            gradientColors: [
+                Color(red: 0.85, green: 0.97, blue: 0.93),
+                Color(red: 0.68, green: 0.90, blue: 0.82),
+            ]
+        ),
+        EventDefinition(
+            id: "rescue_relay_20261211",
+            name: "Rescue Relay",
+            tagline: "Team up to rescue as many animals as you can this week!",
+            startDate: date("2026-12-11"),
+            endDate:   date("2026-12-15"),
+            milestones: [],
+            icon: "figure.run",
+            accentColor: Color(red: 0.80, green: 0.35, blue: 0.20),
+            gradientColors: [
+                Color(red: 1.00, green: 0.92, blue: 0.85),
+                Color(red: 0.97, green: 0.78, blue: 0.65),
+            ]
+        ),
+        EventDefinition(
+            id: "playtime_rush_20261218",
+            name: "Playtime Rush",
+            tagline: "Play it up — fulfil orders for bonus rewards this week!",
+            startDate: date("2026-12-18"),
+            endDate:   date("2026-12-22"),
+            milestones: [],
+            icon: "star.circle.fill",
+            accentColor: Color(red: 0.15, green: 0.55, blue: 0.45),
+            gradientColors: [
+                Color(red: 0.85, green: 0.97, blue: 0.93),
+                Color(red: 0.68, green: 0.90, blue: 0.82),
+            ]
+        ),
+        EventDefinition(
+            id: "rescue_relay_20261225",
+            name: "Rescue Relay",
+            tagline: "Team up to rescue as many animals as you can this week!",
+            startDate: date("2026-12-25"),
+            endDate:   date("2026-12-29"),
+            milestones: [],
+            icon: "figure.run",
+            accentColor: Color(red: 0.80, green: 0.35, blue: 0.20),
+            gradientColors: [
+                Color(red: 1.00, green: 0.92, blue: 0.85),
+                Color(red: 0.97, green: 0.78, blue: 0.65),
+            ]
+        ),
     ]
 
     static var currentEvent: EventDefinition? {
