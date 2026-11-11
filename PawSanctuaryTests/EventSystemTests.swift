@@ -840,12 +840,131 @@ final class FullCalendarRegressionTests: XCTestCase {
                       "missing legacy events: \(expectedLegacyIDs.subtracting(actualIDs))")
     }
 
-    /// Sanity on the registry's total shape: 4 legacy + 16 new = 20, no
-    /// accidental duplicate IDs anywhere (a copy-paste mistake across 20
-    /// literal entries is exactly the kind of error this volume invites).
-    func testRegistryHasExactlyTwentyUniqueEventIDsNoDuplicates() {
+    /// Sanity on the registry's total shape, no accidental duplicate IDs
+    /// anywhere (a copy-paste mistake across this many literal entries is
+    /// exactly the kind of error this volume invites). A running total, not
+    /// a fixed "twenty": 4 legacy + 16 first-calendar entries = 20, plus the
+    /// second calendar's additions as they land (Spec_Phase7_Calendar2.md
+    /// §3.1: +3 seasons = 23; §3.2-§3.4 bring it to 36). Bump this in the
+    /// same commit that adds entries.
+    func testRegistryHasExpectedRunningTotalOfUniqueEventIDsNoDuplicates() {
         let allIDs = EventRegistry.allEvents.map(\.id)
-        XCTAssertEqual(allIDs.count, 20)
+        XCTAssertEqual(allIDs.count, 23)
         XCTAssertEqual(Set(allIDs).count, allIDs.count, "duplicate event ID(s) found in EventRegistry.allEvents")
+    }
+}
+
+/// Spec_Phase7_Calendar2.md §3.1 — the second calendar's continuous track:
+/// Sanctuary Circle seasons 4-6 (2026-12-03...2027-03-03). Static authored
+/// data queried at synthetic, injected dates only — never the wall clock —
+/// with every day-count Calendar pinned to UTC (the first calendar's §3.1
+/// DST lesson).
+@MainActor
+final class SanctuaryCircleSeasons2Tests: XCTestCase {
+
+    private let seasonIDs = [
+        "sanctuary_circle_s4_20261203",
+        "sanctuary_circle_s5_20270102",
+        "sanctuary_circle_s6_20270201",
+    ]
+
+    private let allSeasonIDs: Set<String> = [
+        "sanctuary_circle_s1_20260904", "sanctuary_circle_s2_20261004", "sanctuary_circle_s3_20261103",
+        "sanctuary_circle_s4_20261203", "sanctuary_circle_s5_20270102", "sanctuary_circle_s6_20270201",
+    ]
+
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso)!
+    }
+
+    private var utcCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+
+    private func season(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing season \(id)")
+    }
+
+    func testAllThreeNewSeasonsExistWithTheSpecifiedDates() throws {
+        let expected: [(String, String, String)] = [
+            ("sanctuary_circle_s4_20261203", "2026-12-03", "2027-01-02"),
+            ("sanctuary_circle_s5_20270102", "2027-01-02", "2027-02-01"),
+            ("sanctuary_circle_s6_20270201", "2027-02-01", "2027-03-03"),
+        ]
+        for (id, start, end) in expected {
+            let s = try season(id)
+            XCTAssertEqual(s.startDate, date(start), "\(id) start")
+            XCTAssertEqual(s.endDate, date(end), "\(id) end")
+            XCTAssertEqual(s.name, "Sanctuary Circle")
+        }
+    }
+
+    /// The batch seam: Season 4 opens the exact instant Season 3 closes.
+    func testSeasonThreeEndEqualsSeasonFourStart() throws {
+        let s3 = try season("sanctuary_circle_s3_20261103")
+        let s4 = try season(seasonIDs[0])
+        XCTAssertEqual(s3.endDate, s4.startDate, "Season 3 -> 4 must hand off with zero gap and zero overlap")
+    }
+
+    func testSeasonsFourToSixAreContiguousWithZeroGapAndZeroOverlap() throws {
+        let s4 = try season(seasonIDs[0])
+        let s5 = try season(seasonIDs[1])
+        let s6 = try season(seasonIDs[2])
+        XCTAssertEqual(s4.endDate, s5.startDate, "Season 4 -> 5 must be contiguous, zero gap")
+        XCTAssertEqual(s5.endDate, s6.startDate, "Season 5 -> 6 must be contiguous, zero gap")
+    }
+
+    func testSeasonsFourToSixSpanExactlyNinetyDaysThirtyEach() throws {
+        let s4 = try season(seasonIDs[0])
+        let s6 = try season(seasonIDs[2])
+        XCTAssertEqual(utcCalendar.dateComponents([.day], from: s4.startDate, to: s6.endDate).day, 90)
+        for id in seasonIDs {
+            let s = try season(id)
+            XCTAssertEqual(utcCalendar.dateComponents([.day], from: s.startDate, to: s.endDate).day, 30,
+                           "\(id) must be 30 days")
+        }
+    }
+
+    func testEachNewSeasonsMilestoneTableIsAVerbatimCopyOfFoundersCircles() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["founders_circle_aug2026"])
+        XCTAssertEqual(reference.count, 10)
+        for id in seasonIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Founders' Circle's")
+        }
+    }
+
+    /// The spec's three sample dates: exactly the matching season is active
+    /// among all six seasons.
+    func testExactlyTheMatchingSeasonIsActiveAtMidSeasonSampleDates() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let samples: [(String, String)] = [
+            ("2026-12-15", "sanctuary_circle_s4_20261203"),
+            ("2027-01-15", "sanctuary_circle_s5_20270102"),
+            ("2027-02-15", "sanctuary_circle_s6_20270201"),
+        ]
+        for (iso, expectedID) in samples {
+            let active = Set(scheduler.activeEvents(at: date(iso))).intersection(allSeasonIDs)
+            XCTAssertEqual(active, [expectedID], "at \(iso), exactly \(expectedID) should be active")
+        }
+    }
+
+    /// The boundary instants themselves (start inclusive, end exclusive):
+    /// exactly one season, never two and never zero.
+    func testExactlyOneSeasonIsActiveAtEachSeasonBoundaryInstant() {
+        let scheduler = EventScheduler(events: EventRegistry.allEvents)
+        let boundaries: [(String, String)] = [
+            ("2026-12-03", "sanctuary_circle_s4_20261203"),
+            ("2027-01-02", "sanctuary_circle_s5_20270102"),
+            ("2027-02-01", "sanctuary_circle_s6_20270201"),
+        ]
+        for (iso, expectedID) in boundaries {
+            let active = Set(scheduler.activeEvents(at: date(iso))).intersection(allSeasonIDs)
+            XCTAssertEqual(active, [expectedID], "at boundary \(iso)")
+        }
     }
 }
