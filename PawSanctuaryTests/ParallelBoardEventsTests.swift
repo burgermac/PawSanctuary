@@ -152,6 +152,10 @@ final class ParallelBoardCalendarLayerTests: XCTestCase {
         "second_chances_20261210",
         "second_chances_20270109",
         "second_chances_20270208",
+        // Phase 7 third calendar (Spec_Phase7_Calendar3.md §2.5/§3.5).
+        "second_chances_20270310",
+        "second_chances_20270409",
+        "second_chances_20270509",
     ]
 
     private let pairedSeasonIDs = [
@@ -161,6 +165,9 @@ final class ParallelBoardCalendarLayerTests: XCTestCase {
         "second_chances_20261210": "sanctuary_circle_s4_20261203",
         "second_chances_20270109": "sanctuary_circle_s5_20270102",
         "second_chances_20270208": "sanctuary_circle_s6_20270201",
+        "second_chances_20270310": "sanctuary_circle_s7_20270303",
+        "second_chances_20270409": "sanctuary_circle_s8_20270402",
+        "second_chances_20270509": "sanctuary_circle_s9_20270502",
     ]
 
     private func instance(_ id: String) throws -> ParallelBoardEventDefinition {
@@ -171,7 +178,7 @@ final class ParallelBoardCalendarLayerTests: XCTestCase {
         for id in seasonalIDs {
             _ = try instance(id)
         }
-        XCTAssertEqual(ParallelBoardEventRegistry.allEvents.count, 6, "no extra or missing instances (3 per 90-day calendar)")
+        XCTAssertEqual(ParallelBoardEventRegistry.allEvents.count, 9, "no extra or missing instances (3 per 90-day calendar)")
     }
 
     func testEachRunsExactlyThreeDays() throws {

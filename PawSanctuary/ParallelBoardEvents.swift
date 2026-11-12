@@ -83,11 +83,18 @@ enum ParallelBoardEventRegistry {
     /// | 4 | `second_chances_20261210` | 2026-12-10 | 2026-12-13 |
     /// | 5 | `second_chances_20270109` | 2027-01-09 | 2027-01-12 |
     /// | 6 | `second_chances_20270208` | 2027-02-08 | 2027-02-11 |
+    /// | 7 | `second_chances_20270310` | 2027-03-10 | 2027-03-13 |
+    /// | 8 | `second_chances_20270409` | 2027-04-09 | 2027-04-12 |
+    /// | 9 | `second_chances_20270509` | 2027-05-09 | 2027-05-12 |
     ///
     /// Seasons 4-6 are the Phase 7 second calendar
     /// (`specs/Spec_Phase7_Calendar2.md` §2.4): same rule, 7 days into
     /// S4/S5/S6. The 2026-11-13 → 2026-12-10 dark period is by design (one
     /// instance per season) and matches the existing 27-day gaps.
+    /// Seasons 7-9 are the Phase 7 third calendar
+    /// (`specs/Spec_Phase7_Calendar3.md` §2.5): same rule, 7 days into
+    /// S7/S8/S9. The 2027-02-11 → 2027-03-10 dark period is likewise 27 days
+    /// and by design.
     ///
     /// The Season 1 instance is the same one §5 of `Spec_Phase6b_ParallelBoard.md`
     /// authored as the type's screen-verification test event — its dates
@@ -147,6 +154,32 @@ enum ParallelBoardEventRegistry {
             chainID: ContentRegistry.parallelBoardSecondChancesChainID,
             startDate: date("2027-02-08"),
             endDate:   date("2027-02-11")
+        ),
+        // Phase 7 third calendar (Spec_Phase7_Calendar3.md §2.5/§3.5) —
+        // Seasons 7-9, same rule: 7 days into S7/S8/S9, 3 days each.
+        ParallelBoardEventDefinition(
+            id: "second_chances_20270310",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2027-03-10"),
+            endDate:   date("2027-03-13")
+        ),
+        ParallelBoardEventDefinition(
+            id: "second_chances_20270409",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2027-04-09"),
+            endDate:   date("2027-04-12")
+        ),
+        ParallelBoardEventDefinition(
+            id: "second_chances_20270509",
+            name: "Second Chances",
+            icon: "arrow.triangle.2.circlepath",
+            chainID: ContentRegistry.parallelBoardSecondChancesChainID,
+            startDate: date("2027-05-09"),
+            endDate:   date("2027-05-12")
         ),
     ]
 

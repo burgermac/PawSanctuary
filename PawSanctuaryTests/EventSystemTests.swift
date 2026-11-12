@@ -2281,11 +2281,13 @@ final class FullCalendar2RegressionTests: XCTestCase {
         let parallelIDs = ParallelBoardEventRegistry.allEvents.map(\.id)
         let driveIDs = KibbleDriveRegistry.allEvents.map(\.id)
 
-        // Subset, not exact: later calendars append to EventRegistry. The exact
-        // running total lives in FullCalendarRegressionTests (Calendar 3 §3.1).
+        // Subset, not exact: later calendars append to all three registries.
+        // The exact EventRegistry running total lives in
+        // FullCalendarRegressionTests (Calendar 3 §3.1); the Parallel Board
+        // and Drive halves went subset-only in Calendar 3 §3.5.
         XCTAssertGreaterThanOrEqual(eventIDs.count, 36)
-        XCTAssertEqual(parallelIDs.count, 6)
-        XCTAssertEqual(driveIDs.count, 7)
+        XCTAssertGreaterThanOrEqual(parallelIDs.count, 6)
+        XCTAssertGreaterThanOrEqual(driveIDs.count, 7)
         XCTAssertEqual(Set(eventIDs).count, eventIDs.count, "duplicate ID in EventRegistry.allEvents")
         XCTAssertEqual(Set(parallelIDs).count, parallelIDs.count, "duplicate ID in ParallelBoardEventRegistry")
         XCTAssertEqual(Set(driveIDs).count, driveIDs.count, "duplicate ID in KibbleDriveRegistry")
@@ -2300,8 +2302,10 @@ final class FullCalendar2RegressionTests: XCTestCase {
 
         XCTAssertTrue(existingEventIDs.union(newBatchEventIDs).isSubset(of: Set(eventIDs)),
                       "missing Calendar 2 events: \(existingEventIDs.union(newBatchEventIDs).subtracting(eventIDs))")
-        XCTAssertEqual(Set(parallelIDs), existingSecondChancesIDs.union(newSecondChancesIDs))
-        XCTAssertEqual(Set(driveIDs), existingKibbleDriveIDs.union(newKibbleDriveIDs))
+        XCTAssertTrue(existingSecondChancesIDs.union(newSecondChancesIDs).isSubset(of: Set(parallelIDs)),
+                      "missing Calendar 2 Parallel Board windows: \(existingSecondChancesIDs.union(newSecondChancesIDs).subtracting(parallelIDs))")
+        XCTAssertTrue(existingKibbleDriveIDs.union(newKibbleDriveIDs).isSubset(of: Set(driveIDs)),
+                      "missing Calendar 2 Drive windows: \(existingKibbleDriveIDs.union(newKibbleDriveIDs).subtracting(driveIDs))")
     }
 
     // MARK: §4.9

@@ -78,11 +78,17 @@ enum KibbleDriveRegistry {
     /// | `kibble_drive_20270101` | 2027-01-01 | 2027-01-04 |
     /// | `kibble_drive_20270129` | 2027-01-29 | 2027-02-01 |
     /// | `kibble_drive_20270226` | 2027-02-26 | 2027-03-01 |
+    /// | `kibble_drive_20270326` | 2027-03-26 | 2027-03-29 |
+    /// | `kibble_drive_20270423` | 2027-04-23 | 2027-04-26 |
+    /// | `kibble_drive_20270521` | 2027-05-21 | 2027-05-24 |
     ///
-    /// The last four are the Phase 7 second calendar
-    /// (`specs/Spec_Phase7_Calendar2.md` §2.5), continuing the shipped 28-day
-    /// spacing from `kibble_drive_20261106` unchanged (owner decision: keep
-    /// 28 days, no extra Drive before 1 Dec 2026).
+    /// `kibble_drive_20261204` through `kibble_drive_20270226` are the Phase 7
+    /// second calendar (`specs/Spec_Phase7_Calendar2.md` §2.5), continuing the
+    /// shipped 28-day spacing from `kibble_drive_20261106` unchanged (owner
+    /// decision: keep 28 days, no extra Drive before 1 Dec 2026). The last
+    /// three are the Phase 7 third calendar (`specs/Spec_Phase7_Calendar3.md`
+    /// §2.6), the same 28-day step from `kibble_drive_20270226`; the next
+    /// (2027-06-18) falls after that batch's 2027-06-01 end.
     ///
     /// **The first window is deliberately live on the day 3a was written**, so
     /// the lifecycle could be verified on screen rather than only against an
@@ -149,6 +155,29 @@ enum KibbleDriveRegistry {
             icon: "shippingbox.fill",
             startDate: date("2027-02-26"),
             endDate:   date("2027-03-01")
+        ),
+        // Phase 7 third calendar (Spec_Phase7_Calendar3.md §2.6/§3.5) —
+        // the same 28-day spacing continued from kibble_drive_20270226.
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20270326",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2027-03-26"),
+            endDate:   date("2027-03-29")
+        ),
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20270423",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2027-04-23"),
+            endDate:   date("2027-04-26")
+        ),
+        KibbleDriveEventDefinition(
+            id: "kibble_drive_20270521",
+            name: "Kibble Drive",
+            icon: "shippingbox.fill",
+            startDate: date("2027-05-21"),
+            endDate:   date("2027-05-24")
         ),
     ]
 
