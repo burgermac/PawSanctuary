@@ -85,6 +85,23 @@ Considered and **not** done: (a) per-test unique `mainFileURL` injection — doe
 
 ### Real integrations still stubbed
 - [ ] **Phase 3, Task 3.6 — now load-bearing, not just pre-launch polish.** `AdProvider.swift`'s `StubAdProvider` just waits 1.5s and always succeeds. Swap in a real SDK — **decided 10 Nov 2026: Google AdMob, rewarded ads only**, behind the existing `AdProvider` protocol, keeping the existing daily cap — the reward logic and daily-cap bookkeeping around it are already correct. The rebuilt `KibbleRefillSheet` (3.1) is built around a real ad actually being available as the first rung of the ladder, so this blocks Phase 3 from being fully closed even though 3.1–3.4 are done. SDK decided (AdMob); the code-side integration is blocked on the owner creating the AdMob account and supplying the app ID and rewarded ad-unit ID.
+
+  **Re-confirmed 12 Nov 2026 (owner decision): keep AdMob.** Alternatives were discussed and not chosen. Apple has no first-party in-app ad SDK (iAd closed in 2016; Apple Ads only buys App Store promotion), so every option is third-party. A mediation layer (AppLovin MAX or Unity LevelPlay) usually pays more because several networks bid for each ad. Revisit it only if ad revenue becomes a real income line. The `AdProvider` protocol means that swap touches one file, not the reward logic.
+
+  **Owner steps (nothing for the code until these are done):**
+  - [ ] Create an AdMob account (admob.google.com) and add PawSanctuary as an iOS app. It can be added before the app has an App Store listing.
+  - [ ] Copy the **AdMob app ID** (looks like `ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY`).
+  - [ ] Create one **Rewarded** ad unit and copy its **ad-unit ID** (`ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ`).
+  - [ ] Send both IDs to Claude. They are identifiers, not secrets. Use Google's published **test** IDs for development, and the real ones only in a Release build.
+
+  **Code steps, once the IDs are in (one task, one PR):**
+  - [ ] Add the Google Mobile Ads SDK (Swift Package Manager) and put the app ID in `Info.plist` as `GADApplicationIdentifier`.
+  - [ ] Write `AdMobRewardedAdProvider` behind the existing `AdProvider` protocol, replacing `StubAdProvider`. It must keep the existing daily cap, reward logic and the "ad unavailable" path in `KibbleRefillSheet`.
+  - [ ] Add the iOS tracking-permission prompt (App Tracking Transparency, with `NSUserTrackingUsageDescription`) and Google's consent flow (UMP) for regions that require it.
+  - [ ] Add the `SKAdNetworkItems` list that Google publishes to `Info.plist`.
+  - [ ] Tests: the provider's success, failure and no-fill paths, the daily cap, and that the Debug build uses test IDs only.
+  - [ ] Check on a real device or the Simulator with a test ad, in an Xcode Run.
+  - [ ] Declare ad data collection in App Store Connect's privacy answers. It overlaps with the privacy-policy blocker below.
 - [ ] When ready for final audio assets, replace `AudioServicesPlaySystemSound(XXXX)` calls in `SoundManager.swift` with `AVAudioPlayer` instances pointed at the real asset files.
 
 ### App Store submission blockers (not code)
