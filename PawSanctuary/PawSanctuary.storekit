@@ -197,6 +197,21 @@
       "productID" : "com.pawsanctuary.rewardladder.rung",
       "referenceName" : "Reward Ladder Rung",
       "type" : "ConsumableIAP"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "3E70ECCB-6E6E-40D6-877A-C3DB4669F497",
+      "localizations" : [
+        {
+          "description" : "Unlock this Kibble Drive's reward ladder and claim each rung as you earn points.",
+          "displayName" : "Kibble Drive",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.pawsanctuary.kibbledrive",
+      "referenceName" : "Kibble Drive",
+      "type" : "ConsumableIAP"
     }
   ],
   "subscriptionGroups" : [
