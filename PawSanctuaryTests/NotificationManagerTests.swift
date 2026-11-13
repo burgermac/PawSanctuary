@@ -259,4 +259,44 @@ final class NotificationManagerTests: XCTestCase {
 
         XCTAssertTrue(centre.pendingIDs.isEmpty)
     }
+
+    // MARK: Expiry warnings read the injected clock, not the wall clock
+
+    /// A fixed clock years away from the real one: a wall-clock read would put
+    /// these deadlines far in the past (or future) and get the result wrong.
+    private let fixedClock = Date(timeIntervalSince1970: 1_600_000_000)   // Sep 2020
+
+    private func interval(_ centre: RecordingCentre, _ id: String) throws -> TimeInterval {
+        try XCTUnwrap(centre.pending[id]?.trigger as? UNTimeIntervalNotificationTrigger).timeInterval
+    }
+
+    func testRescueExpiringWarnsTwoMinutesBeforeInjectedDeadline() throws {
+        let centre = RecordingCentre()
+        let clock = fixedClock
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true)
+
+        manager.scheduleRescueExpiring(expiresAt: clock.addingTimeInterval(600))
+
+        XCTAssertEqual(try interval(centre, NotificationID.rescueExpiring), 480, accuracy: 0.001)
+    }
+
+    func testRescueExpiringInsideTwoMinutesOfInjectedClockSchedulesNothing() {
+        let centre = RecordingCentre()
+        let clock = fixedClock
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true)
+
+        manager.scheduleRescueExpiring(expiresAt: clock.addingTimeInterval(60))
+
+        XCTAssertTrue(centre.pendingIDs.isEmpty)
+    }
+
+    func testEventExpiryFiresAtInjectedInterval() throws {
+        let centre = RecordingCentre()
+        let clock = fixedClock
+        let manager = NotificationManager(centre: centre, now: { clock }, isAuthorised: true)
+
+        manager.scheduleEventExpiry(eventID: "e1", at: clock.addingTimeInterval(3_600), summary: "Ends soon")
+
+        XCTAssertEqual(try interval(centre, NotificationID.eventExpiry("e1")), 3_600, accuracy: 0.001)
+    }
 }
