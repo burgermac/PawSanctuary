@@ -227,7 +227,7 @@ final class NotificationManager: NSObject {
     ///              own name/tagline.
     func scheduleEventExpiry(eventID: String, at date: Date, summary: String) {
         guard isAuthorised else { return }
-        let interval = date.timeIntervalSinceNow
+        let interval = date.timeIntervalSince(now())
         guard interval > 10 else { return }   // not worth notifying if already nearly there
 
         let content       = UNMutableNotificationContent()
@@ -278,7 +278,7 @@ final class NotificationManager: NSObject {
     /// - Parameter expiresAt: The moment the order expires.
     func scheduleRescueExpiring(expiresAt: Date) {
         guard isAuthorised else { return }
-        let warnAt = expiresAt.timeIntervalSinceNow - 120
+        let warnAt = expiresAt.timeIntervalSince(now()) - 120
         guard warnAt > 0 else { return }    // already past the 2-minute window
 
         let content       = UNMutableNotificationContent()
