@@ -56,3 +56,14 @@ swift scripts/refvideo.swift crop  "../Screen Recordings/clip.MP4" /tmp/z \
 ### Where the findings go
 
 Analysis results are written up as draft specs in `specs/` — see `Spec_BoardAnimation_Draft.md` and `Spec_PartyBoard_Draft.md`, both produced with this tool. Those drafts are accumulating ahead of a design pass; they are not implementation-ready.
+
+## todo_check.py
+
+Ticks, unticks or toggles checkboxes in `TODO.md` by line number, for when the file pane will not take a click.
+
+```bash
+scripts/todo_check.py list open            # open items with line numbers (also: done, all, or add search text)
+scripts/todo_check.py check 92 93          # mark [x]
+scripts/todo_check.py uncheck 92           # mark [ ]
+scripts/todo_check.py toggle 80            # flip
+```
