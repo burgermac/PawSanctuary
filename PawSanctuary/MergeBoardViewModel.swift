@@ -714,7 +714,9 @@ class MergeBoardViewModel {
             let levelPrefix = chain.category == .animal ? "Level \(item.tier + 1) · " : ""
             let label = levelPrefix + def.name + " " + chain.displayName
             if item.isTopTier {
-                return (label + " · Ambassador — top tier", item.chainID)
+                // "Ambassador" is the animal top tier's name; other chains just top out.
+                let topSuffix = chain.category == .animal ? " · Ambassador — top tier" : " · Top tier"
+                return (label + topSuffix, item.chainID)
             }
             let nextName = item.tier + 1 < chain.tiers.count ? chain.tiers[item.tier + 1].name : nil
             if let next = nextName {
