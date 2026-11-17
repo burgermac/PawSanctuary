@@ -1517,6 +1517,11 @@ private struct BubblePopSheet: View {
                             .multilineTextAlignment(.center)
                             .foregroundColor(.secondary)
                             .padding(.horizontal)
+                        Text("Or drag another \(def.name) of the same level onto it to merge them.")
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
                     }
 
                     VStack(spacing: 10) {

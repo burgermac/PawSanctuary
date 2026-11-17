@@ -194,15 +194,67 @@ final class AttemptMergeOrMoveCharacterizationTests: XCTestCase {
         XCTAssertEqual(vm.board[b.row][b.col].item?.tier, 0)
     }
 
-    func testBubbledDestinationBlocksMergeAndSwapsInstead() {
+    func testDecayedBubbledDestinationSwapsInsteadOfMerging() {
         let vm = makeViewModel()
         place(vm, chainID: catChain, tier: 3, at: a)
+        // bubbledAt 1_000 is long past bubbleDecaySeconds, so this bubble has
+        // decayed: it waits to be collected for coins, not merged into.
         place(vm, chainID: catChain, tier: 3, at: b, bubbledAt: 1_000)
         vm.attemptMergeOrMove(from: a, to: b)
-        // Same chain + tier would normally be eligible to merge — the bubble
-        // on the destination is what forces the fallback to a plain swap.
         XCTAssertEqual(vm.board[a.row][a.col].item?.bubbledAt, 1_000, "the bubbled item moved to `a`")
         XCTAssertEqual(vm.board[b.row][b.col].item?.bubbledAt, nil, "the un-bubbled item moved to `b`")
+    }
+
+    func testActiveBubbledDestinationOfDifferentTierSwaps() {
+        let vm = makeViewModel()
+        let stamp = Date().timeIntervalSince1970
+        place(vm, chainID: catChain, tier: 2, at: a)
+        place(vm, chainID: catChain, tier: 3, at: b, bubbledAt: stamp)
+        vm.attemptMergeOrMove(from: a, to: b)
+        XCTAssertEqual(vm.board[a.row][a.col].item?.tier, 3, "swapped")
+        XCTAssertEqual(vm.board[a.row][a.col].item?.bubbledAt, stamp, "bubble travels with its animal")
+        XCTAssertEqual(vm.board[b.row][b.col].item?.tier, 2)
+    }
+
+    // MARK: Merging frees a bubble (specs/Spec_MergeFreesBubble.md)
+
+    func testMergingOntoActiveSameLevelBubbleFreesItAsANormalMerge() {
+        let vm = makeViewModel()
+        place(vm, chainID: catChain, tier: 3, at: a)
+        place(vm, chainID: catChain, tier: 3, at: b, bubbledAt: Date().timeIntervalSince1970)
+        let scoreBefore = vm.score
+        let mergesBefore = vm.mergeCount
+        vm.attemptMergeOrMove(from: a, to: b)
+        XCTAssertNil(vm.board[a.row][a.col].item, "source used up")
+        XCTAssertEqual(vm.board[b.row][b.col].item?.tier, 4, "next level lands where the bubble was")
+        XCTAssertEqual(vm.board[b.row][b.col].item?.chainID, catChain)
+        XCTAssertNil(vm.board[b.row][b.col].item?.bubbledAt, "bubble and its timer are gone")
+        XCTAssertGreaterThan(vm.score, scoreBefore, "normal merge scoring")
+        XCTAssertEqual(vm.mergeCount, mergesBefore + 1)
+    }
+
+    func testBubbledSourceStillCannotBeDraggedOntoAnotherBubble() {
+        let vm = makeViewModel()
+        let stamp = Date().timeIntervalSince1970
+        place(vm, chainID: catChain, tier: 3, at: a, bubbledAt: stamp)
+        place(vm, chainID: catChain, tier: 3, at: b, bubbledAt: stamp)
+        vm.attemptMergeOrMove(from: a, to: b)
+        XCTAssertEqual(vm.board[a.row][a.col].item?.tier, 3, "two bubbles never merge")
+        XCTAssertEqual(vm.board[b.row][b.col].item?.tier, 3)
+        XCTAssertNotNil(vm.board[a.row][a.col].item?.bubbledAt)
+        XCTAssertNotNil(vm.board[b.row][b.col].item?.bubbledAt)
+    }
+
+    func testFreeingABubbleByMergeCanBeUndoneAndRestoresTheBubble() {
+        let vm = makeViewModel()
+        let stamp = Date().timeIntervalSince1970
+        place(vm, chainID: catChain, tier: 3, at: a)
+        place(vm, chainID: catChain, tier: 3, at: b, bubbledAt: stamp)
+        vm.attemptMergeOrMove(from: a, to: b)
+        let snapshot = vm.preMoveSnapshot
+        XCTAssertNotNil(snapshot, "arms Nine Lives undo like any merge")
+        XCTAssertEqual(snapshot?.board[a.row][a.col].item?.tier, 3)
+        XCTAssertEqual(snapshot?.board[b.row][b.col].item?.bubbledAt, stamp, "snapshot keeps the bubble and its original timer")
     }
 
     func testAlreadyTopTierPairCannotMergeFurtherSoSwaps() {

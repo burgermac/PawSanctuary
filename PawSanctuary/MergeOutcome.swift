@@ -60,7 +60,7 @@ struct MergeOutcome: Equatable {
 
 /// Pure decision step for attemptMergeOrMove's eligible-merge branch. Returns
 /// `nil` when `srcItem`/`dstItem` aren't eligible to merge — a bubbled
-/// destination, an ineligible pair (different chain/tier and neither is a
+/// destination that isn't an active same-chain, same-tier match, an ineligible pair (different chain/tier and neither is a
 /// wildcard), or `dstItem` already at its chain's top tier all fall back to
 /// `nil`, matching attemptMergeOrMove's own `else { swap }` fallback exactly.
 ///
@@ -74,14 +74,26 @@ func computeMergeOutcome(
     from: GridPosition, to: GridPosition,
     srcItem: BoardItem, dstItem: BoardItem,
     spotlightChainID: ChainID, spotlightMultiplierBonus: Int,
-    orders: [AdoptionOrder], urgentOrder: AdoptionOrder?, activeQuests: [Quest]
+    orders: [AdoptionOrder], urgentOrder: AdoptionOrder?, activeQuests: [Quest],
+    now: Double = Date().timeIntervalSince1970
 ) -> MergeOutcome? {
     let srcIsWildcard = srcItem.chain?.category == .wildcard
     let dstIsWildcard = dstItem.chain?.category == .wildcard
     let isEligiblePair = srcIsWildcard != dstIsWildcard
         ? true
         : srcItem.chainID == dstItem.chainID && srcItem.tier == dstItem.tier
-    guard dstItem.bubbledAt == nil, isEligiblePair else { return nil }
+    guard isEligiblePair else { return nil }
+
+    // A bubbled destination merges only as a "free by merging" (see
+    // specs/Spec_MergeFreesBubble.md): the bubble must still be active (a
+    // decayed one waits to be collected for coins), neither side may be a
+    // wildcard, and the pair must be the exact same chain and tier. Anything
+    // else falls back to nil, i.e. the plain swap, as before.
+    if dstItem.bubbledAt != nil {
+        guard !dstItem.isBubbleDecayed(now: now),
+              !srcIsWildcard, !dstIsWildcard,
+              srcItem.chainID == dstItem.chainID, srcItem.tier == dstItem.tier else { return nil }
+    }
 
     // A wildcard adopts the other item's identity; a real-item pairing
     // (including a real item dragged onto a wildcard) keeps the source

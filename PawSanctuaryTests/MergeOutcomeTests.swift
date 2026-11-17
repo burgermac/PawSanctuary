@@ -41,9 +41,46 @@ final class MergeOutcomeTests: XCTestCase {
         XCTAssertNil(result)
     }
 
-    func testBubbledDestinationReturnsNilEvenForAnOtherwiseEligiblePair() {
-        let result = compute(srcItem: BoardItem(chainID: catChain, tier: 3),
-                              dstItem: BoardItem(chainID: catChain, tier: 3, bubbledAt: 1_000))
+    // MARK: Bubbled destination (specs/Spec_MergeFreesBubble.md)
+
+    private let now = 10_000.0
+    private var activeBubble: Double { now - 60 }   // bubbled a minute ago
+    private func computeAt(src: BoardItem, dst: BoardItem) -> MergeOutcome? {
+        computeMergeOutcome(from: a, to: b, srcItem: src, dstItem: dst,
+                            spotlightChainID: ContentRegistry.animalChainID(.dog), spotlightMultiplierBonus: 0,
+                            orders: [], urgentOrder: nil, activeQuests: [], now: now)
+    }
+
+    func testActiveBubbledDestinationOfSameChainAndTierMerges() {
+        let result = computeAt(src: BoardItem(chainID: catChain, tier: 3),
+                               dst: BoardItem(chainID: catChain, tier: 3, bubbledAt: activeBubble))
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.resultTier, 4)
+        XCTAssertEqual(result?.resultChainID, catChain)
+    }
+
+    func testDecayedBubbledDestinationReturnsNil() {
+        let result = computeAt(src: BoardItem(chainID: catChain, tier: 3),
+                               dst: BoardItem(chainID: catChain, tier: 3, bubbledAt: now - bubbleDecaySeconds - 1))
+        XCTAssertNil(result)
+    }
+
+    func testBubbledDestinationOfDifferentTierReturnsNil() {
+        let result = computeAt(src: BoardItem(chainID: catChain, tier: 2),
+                               dst: BoardItem(chainID: catChain, tier: 3, bubbledAt: activeBubble))
+        XCTAssertNil(result)
+    }
+
+    func testBubbledDestinationOfDifferentSpeciesReturnsNil() {
+        let result = computeAt(src: BoardItem(chainID: hamsterChain, tier: 3),
+                               dst: BoardItem(chainID: catChain, tier: 3, bubbledAt: activeBubble))
+        XCTAssertNil(result)
+    }
+
+    func testWildcardOntoActiveBubbleReturnsNil() {
+        let wc = ContentRegistry.wildcardChainID
+        let result = computeAt(src: BoardItem(chainID: wc, tier: 0),
+                               dst: BoardItem(chainID: catChain, tier: 3, bubbledAt: activeBubble))
         XCTAssertNil(result)
     }
 

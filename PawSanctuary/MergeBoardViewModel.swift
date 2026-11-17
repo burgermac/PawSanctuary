@@ -2206,7 +2206,8 @@ class MergeBoardViewModel {
             ) {
                 apply(.merge(outcome))
             } else {
-                // Ineligible pair, a bubbled destination, or the destination
+                // Ineligible pair, a bubbled destination that isn't an active
+                // same-species, same-level match, or the destination
                 // already at its chain's top tier — computeMergeOutcome
                 // returns nil for all three (MergeOutcome.swift), matching
                 // this swap fallback exactly.
