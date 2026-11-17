@@ -43,9 +43,13 @@ Drag a **normal** animal onto a **bubbled** animal of the **same species and the
 
 The bubble sheet gains one line: "Or drag another [name] of the same level onto it to merge them."
 
+## 4b. Hints
+
+The idle hint (`findMergeableHintPair`) now suggests bubble merges: a normal animal and an active bubbled one of the same species and level form a pair, ordered normal first (the hint nudges the first toward the second). Two bubbles never pair, and a decayed bubble is skipped. The "board full / can merge" toast uses the same search, so it also counts these. Tests: `MergeHintTests`.
+
 ## 5. Out of scope
 
-Hints that point at a bubble merge (the hint finder still skips bubbled pieces, so no hint will suggest this move); dragging a bubbled piece; wildcards freeing bubbles; changing the bubble chance, cost or decay.
+Dragging a bubbled piece; wildcards freeing bubbles; changing the bubble chance, cost or decay.
 
 ## 6. Code
 
