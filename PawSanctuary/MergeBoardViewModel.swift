@@ -1298,6 +1298,7 @@ class MergeBoardViewModel {
         s.superpowerCooldownEnds    = superpowerCooldownEnds
         s.boardTheme                = boardTheme
         s.boardThemePrompted        = boardThemePrompted
+        s.trophyCounts              = trophyCounts
         s.lagomorphMergeCount       = lagomorphMergeCount
         s.lastMergeTimestamp        = lastMergeTimestamp
         s.lastMergedSpeciesRaw      = lastMergedSpeciesRaw
@@ -1347,6 +1348,7 @@ class MergeBoardViewModel {
         completedAreaIDs    = s.completedAreaIDs
         boardTheme          = s.boardTheme
         boardThemePrompted  = s.boardThemePrompted
+        trophyCounts        = s.trophyCounts
         areaUpgradeLevels   = s.areaUpgradeLevels
         cardInventory       = s.cardInventory
         starCount           = s.starCount
@@ -1494,6 +1496,7 @@ class MergeBoardViewModel {
         inventoryStore.overflowProducerStorage = Array(repeating: nil, count: totalProducerOverflowSlots)
         completedAreaIDs = []; areaUpgradeLevels = [:]
         boardTheme = .meadow; boardThemePrompted = false
+        trophyCounts = [:]
         coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0; freeChestReadyAt = .distantPast
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
@@ -3881,6 +3884,61 @@ class MergeBoardViewModel {
         kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
             self?.kibbleEngine.kibble += amount
         }
+    }
+
+    // MARK: Trophy pages (specs/Spec_GoldenBallTrophyPage.md)
+
+    /// Slots filled per family, keyed by AnimalSpecies.rawValue. Persisted.
+    var trophyCounts: [String: Int] = [:]
+
+    /// The family a completed sub-object in `item` belongs to, or nil when it
+    /// is not a completed sub-object (no rolled effect, or not a sub-object chain).
+    private func trophyFamily(of item: BoardItem) -> AnimalSpecies? {
+        guard item.rarity != nil,
+              item.chainID.hasPrefix("subobject.") else { return nil }
+        return AnimalSpecies(rawValue: item.chainID.replacingOccurrences(of: "subobject.", with: ""))
+    }
+
+    func trophySlotsFilled(for species: AnimalSpecies) -> Int {
+        min(trophyCounts[species.rawValue] ?? 0, trophySlotsPerFamily)
+    }
+
+    /// Family of the selected Supplies item when it can still go on a Trophy
+    /// page, for the Supplies tab to show its button. nil when it cannot.
+    var selectedPowerUpTrophyFamily: AnimalSpecies? {
+        guard let slot = selectedPowerUpSlot,
+              let item = inventoryStore.powerUpInventory[slot],
+              let species = trophyFamily(of: item),
+              trophySlotsFilled(for: species) < trophySlotsPerFamily else { return nil }
+        return species
+    }
+
+    /// Coins the next trophy slot would pay for `species`, including the page
+    /// bonus when it is the last slot. For the button label.
+    func nextTrophyPayout(for species: AnimalSpecies) -> Int {
+        trophySlotCoins + (trophySlotsFilled(for: species) + 1 == trophySlotsPerFamily ? trophyPageBonusCoins : 0)
+    }
+
+    /// Moves the selected completed sub-object onto its family's Trophy page.
+    /// Returns true when a slot was filled; leaves the item alone otherwise.
+    @discardableResult
+    func addSelectedPowerUpToTrophy() -> Bool {
+        guard let slot = selectedPowerUpSlot,
+              let species = selectedPowerUpTrophyFamily else { return false }
+        let payout = nextTrophyPayout(for: species)
+        let filled = trophySlotsFilled(for: species) + 1
+        inventoryStore.powerUpInventory[slot] = nil
+        selectedPowerUpSlot = nil
+        trophyCounts[species.rawValue] = filled
+        earnCoins(payout)
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        if filled == trophySlotsPerFamily {
+            enqueueToast(Toast(kind: .info("\(species.name) page complete! +\(payout) Coins")))
+        } else {
+            enqueueToast(Toast(kind: .info("Trophy \(filled)/\(trophySlotsPerFamily) · \(species.name) · +\(payout) Coins")))
+        }
+        return true
     }
 
     // MARK: Board themes (specs/Spec_BoardThemes.md)

@@ -77,6 +77,13 @@ struct InventoryScreenView: View {
                                 color: Color(red: 0.50, green: 0.22, blue: 0.72)) {
                         viewModel.showInventory = false
                     }
+                    if let family = viewModel.selectedPowerUpTrophyFamily {
+                        placeButton(label: "Add to Trophy +\(viewModel.nextTrophyPayout(for: family))",
+                                    color: Color(red: 0.85, green: 0.55, blue: 0.10),
+                                    icon: "trophy.fill") {
+                            viewModel.addSelectedPowerUpToTrophy()
+                        }
+                    }
                     if let value = viewModel.selectedPowerUpCoinValue {
                         placeButton(label: "Convert to +\(value) Coins",
                                     color: Color(red: 0.80, green: 0.62, blue: 0.10),
@@ -514,6 +521,8 @@ struct InventoryScreenView: View {
                 .fill(Color(red: 0.94, green: 0.88, blue: 0.98).opacity(0.7)))
             .padding(.horizontal)
 
+            trophyPagesSection
+
             if viewModel.selectedPowerUpSlot != nil {
                 Text("Consumable selected ✓  —  close this screen and tap a Family Spawner, or convert it to coins above.")
                     .font(.system(size: 12, weight: .medium))
@@ -522,6 +531,36 @@ struct InventoryScreenView: View {
                     .padding(.horizontal)
             }
         }
+    }
+
+    /// Trophy pages (specs/Spec_GoldenBallTrophyPage.md): one row per family,
+    /// five pips each. A completed sub-object selected above can be added here.
+    private var trophyPagesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Trophy Pages")
+                .font(.system(size: 13, weight: .bold))
+            Text("Add a completed Golden Ball (or any family's top item) to its page: \(trophySlotCoins) coins a slot, +\(trophyPageBonusCoins) when the page is full.")
+                .font(.system(size: 11)).foregroundColor(.secondary)
+            ForEach(AnimalSpecies.allCases, id: \.self) { species in
+                let filled = viewModel.trophySlotsFilled(for: species)
+                HStack(spacing: 6) {
+                    Text(species.name)
+                        .font(.system(size: 11, weight: filled == trophySlotsPerFamily ? .bold : .regular))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(0..<trophySlotsPerFamily, id: \.self) { i in
+                        Image(systemName: i < filled ? "trophy.fill" : "trophy")
+                            .font(.system(size: 11))
+                            .foregroundColor(i < filled
+                                             ? Color(red: 0.85, green: 0.55, blue: 0.10)
+                                             : Color.secondary.opacity(0.35))
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16)
+            .fill(Color(red: 0.99, green: 0.95, blue: 0.86).opacity(0.8)))
+        .padding(.horizontal)
     }
 
     @ViewBuilder

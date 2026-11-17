@@ -131,6 +131,9 @@ struct GameState: Codable {
     /// one-time first-choice sheet has been offered.
     var boardTheme: BoardTheme = .meadow
     var boardThemePrompted: Bool = false
+    /// Trophy page slots filled per family (v45, specs/Spec_GoldenBallTrophyPage.md).
+    /// Key is AnimalSpecies.rawValue.
+    var trophyCounts: [String: Int] = [:]
     var lastDailyChallengeReset: Date?
     var lastSpotlightWeek: Int
 
@@ -385,7 +388,10 @@ enum GameStore {
     ///      Both non-Optional, so both have `additiveDefaultsSinceV8` entries; a
     ///      migrating save starts on Meadow and has not yet been offered the
     ///      first-choice sheet.
-    static let currentVersion = 44
+    /// v45: trophyCounts added (`specs/Spec_GoldenBallTrophyPage.md`). Non-Optional,
+    ///      so it has an `additiveDefaultsSinceV8` entry; a migrating save starts
+    ///      with every family's page empty.
+    static let currentVersion = 45
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -707,6 +713,7 @@ enum GameStore {
         if version == 40 { return migrateByInjecting(from: 40, defaults: [:], into: data) }   // playtestMetrics covered by additiveDefaultsSinceV8
         if version == 41 { return migrateByInjecting(from: 41, defaults: [:], into: data) }   // kibbleDrive is Optional — no default needed
         if version == 42 { return migrateByInjecting(from: 42, defaults: [:], into: data) }   // loginTotalDays covered by additiveDefaultsSinceV8
+        if version == 44 { return migrateByInjecting(from: 44, defaults: [:], into: data) }   // trophyCounts covered by additiveDefaultsSinceV8
         if version == 43 { return migrateByInjecting(from: 43, defaults: [:], into: data) }   // boardTheme / boardThemePrompted covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
@@ -809,6 +816,8 @@ enum GameStore {
         "loginTotalDays": 0,
         // v44 — Board themes. A migrating save starts on Meadow, un-prompted.
         "boardTheme": "meadow", "boardThemePrompted": false,
+        // v45 — Trophy pages. A migrating save starts with every page empty.
+        "trophyCounts": [String: Int](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space
