@@ -72,23 +72,27 @@ struct InventoryScreenView: View {
                 // instructional text). "Choose Spawner" performs the "close" step;
                 // "Convert to Coins" is the sink for a roll the player doesn't want
                 // (or has nowhere left to apply) — there used to be none at all.
-                HStack(spacing: 8) {
+                // Two rows: three buttons in one row wrap into one-word-per-line
+                // columns on a phone (seen in the Simulator).
+                VStack(spacing: 8) {
                     placeButton(label: "Choose Spawner on Board",
                                 color: Color(red: 0.50, green: 0.22, blue: 0.72)) {
                         viewModel.showInventory = false
                     }
-                    if let family = viewModel.selectedPowerUpTrophyFamily {
-                        placeButton(label: "Add to Trophy +\(viewModel.nextTrophyPayout(for: family))",
-                                    color: Color(red: 0.85, green: 0.55, blue: 0.10),
-                                    icon: "trophy.fill") {
-                            viewModel.addSelectedPowerUpToTrophy()
+                    HStack(spacing: 8) {
+                        if let family = viewModel.selectedPowerUpTrophyFamily {
+                            placeButton(label: "Trophy +\(viewModel.nextTrophyPayout(for: family))",
+                                        color: Color(red: 0.85, green: 0.55, blue: 0.10),
+                                        icon: "trophy.fill") {
+                                viewModel.addSelectedPowerUpToTrophy()
+                            }
                         }
-                    }
-                    if let value = viewModel.selectedPowerUpCoinValue {
-                        placeButton(label: "Convert to +\(value) Coins",
-                                    color: Color(red: 0.80, green: 0.62, blue: 0.10),
-                                    icon: "dollarsign.circle.fill") {
-                            viewModel.convertSelectedPowerUpToCoins()
+                        if let value = viewModel.selectedPowerUpCoinValue {
+                            placeButton(label: "Coins +\(value)",
+                                        color: Color(red: 0.80, green: 0.62, blue: 0.10),
+                                        icon: "dollarsign.circle.fill") {
+                                viewModel.convertSelectedPowerUpToCoins()
+                            }
                         }
                     }
                 }
@@ -105,7 +109,7 @@ struct InventoryScreenView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                Text(label).fontWeight(.semibold)
+                Text(label).fontWeight(.semibold).lineLimit(1).minimumScaleFactor(0.75)
             }
             .font(.subheadline).foregroundColor(.white)
             .padding(.horizontal, 12).padding(.vertical, 7)

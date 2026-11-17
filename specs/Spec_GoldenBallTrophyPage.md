@@ -13,7 +13,7 @@ A completed family top tier (Canines' Golden Ball) becomes a power-up in the 6-s
 ## 2. Rule
 
 - Each of the 15 animal families has a **Trophy page of 5 slots**.
-- On the Supplies tab, a selected completed sub-object shows a third button, **Add to Trophy**, beside "Choose Spawner" and "Convert to Coins". It is hidden when that family's page is already full.
+- On the Supplies tab, a selected completed sub-object shows a third button, **Trophy +N**, beside "Choose Spawner on Board" and **Coins +N** (the old "Convert to Coins"), laid out in two rows so labels fit on a phone. It is hidden when that family's page is already full.
 - Adding fills the family's next slot, pays **100 coins** for the slot, and removes the item from Supplies. Filling the fifth slot pays a **one-time page bonus of 500 coins** on top.
 - Once a family's page is full, its completed sub-objects keep working exactly as today: apply as a power-up, or convert to coins. Nothing is blocked, so nothing can clog.
 - **No gems, energy or real-money surface anywhere.** Coins only.
