@@ -72,16 +72,27 @@ struct InventoryScreenView: View {
                 // instructional text). "Choose Spawner" performs the "close" step;
                 // "Convert to Coins" is the sink for a roll the player doesn't want
                 // (or has nowhere left to apply) — there used to be none at all.
-                HStack(spacing: 8) {
+                // Two rows: three buttons in one row wrap into one-word-per-line
+                // columns on a phone (seen in the Simulator).
+                VStack(spacing: 8) {
                     placeButton(label: "Choose Spawner on Board",
                                 color: Color(red: 0.50, green: 0.22, blue: 0.72)) {
                         viewModel.showInventory = false
                     }
-                    if let value = viewModel.selectedPowerUpCoinValue {
-                        placeButton(label: "Convert to +\(value) Coins",
-                                    color: Color(red: 0.80, green: 0.62, blue: 0.10),
-                                    icon: "dollarsign.circle.fill") {
-                            viewModel.convertSelectedPowerUpToCoins()
+                    HStack(spacing: 8) {
+                        if let family = viewModel.selectedPowerUpTrophyFamily {
+                            placeButton(label: "Trophy +\(viewModel.nextTrophyPayout(for: family))",
+                                        color: Color(red: 0.85, green: 0.55, blue: 0.10),
+                                        icon: "trophy.fill") {
+                                viewModel.addSelectedPowerUpToTrophy()
+                            }
+                        }
+                        if let value = viewModel.selectedPowerUpCoinValue {
+                            placeButton(label: "Coins +\(value)",
+                                        color: Color(red: 0.80, green: 0.62, blue: 0.10),
+                                        icon: "dollarsign.circle.fill") {
+                                viewModel.convertSelectedPowerUpToCoins()
+                            }
                         }
                     }
                 }
@@ -98,7 +109,7 @@ struct InventoryScreenView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                Text(label).fontWeight(.semibold)
+                Text(label).fontWeight(.semibold).lineLimit(1).minimumScaleFactor(0.75)
             }
             .font(.subheadline).foregroundColor(.white)
             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -514,6 +525,8 @@ struct InventoryScreenView: View {
                 .fill(Color(red: 0.94, green: 0.88, blue: 0.98).opacity(0.7)))
             .padding(.horizontal)
 
+            trophyPagesSection
+
             if viewModel.selectedPowerUpSlot != nil {
                 Text("Consumable selected ✓  —  close this screen and tap a Family Spawner, or convert it to coins above.")
                     .font(.system(size: 12, weight: .medium))
@@ -522,6 +535,36 @@ struct InventoryScreenView: View {
                     .padding(.horizontal)
             }
         }
+    }
+
+    /// Trophy pages (specs/Spec_GoldenBallTrophyPage.md): one row per family,
+    /// five pips each. A completed sub-object selected above can be added here.
+    private var trophyPagesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Trophy Pages")
+                .font(.system(size: 13, weight: .bold))
+            Text("Add a completed Golden Ball (or any family's top item) to its page: \(trophySlotCoins) coins a slot, +\(trophyPageBonusCoins) when the page is full.")
+                .font(.system(size: 11)).foregroundColor(.secondary)
+            ForEach(AnimalSpecies.allCases, id: \.self) { species in
+                let filled = viewModel.trophySlotsFilled(for: species)
+                HStack(spacing: 6) {
+                    Text(species.name)
+                        .font(.system(size: 11, weight: filled == trophySlotsPerFamily ? .bold : .regular))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(0..<trophySlotsPerFamily, id: \.self) { i in
+                        Image(systemName: i < filled ? "trophy.fill" : "trophy")
+                            .font(.system(size: 11))
+                            .foregroundColor(i < filled
+                                             ? Color(red: 0.85, green: 0.55, blue: 0.10)
+                                             : Color.secondary.opacity(0.35))
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16)
+            .fill(Color(red: 0.99, green: 0.95, blue: 0.86).opacity(0.8)))
+        .padding(.horizontal)
     }
 
     @ViewBuilder

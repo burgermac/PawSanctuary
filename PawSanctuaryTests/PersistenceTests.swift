@@ -1406,6 +1406,27 @@ final class PersistenceTests: XCTestCase {
                        "the Drive's ladder must survive a weekly reset that zeroes carePointsThisWeek — straddling that boundary would otherwise destroy a purchase")
     }
 
+    // MARK: v44 → v45 (Trophy pages)
+
+    func testV44toV45StartsEveryTrophyPageEmpty() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "trophyCounts")
+        obj["version"] = 44
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v44 save should migrate to v45")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.trophyCounts.isEmpty)
+    }
+
+    func testTrophyCountsRoundTripOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.trophyCounts = ["dog": 3, "cat": 5]
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.trophyCounts, ["dog": 3, "cat": 5])
+    }
+
     // MARK: v43 → v44 (Board themes)
 
     func testV43toV44StartsOnMeadowAndUnprompted() throws {

@@ -1754,6 +1754,14 @@ let passKibbleMultiplier   = 1.5   // multiplier applied to all claimed kibble r
 let boardThemeAutumnAreas  = 3
 let boardThemeBlossomAreas = 6
 
+// ── Trophy pages (specs/Spec_GoldenBallTrophyPage.md) ────────────
+// Mine, not measured: a completed top-tier sub-object can fill a slot on its
+// family's page instead of being applied or converted. Check against the coin
+// economy before launch.
+let trophySlotsPerFamily   = 5
+let trophySlotCoins        = 100   // paid for each slot filled
+let trophyPageBonusCoins   = 500   // one-time, on filling the last slot
+
 // ── Parallel Board energy (Phase 6b, Task 3.2) ──────────────────
 // First-cut numbers, not derived from a model — see Spec_Phase6b_ParallelBoard.md §4.
 let parallelBoardEnergyCap      = 30
