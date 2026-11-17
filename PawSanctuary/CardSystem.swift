@@ -140,16 +140,6 @@ enum CardPackType: String, CaseIterable, Codable {
         case .star6: return 0.50
         }
     }
-
-    /// Star shop cost, or nil if this tier is not buyable with stars.
-    var starShopCost: Int? {
-        switch self {
-        case .star1: return 20
-        case .star2: return 35
-        case .star3: return 55
-        default:     return nil   // 4★–6★ earned through gameplay / IAP only
-        }
-    }
 }
 
 // ============================================================
