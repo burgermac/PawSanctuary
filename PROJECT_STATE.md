@@ -1,6 +1,6 @@
 # PawSanctuary — Project State (maintained by the project-manager agent)
 
-Last updated: 2026-11-17 (scheduled run: PR #96)
+Last updated: 2026-11-17 (second scheduled run: PR #98)
 
 ## Autonomy settings (owner edits these)
 
@@ -11,7 +11,11 @@ Last updated: 2026-11-17 (scheduled run: PR #96)
 - Run on a schedule: **yes** — weekdays ~08:09 local (scheduled task `pawsanctuary-pm-morning`; runs while the app is open)
 - Quiet hours / max parallel workers: 1 writer at a time
 
-## Where the project stands (verified 2026-11-17)
+## Where the project stands (verified 2026-11-17, second run)
+
+- `main` = `7cf3a93`: two docs commits landed on main directly on 17 Nov after the first run (`28ccc9d` closes the Game Center TODO line and adds `scripts/todo_check.py`; `7cf3a93` puts this ledger under version control). Push CI on `7cf3a93` green. Because the ledger is now tracked, PM ledger updates go through a docs PR like any other change. Open PRs: **#96** (Calendar 4 §4.1, green), **#97** (top-tier label, green), **#98** (dead `starShopCost` removal + parity card rows, new), plus this run's ledger PR. To-Do: t03 Game Center ticked by PM (owner confirmed); t37 added for #98. No new owner ticks.
+
+### Snapshot 2026-11-17, first run (kept for history)
 
 - `main` = `7bf2bad` (#93). Owner merged **#91, #93, #94, #95** on 14 Nov; push CI on main green (#93 run; the three earlier push runs were cancelled by the concurrency group, not failures). Schema v44. Working tree clean apart from untracked `.claude/`, `PM_HANDOFF.md` (stale 11 Nov handoff, superseded by this ledger), this file. Open PRs: **#96** Calendar 4 §4.1 (seasons S10–S12, CI green) and **#97** top-tier label fix (CI green). Still no auto-merge for batch 4 (Q14 unanswered), so owner merges #96. No owner ticks on the To-Do page since 13 Nov; PM ticked the four merged-PR items (t28, t30, t31, t32).
 
@@ -87,7 +91,8 @@ Every item: own branch, one task per session, PR opened, no merge. Build to deri
 8c. **[MERGED #94, 14 Nov]** `PawSanctuary.storekit` gains `com.pawsanctuary.kibbledrive` ($4.99 consumable). Prerequisite for the owner's StoreKit pass.
 9. **[MERGED #93, 14 Nov]** Parity rows re-read (worker, verified by PM: diff is the one spec file; citations `MergeBoardViewModel.swift:716-717`, `CellView.swift:95-100`, `CardSystem.swift:14-19` checked). Verdicts: max-tier text matches; album completion prize differs (→ Q15); card purchase by rarity differs (→ Q15); price ladder differs in shape (🟡; prices read from `.storekit`); days-per-level ramp still unverifiable (telemetry). Not re-triaged: Gossip Harbor FTUE clips 07-25 20-09→20-45 (may hold an album screen) and July 26 clips. Original item: **Feature parity unverified rows** (`Feature_Parity_Audit.md` :137: album set-vs-completion ratio, card purchase by rarity, days-per-building ramp, price-ladder value curve, "maxed" text). Captures ARE on this machine: `/Users/timothyherburger/Documents/Claude/Claude Code/Screen Recordings/*.MP4` (checked 2026-11-12); tool `scripts/refvideo.swift`. Docs-only PR. Days-per-level ramp likely stays unverifiable (needs telemetry, per audit :53).
 
-9b. **[IN REVIEW — PR #97, owner to merge]** Code-health: info bar said "Ambassador — top tier" for every chain's top tier; now " · Top tier" for non-animal chains, animals unchanged (`MergeBoardViewModel.swift:716-719`). 3 new `SelectedItemInfoTests`; 855/855 local (worker); PM checked the diff. Still noticed, not fixed: dead `CardPackType.starShopCost` (`CardSystem.swift:145`); `Reference_Data_Extract.md` §2 vs `Capture_Log.md` price-shelf attribution; parity audit's "Rarity tiers 1★–4★" row.
+9b. **[IN REVIEW — PR #97, owner to merge]** Code-health: info bar said "Ambassador — top tier" for every chain's top tier; now " · Top tier" for non-animal chains, animals unchanged (`MergeBoardViewModel.swift:716-719`). 3 new `SelectedItemInfoTests`; 855/855 local (worker); PM checked the diff. Still noticed, not fixed: `Reference_Data_Extract.md` §2 vs `Capture_Log.md` price-shelf attribution (both files live outside this repo, so the PM leaves them to the owner's research folder).
+9c. **[IN REVIEW — PR #98, owner to merge]** Removed dead `CardPackType.starShopCost` (no callers; duplicated `StarShopItem.starCost`). Parity audit "Rarity tiers" row corrected to 🟡 (cards are common/rare; stars are on packs), two shifted `CardSystem.swift` citations updated. PM did it directly; 852/852 local and in CI (green).
 
 10. **AdMob rewarded-ad integration behind `AdProvider`** (Q5, decided 2026-11-10). **Blocked on owner hands** (AdMob account, app ID, rewarded ad-unit ID). Code side: an `AdMobAdProvider` conforming to the existing protocol, Swift Package dependency, `GADApplicationIdentifier` + SKAdNetwork entries in Info.plist, consent (UMP / App Tracking Transparency) as AdMob requires, keep the existing daily cap and `StubAdProvider` for DEBUG/tests. DoD: build green, tests green, Simulator shows a test rewarded ad and grants the reward.
 
@@ -179,4 +184,5 @@ Default the PM will use unless you object: calendar batch 2 reuses the existing 
 - 2026-11-11 Calendar 3.4 → #88 verified (dates, S9 end, tables, pin 52) and merged on green CI. Next 3.5, 3.6 (need session cards).
 - 2026-11-12 — Full PM run. Reconciled ledger to main `1aa9fde`; ticked 13 stale "merge PR" items on the To-Do page (all already merged/closed). Calendar 3 §3.5 → #89: worker's local run was interrupted at 754 pass / 0 fail, PM reviewed the diff, committed, pushed and opened the PR; CI green, merged (Q12 i). §3.6 → #90 (test-only, 9 tests; 32/32 targeted local; CI green), merged (Q12 i). **Calendar batch 3 complete; content to 2027-06-01.** Batch 4 spec → #91 (docs, owner merges); new Q14. Removed 3 finished worker worktrees. Found reference captures on disk → Queue #9 is next.
 - 2026-11-17 — Scheduled run. Owner had merged #91/#93/#94/#95 (14 Nov); main `7bf2bad` green; ledger + To-Do reconciled (PM ticked t28/t30/t31/t32, refreshed t02; added t35, t36). Calendar 4 §4.1 → **#96** (worker; PM checked the diff; CI green 12m). Code-health → **#97** top-tier label fix (worker; 855/855 local; CI green 9m). Both owner-merge (no auto-merge authorised for them). 4.2 waits for #96 to merge. Removed both worker worktrees (branches pushed). No new decisions.
+- 2026-11-17 (2nd run) — main `7cf3a93` (ledger now tracked; Game Center TODO closed by owner session). Code-health → **#98** (dead `starShopCost` removed, parity rarity row fixed; 852/852 local and in CI, 9m33s). To-Do: t03 ticked, t37 added. Calendar 4.2 still waits for #96. Ledger changes now ship as a docs PR. No new decisions.
 - 2026-11-13 — Scheduled run. Fast-forwarded main to `cb8255d` (#92). No To-Do ticks. Queue #9 parity rows → **#93** (worker; PM verified diff + citations). From its findings: **#94** StoreKit config adds the Kibble Drive product (15/15 IDs match the enum); IAP list corrected 11 → 15 on ledger + To-Do. Code-health: **#95** NotificationManager expiry scheduling uses injected clock (+3 tests, 15/15 local). New Q15 (album completion prize), Q16 (CLAUDE.md rows). CI green on all three (#95 full suite 852/852). No merges (none authorised for these).
