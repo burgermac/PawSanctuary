@@ -1226,20 +1226,33 @@ class MergeBoardViewModel {
 
     /// First mergeable pair found scanning the board in row-major order —
     /// deterministic and cheap, not chosen by any particular relevance metric.
-    /// Excludes bubbled items (not valid merge sources) and pairs already at
-    /// their chain's top tier (merging two of those is a no-op).
-    private func findMergeableHintPair() -> (GridPosition, GridPosition)? {
-        var firstSeen: [String: GridPosition] = [:]
+    /// Excludes pairs already at their chain's top tier (merging two of those
+    /// is a no-op). An *active* bubbled animal counts as a partner for a normal
+    /// one of the same species and level (specs/Spec_MergeFreesBubble.md);
+    /// two bubbled animals never pair (a bubbled piece can't be dragged), and a
+    /// decayed bubble is skipped (it's waiting to be collected for coins).
+    /// The pair is ordered (piece to drag, piece to drop onto), so with a bubble
+    /// the normal animal always comes first — the hint nudges the first toward
+    /// the second.
+    func findMergeableHintPair() -> (GridPosition, GridPosition)? {
+        var firstNormal: [String: GridPosition] = [:]
+        var firstBubble: [String: GridPosition] = [:]
         for r in 0..<rows {
             for c in 0..<cols {
                 let pos = GridPosition(row: r, col: c)
                 guard boardState.isUnlocked(at: pos),
                       let item = boardState.item(at: pos),
-                      item.bubbledAt == nil,
+                      !item.isBubbleDecayed(),
                       ContentRegistry.shared.nextTier(item.chainID, after: item.tier) != nil else { continue }
                 let key = "\(item.chainID)|\(item.tier)"
-                if let firstPos = firstSeen[key] { return (firstPos, pos) }
-                firstSeen[key] = pos
+                if item.bubbledAt == nil {
+                    if let firstPos = firstNormal[key] { return (firstPos, pos) }
+                    if let bubblePos = firstBubble[key] { return (pos, bubblePos) }
+                    firstNormal[key] = pos
+                } else {
+                    if let normalPos = firstNormal[key] { return (normalPos, pos) }
+                    if firstBubble[key] == nil { firstBubble[key] = pos }
+                }
             }
         }
         return nil
@@ -2209,7 +2222,8 @@ class MergeBoardViewModel {
             ) {
                 apply(.merge(outcome))
             } else {
-                // Ineligible pair, a bubbled destination, or the destination
+                // Ineligible pair, a bubbled destination that isn't an active
+                // same-species, same-level match, or the destination
                 // already at its chain's top tier — computeMergeOutcome
                 // returns nil for all three (MergeOutcome.swift), matching
                 // this swap fallback exactly.
