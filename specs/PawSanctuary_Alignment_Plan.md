@@ -193,6 +193,26 @@ The reference's Tasty Travels carries a "light narrative spine" (named character
 
 **Revisit when** there is retention data from real play to read, not before.
 
+### D12 — Orders are fulfilled by production, not by holding *(recorded 17 Nov 2026)*
+
+**The rule.** An adoption order advances only when a **producer spawn or a merge produces the wanted item**, matching chain and tier exactly, +1 per event (`MergeBoardViewModel.updateOrdersAfterMerge`, called from `finishSpawn` and `updateAllAfterMerge`; `AdoptionBoard.creditLine`). An item that merely sits on the board does nothing for an order asking for that same item, and neither does one that arrives any other way: a Dog Tag store purchase, a wildcard purchase, recirculated chest or Smile-bundle items, `.boardItem` order rewards, the free-chest toolbox, or a split leftover. Order generation never looks at the board.
+
+**Status of the decision.** The rule shipped with the order system and was written down only as a doc comment in `MergeBoardViewModel.swift` (the comment, which begins "Chain/tier pairs the player could produce with one merge", sits stranded above `boardTaskCensus`, not above `mergeReadyKeys` where it was meant to be). It was recorded here, and pinned by tests, on 17 Nov 2026 after `Comparison_TravelTown_GossipHarbor_PawSanctuary.md` §5-G found that D3's reasoning had been written as if a bought item fills an order. **This records an existing rule; it does not change any behaviour.**
+
+**Why, as the code comment states it.** The order card tints when the player could fill it with *one more merge*, not when they *hold* the item, because "tinting on 'you hold it' would promise something the game does not deliver". Production-driven fulfilment keeps the merge, not the inventory, as the thing orders reward.
+
+**Contrast with the daily hand-in tasks, on purpose.** Daily hand-in tasks (`Spec_DailyHandInTasks.md`, schema v40) read live off the board (`boardTaskCensus`), so a held creature counts there, and board-space pressure is described as "the mechanic". The game therefore runs two order-like systems with opposite rules. That is deliberate; they should not be "made consistent" without a decision.
+
+**Contrast with the references.** Gossip Harbor fills an order from a held item through a Serve button that appears once the item is on the board (observed live, 17 Nov 2026). Travel Town's mechanism was not observed. The code comment says the references fulfil by dragging the item onto the order. So PawSanctuary differs from the references here, and knowingly.
+
+**Effect on D3.** D3's recirculation reason is untouched: bought items enter the board and feed merges. D3's "highest-intent conversion" reason holds for the **wildcard** (`purchaseWildcard`, "whenever they're one item short", which merges with anything). For the store it holds only loosely: a bought item cannot fill an order directly, it can only be the missing half of a merge whose result one tier up credits an order, and the store's stock is random rather than order-aware (`DogTagStore.makeStock`). D3 itself is not reopened.
+
+**Pinned by** `PawSanctuaryTests/OrderFulfilmentRuleTests.swift`: a store purchase of the exact wanted item does not credit the order, a held item is not swept up by an unrelated event, only the exact chain and tier credits, and a control proves the same order is completed by a merge that produces it. A change that flips any of these fails a test; change this entry first.
+
+**Revisit when** playtest data shows either of these: players stuck with dead copies of an item their order wants, or the Dog Tag store failing to convert. The smaller response to the second is an order-aware store slot (for example one biased to a tier below a wanted tier), which works inside this rule and would need its own spec. Any change to the rule itself should be re-checked against the Phase 2 demand/supply targets before it ships, since order demand is sized on production events.
+
+**Applies to:** every later spec that adds a way for an item to arrive on the board, or that changes how orders count progress. **Does not reopen** D2, D3 or D8.
+
 ---
 
 ## 4. Phase 1 — Foundations
