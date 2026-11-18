@@ -196,7 +196,7 @@ struct OnboardingOverlay: View {
     private var stepHint: String {
         switch step {
         case .rescue: return "Kibble regenerates 1 every 2 min · max 100"
-        case .merge:  return "Merges are free · a new animal auto-spawns after each merge"
+        case .merge:  return "Merges are free · tap the spawner again for more animals"
         // Phase 2c: selling was taught nowhere, which made the coin economy's
         // second channel undiscoverable. Adoption orders pay far more, so the
         // hint has to say both things or it teaches the wrong habit.
