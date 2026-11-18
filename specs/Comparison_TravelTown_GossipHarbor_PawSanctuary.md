@@ -21,7 +21,7 @@ Limits that apply throughout: both reference games' game logic is unreadable (en
 
 Ranked by how much each is likely to matter, with the evidence behind each.
 
-1. **PawSanctuary starts the player with 20 kibble; Gossip Harbor starts at 100.** [code: `startingKibble = 20`, `AnimalSpecies.swift:1705`] [GH-live: 100] [July: 100]. The regen cap (100) and interval (120 s) match every reference measurement, but the opening balance does not. `Spec_SpawnerCooldown.md` says "at 20 starting kibble [the spawner cooldown] cannot realistically trigger in session one", which shows the number was weighed there, but no spec found records why 20 was chosen over 100, and the July finding that the genre leader's player never hit zero energy in 26 minutes bears on D1 and D7. This is the cheapest thing to check and the one most tied to a recorded decision. See §5-A.
+1. **PawSanctuary starts the player with 20 kibble; Gossip Harbor starts at 100.** [code: `startingKibble = 20`, `AnimalSpecies.swift:1705`] [GH-live: 100] [July: 100]. The regen cap (100) and interval (120 s) match every reference measurement, but the opening balance does not. `Spec_SpawnerCooldown.md` says "at 20 starting kibble [the spawner cooldown] cannot realistically trigger in session one", which shows the number was weighed there, but no spec found records why 20 was chosen over 100, and the July finding that the genre leader's player never hit zero energy in 26 minutes bears on D1 and D7. This is the cheapest thing to check and the one most tied to a recorded decision. **Checked 17 Nov 2026 (static):** no rationale exists in history or specs; a player chasing row unlocks can reach zero inside session one; and D7's silence still holds, because the zero-kibble sheet hides every purchase rung until level 5. See §5-A.
 2. **An item already on the board cannot fill an order in PawSanctuary; only a merge that produces it can.** [code: `updateOrdersAfterMerge`, with a doc comment at `MergeBoardViewModel.swift:734-745` calling this a deliberate difference]. In Gossip Harbor a held item fills an order: a Serve button appears once the item is on the board [GH-live]. This is decided in a code comment, not in the Alignment Plan's decision log, and it bears on D3's rationale ("the highest-converting purchase path... a player blocked on one specific item"). See §5-G.
 3. **Every event, calendar and progress-track definition is compiled into the app.** About 3,000 of 30,000 lines (roughly 10%) are authored event content [code], and each 90-day calendar is its own spec, several tasks and an app release. Both references ship events as downloaded content [TT-bundle, GH-bundle]. This is the biggest operating-model difference, and it compounds with D5's "keep feeding the lattice" cost. See §5-B.
 4. **No remote tuning, A/B capability or analytics SDK exists in the code** [code: no matches in source, and the project has no Swift package dependencies]. Travel Town ships two parallel energy configurations in one build [TT-bundle] and both references carry analytics, attribution and crash SDKs. The Alignment Plan §0 names "building without telemetry" as its one real risk; `PlaytestMetrics` is local only. See §5-C.
@@ -58,7 +58,7 @@ Verdict key: **Aligned** (matches what the references show), **Differs, decided*
 | Opening occupancy | About a third playable, the rest sealed [GH-live] [July] | "Bottom 6 rows start locked" (21 of 63 open, 33%) [code] | Aligned |
 | Locked rows hold visible energy caches | 20/10/30/50/100 caches under padlocks [GH-live] | Locked cells hold kibble caches, richer deeper (Task 4.2) [spec] | Aligned |
 | Energy cap and regen | 100, 1 per 120 s, over-cap allowed via rewards [TT-bundle] [GH-live] [July] | `kibbleRegenCap = 100`, `kibbleRegenSecs = 120` [code] | Aligned |
-| Opening energy balance | 100 [GH-live] [July] | `startingKibble = 20` [code] | **Differs, unrecorded** (§5-A) |
+| Opening energy balance | 100 [GH-live] [July] | `startingKibble = 20` [code] | **Differs, unrecorded.** Checked 17 Nov 2026: no rationale in history or specs; D7's gate holds either way (§5-A) |
 | Cost per generator tap | 1 [GH-live] | Spawn cost shown in the info bar; neutral multiplier `2^tier` [code] [spec] | Aligned in principle (D2) |
 | Generator cooldown | "Recharging" countdown with an inline gem skip [July]; a skip-cooldown capability module [TT-bundle] | Per-producer cooldown (25–60 s); family spawners start a 30 s cooldown after a kibble threshold; skip for **2 Dog Tags, flat** via a confirmation dialog, gated on D7 [code] | Aligned in mechanism; **flat price** differs from Gossip Harbor's price scaled to the remaining wait [July] |
 | Idle merge hint | A hand appears after a few seconds and points at a valid merge [GH-live] | `mergeHintIdleDelay = 4 s`, pulse every 1.0 s on one pair [code] | Aligned |
@@ -94,6 +94,42 @@ Not recommendations to change code. Each is a question the references raise, wit
 - **Why it matters:** D1 ("generous supply, designed depletion") and D7 ("no monetization in session one") assume a player reaches a first wall around day 2–3. At 20 kibble and a neutral spawn cost, a new player has roughly 20 spawner taps before the first regen wait. Other faucets (locked-row caches, quest and login rewards) may cover the gap, but no spec found says so.
 - **Cheapest way to settle it:** `PlaytestMetrics` already exists, and `EconomySimulation` models kibble flow. A first-session simulation, or one real fresh-install run timed to the first empty kibble counter, answers whether session one hits zero.
 - **Risk if left:** the first wall could land inside the first session, which would contradict D7's intent without any code breaking.
+
+**Check result (17 Nov 2026, static: source and specs read, game not run).**
+
+*What was established:*
+- **No recorded rationale.** `startingKibble = 20` came in with the initial commit (`233fb80`) and has never changed. The only spec that states it, `Spec_SpawnerCooldown.md`, reports it ("a new game starts with 20") rather than justifying it. No test asserts it, by name or as a literal 20.
+- **D4's own reasoning assumes 100.** The Alignment Plan says "100 kibble at ×1 is a few minutes of tapping" to support the 2–4 minute session target. A new install holds a fifth of that.
+- **Cost per tap is 1 at the base tier**, and a tier-`t` item costs `2^t` (`spawnCost(forTier:)`). Orders pay Dog Tags, coins and XP, not kibble ("kibble is intentionally NOT a merge reward", `autoClaimOrder`), and levels 1–14 pay no kibble (`levelUpReward`). So orders and level-ups do not refill the bag in the opening.
+
+*What the opening budget looks like* (assumptions marked; this is arithmetic, not observed play):
+
+| Source | Amount | Basis |
+|---|---|---|
+| Starting balance | 20 | [code] |
+| Day 1 login reward | 5 | `loginDailyRewards[0]`; a popup is shown on first launch, the grant itself was not traced |
+| Tutorial quest claim | 2 | assumed an Easy quest (`QuestDifficulty.easy.kibbleReward`); not traced |
+| Regen | 1 per 120 s | [code] |
+| Row-3 caches (unlock needs a tier-2 animal, 4 units) | +7 | `lockedRowCacheTier`, value curve `2^(t+1)−1`, 7 cells |
+| Row-4 caches (tier 4, 16 units in total) | +7 | same |
+| Row-5 caches (tier 6, 64 units in total) | +21 | same |
+
+About 27 units are in hand at the start, and rows 3 and 4 return about 14 of the 16 units they cost, so roughly 40 units of play are available before regen matters. Reaching row 5 costs 64 units in total. **A player who chases the next row unlock can therefore reach zero inside session one; a player who only fills the easy orders probably cannot.** Whether a real first session gets there depends on tap rate and which orders are chosen, which only a run can show.
+
+The locked caches total 210 kibble across the six rows (7, 7, 21, 21, 49, 105), which matches the "roughly 210 energy" the July analysis counted on Gossip Harbor's opening board, so they look sized from it [inferred]. They are not a faucet for the opening, though: after row 4 each unlock costs far more than its caches return.
+
+*What reaching zero does:*
+- The first failed spawn calls `recordWallEvent`, which sets `hasReachedFirstWall` (`MergeBoardViewModel.swift:1708-1714`) and opens the "Need More Kibble?" sheet.
+- Before level 5 that sheet shows "You're out of kibble," the count, and "Kibble refills on its own — check back in a bit!", plus the nearest unfinished order. The ad, Dog Tag exchange and bundle rungs are all hidden behind `isMonetizationUnlocked`, which needs both a first wall and level 5 (`MergeBoardView.swift:1291-1302`).
+- **So D7's silence holds even if zero comes early.** No offer appears in session one either way. What changes is the feel: an early wall with nothing to do except wait two minutes per kibble, and Dog Tags earned from orders cannot be exchanged until level 5.
+
+*Verdict:* D7 is safe. D1's "generous supply" and D4's session length are the decisions in question. The reference's July finding (never hit zero in 26 minutes) is about feel and retention, and D9 puts retention ahead of monetization.
+
+*Options for the owner, none implied:*
+1. **Raise the start to 100** (matches Gossip Harbor and D4's own wording). One constant, new installs only, so no migration; existing saves are unaffected because kibble is persisted. No test depends on 20.
+2. **Keep 20 and record why**, so the number stops being unexplained. Reasonable if a small start is meant to make the first regen tick visible.
+3. **Pick a middle value**, for example 50, and check it in a run.
+4. **Measure first.** One timed fresh-install run to the first "out of kibble" sheet gives the real number. The static budget above brackets it but cannot pin it.
 
 ### B. Compile-time events versus downloaded content
 - **Evidence:** about 3,000 of 30,000 lines are authored event content [code]; four 90-day calendars have been specified, each with its own spec, task list, tests and release [spec]; both references load events as content [TT-bundle] [GH-bundle].
