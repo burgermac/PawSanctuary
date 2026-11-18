@@ -1,6 +1,6 @@
 # Three-way comparison — Travel Town, Gossip Harbor, PawSanctuary
 
-**Status: findings only. No code was changed by this document and PawSanctuary was not run for it.** Everything about PawSanctuary comes from reading source and specs, as of `main` at `661e9e4`; nothing was playtested. **One finding has since been acted on:** the opening kibble was raised from 20 to 100 on 17 Nov 2026 (commit `4a739bd` on `tuning/starting-kibble-100`, all 885 tests passing, not yet merged). Where this document says `startingKibble = 20`, that is the state it was read in; §5-A has the outcome. It builds on the two bundle reviews (`TravelTown_Bundle_And_Live_Review.md`, `GossipHarbor_Bundle_And_Live_Review.md`) and does not repeat the feature-by-feature coverage already in `Feature_Parity_Audit.md`. The new axis here is **architecture and operating model**: where logic and content live, how events ship, how the first session and interruptions are handled.
+**Status: findings only. No code was changed by this document. PawSanctuary was read, not run, apart from one short fresh-install run on the iOS Simulator added on 17 Nov 2026 (§5-A, "Live check").** Everything about PawSanctuary comes from reading source and specs, as of `main` at `661e9e4`; nothing was playtested. **One finding has since been acted on:** the opening kibble was raised from 20 to 100 on 17 Nov 2026 (commit `4a739bd` on `tuning/starting-kibble-100`, all 885 tests passing, not yet merged). Where this document says `startingKibble = 20`, that is the state it was read in; §5-A has the outcome. It builds on the two bundle reviews (`TravelTown_Bundle_And_Live_Review.md`, `GossipHarbor_Bundle_And_Live_Review.md`) and does not repeat the feature-by-feature coverage already in `Feature_Parity_Audit.md`. The new axis here is **architecture and operating model**: where logic and content live, how events ship, how the first session and interruptions are handled.
 
 **Does not reopen any recorded decision.** D1–D11 stand. In particular this does not revisit D2b (12-tier chains), D5 (event cadence and three event types), D10 (no chores) or D11 (no named characters or dialogue), even though both references do the opposite; §6 lists where each recorded decision meets a finding.
 
@@ -91,7 +91,7 @@ Not recommendations to change code. Each is a question the references raise, wit
 
 ### A. Opening kibble: 20 versus 100
 
-> **Resolved 17 Nov 2026 (owner decision): option 1, raise to 100.** Commit `4a739bd` on `tuning/starting-kibble-100` (cut from `main`; 885 of 885 tests pass; not yet merged). Three files: the constant in `AnimalSpecies.swift`, the session-one wording in `Spec_SpawnerCooldown.md`, and a dated decision note under D4 in `PawSanctuary_Alignment_Plan.md`. New installs only, no migration. The analysis below is kept as the record of why. Still unmeasured: a real fresh-install session to the first "out of kibble" sheet, which would show whether 100 is the right value or only a better one than 20.
+> **Resolved 17 Nov 2026 (owner decision): option 1, raise to 100.** Commit `4a739bd` on `tuning/starting-kibble-100` (cut from `main`; 885 of 885 tests pass; not yet merged). Three files: the constant in `AnimalSpecies.swift`, the session-one wording in `Spec_SpawnerCooldown.md`, and a dated decision note under D4 in `PawSanctuary_Alignment_Plan.md`. New installs only, no migration. The analysis below is kept as the record of why. A partial fresh-install run followed the same day (see "Live check" at the end of this section). Still unmeasured: a real player's time to the first "out of kibble" sheet, which would show whether 100 is the right value or only a better one than 20.
 
 - **Evidence:** `startingKibble = 20` [code]; Gossip Harbor 100 [GH-live] [July]; July found the leader's player never hit zero in 26 minutes across five levels and treats that as deliberate.
 - **Why it matters:** D1 ("generous supply, designed depletion") and D7 ("no monetization in session one") assume a player reaches a first wall around day 2–3. At 20 kibble and a neutral spawn cost, a new player has roughly 20 spawner taps before the first regen wait. Other faucets (locked-row caches, quest and login rewards) may cover the gap, but no spec found says so.
@@ -132,7 +132,34 @@ The locked caches total 210 kibble across the six rows (7, 7, 21, 21, 49, 105), 
 1. **Raise the start to 100 (chosen 17 Nov 2026)** (matches Gossip Harbor and D4's own wording). One constant, new installs only, so no migration; existing saves are unaffected because kibble is persisted. No test depends on 20.
 2. **Keep 20 and record why**, so the number stops being unexplained. Reasonable if a small start is meant to make the first regen tick visible.
 3. **Pick a middle value**, for example 50, and check it in a run.
-4. **Measure first.** One timed fresh-install run to the first "out of kibble" sheet gives the real number. The static budget above brackets it but cannot pin it.
+4. **Measure first.** One timed fresh-install run to the first "out of kibble" sheet gives the real number. The static budget above brackets it but cannot pin it. (A partial run was done after option 1 was chosen; see below.)
+
+**Live check (17 Nov 2026, iPhone 17 Pro simulator, fresh install, about three minutes of play).**
+
+*Setup and limits.* The app was uninstalled and reinstalled first, so this is a true fresh install; any earlier save on that simulator was lost. The build was the one compiled for the merged change (`startingKibble = 100`). Input was automated, one tool call per tap, so the pace is not a human's. The tutorial was skipped after its first step (rescue), because its popup hid part of the board. The run stopped at a full board, not at zero kibble.
+
+| Moment | Kibble |
+|---|---|
+| Launch, with the Day 1 login popup showing "+5 Kibble" | 105 (no regen timer: above the 100 cap) |
+| After the first rescue tap (tutorial) | 104 |
+| After three free merges: a Lv.3 dog, "New Row Unlocked!" | 104 |
+| After 5 further spawn taps | 99, timer shows 2:00 |
+| After 15 spawn taps in total | 89, timer 1:42 |
+| After 17 spawn taps in total: open area full | 87, timer 1:27 |
+| One more tap: "Board is Full — merge a matching pair to make room" | 87 (a blocked tap costs nothing) |
+
+*What it showed:*
+- **The Day 1 login reward is granted on first launch.** The HUD read 105 behind the popup, so the 5 kibble I had assumed in the static budget is real.
+- **Reaching the first row unlock cost 1 kibble, not 4.** The starting board holds three or four Lv.1 dogs and a toolbox, enough for the three free merges to reach Lv.3. The static budget above priced that unlock at a 4-unit animal and is too high for row 3. Rows 4 and up were not reached, so their costs are still the static figures.
+- **Spawning costs exactly 1 kibble per tap at the base tier**, and 17 taps filled the open area. After that, spending more kibble means merging to free cells. Board space, not the balance, set the pace of spending in the first minutes.
+- **Rewards arrived without any claim tap:** coins went 0 → 97 and Dog Tags 0 → 11 within about three minutes, and two quests were claimable by then. The source was not isolated; adoption orders completed by the merges are the likely one, since orders auto-claim [code]. The first quest set includes "Spend 40 Kibble", which a 20-kibble start could not have reached in session one.
+- **The regen timer appears only below the cap and reads 2:00 at first**, consistent with 120 s. The 5 login kibble sit above the cap and do not regenerate.
+
+*Effect on the earlier verdict.* The static claim that a player chasing row unlocks can reach zero inside session one is weaker than it read: the first unlock is nearly free, and a full board blocks spending before the balance does. It is neither confirmed nor refuted for rows 4 and up. Time to zero for a real player is still unmeasured.
+
+*A tutorial discrepancy.* The first-merge step says "Merges are free · a new animal auto-spawns after each merge" (`OnboardingView.swift:199`). That line is the only place the claim appears in the code, and no animal appeared after the first two merges. A Lv.1 dog did appear after the third, which could be an order reward or an auto-spawn; the cause was not isolated. Treat the tutorial text as unverified and worth a look.
+
+*What would settle the rest:* a recorded session played by a person to the first "out of kibble" sheet, analysed with `scripts/refvideo.swift` as earlier reviews were.
 
 ### B. Compile-time events versus downloaded content
 - **Evidence:** about 3,000 of 30,000 lines are authored event content [code]; four 90-day calendars have been specified, each with its own spec, task list, tests and release [spec]; both references load events as content [TT-bundle] [GH-bundle].
@@ -157,6 +184,7 @@ The locked caches total 210 kibble across the six rows (7, 7, 21, 21, 49, 105), 
 - **Evidence:** `TutorialStep` has three states [code]; Travel Town's tutorial configs are keyed on situations such as no energy left, board full, bubbled items present, an order that could be overshot, no mergeable items [TT-bundle].
 - **Why it matters:** PawSanctuary introduces several mechanics (bubbles, sell vs order, the wall, Dog Tag spend, events) without a contextual teaching moment, which D7's silence in session one makes more important once the gate opens.
 - **Settle it with:** the playtest metrics panel, or a fresh-install walk to the first empty counter and the first bubble.
+- **Seen in the 17 Nov 2026 fresh-install run (§5-A):** the "Board is Full" toast does teach the rule at the moment it matters, which is a point in the three-step design's favour. The first-merge step's "a new animal auto-spawns after each merge" line is not backed by code and may mislead; see §5-A.
 
 ### G. The order-fulfilment rule and the Dog Tag store
 - **Evidence:** PawSanctuary fulfils an order only when a merge produces the wanted item; "an item already sitting on the board does nothing for an order asking for that same item" [code, comment at `MergeBoardViewModel.swift:734-745`]. Gossip Harbor lets a held item fill an order via a Serve button [GH-live]. Separately, D3 allows Dog Tags to buy board items and gives as its main reason that it is "the highest-converting purchase path... a player blocked on one specific item" [spec: Alignment Plan D3], and the Parity Audit lists the contextual "SEE IN STORE" button as only partly matched.
@@ -191,7 +219,7 @@ The locked caches total 210 kibble across the six rows (7, 7, 21, 21, 49, 105), 
 
 ## 8. Suggested order of work
 
-1. **§5-A, opening kibble: done 17 Nov 2026** (raised to 100, `4a739bd`, awaiting merge). What remains is optional: one timed fresh-install run to the first "out of kibble" sheet, to confirm 100 is right and to feed step 5.
+1. **§5-A, opening kibble: done 17 Nov 2026** (raised to 100, `4a739bd`, awaiting merge). A partial fresh-install run was done the same day (§5-A, "Live check"). What remains is optional: a person-played, recorded session to the first "out of kibble" sheet, to confirm 100 is right and to feed step 5.
 2. **§5-G, order-fulfilment rule against D3.** One read of the Dog Tag purchase path against an open order, then record the rule in the decision log or note its effect on D3. No code change implied.
 3. **§5-D, discovery collection.** One decision: record it as out, or add it to the plan. No code until decided.
 4. **§5-C and §5-B together**, as one conversation about launch telemetry and content delivery, since remote tuning and remote content share the same plumbing and the same App Store and privacy questions.
