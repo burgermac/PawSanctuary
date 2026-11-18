@@ -103,6 +103,8 @@ GDD says 5–15 minutes. Reference is 2–4 minutes × 6–10/day.
 
 Session length drives cap, regen, order pacing, notification cadence and — critically — the number of wall events per day, which is the number of offer impressions.
 
+**Decided 17 Nov 2026 (owner): a new game starts with 100 kibble, not 20.** This section's own reasoning ("100 kibble at ×1 is a few minutes of tapping") assumed a 100 balance, but `startingKibble` had been 20 since the initial commit with no recorded rationale. 100 matches the regen cap and Gossip Harbor's measured opening balance. New installs only; existing saves are unaffected. D7 is unaffected: its gate (`isMonetizationUnlocked`) does not depend on the balance, so no offer can appear in session one either way. Found by the three-way review (`Comparison_TravelTown_GossipHarbor_PawSanctuary.md` §5-A). Still unmeasured: a real fresh-install session to the first "out of kibble" sheet.
+
 **Blocks:** Phase 2 tuning, Phase 5.
 
 ### D5 — Sustainable live-ops cadence
