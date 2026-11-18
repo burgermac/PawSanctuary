@@ -6,7 +6,7 @@ iOS merge-2 puzzle game. SwiftUI, solo-developed.
 
 The game is being aligned against **measured** data from three competitors — Gossip Harbor, Travel Town, Tasty Travels — captured and analysed in July 2026.
 
-**Read `specs/PawSanctuary_Alignment_Plan.md` first.** It is the master backlog: phases, the design decisions already made (D1–D12), and the working method. Do not propose changes that contradict a recorded decision without flagging it explicitly.
+**Read `specs/PawSanctuary_Alignment_Plan.md` first.** It is the master backlog: phases, the design decisions already made (D1–D13), and the working method. Do not propose changes that contradict a recorded decision without flagging it explicitly.
 
 Each spec carries its own status (done / draft / parked) at the top — read the spec, not this file, for where it stands.
 
