@@ -806,7 +806,7 @@ struct MergeBoardView: View {
         case .kibbleRefill:
             KibbleRefillSheet(viewModel: viewModel, storeManager: storeManager)
         case .mergeProgression(let chainID):
-            MergeProgressionView(chainID: chainID)
+            MergeProgressionView(chainID: chainID, viewModel: viewModel)
         case .bubblePop(let pos):
             BubblePopSheet(viewModel: viewModel, position: pos)
         }
@@ -1734,13 +1734,18 @@ private enum SheetRoute: Identifiable, Equatable {
 
 private struct MergeProgressionView: View {
     let chainID: String
+    var viewModel: MergeBoardViewModel
 
     var body: some View {
         let chain = ContentRegistry.shared.chain(chainID)
+        // Once per render, not per row. The view model is @Observable, so the
+        // badges update while the sheet is open.
+        let owned = viewModel.ownedItemCounts
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(Array((chain?.tiers ?? []).enumerated()), id: \.offset) { index, tier in
+                        let ownedCount = owned[ChainTierKey(chainID: chainID, tier: index)] ?? 0
                         // Tier row
                         HStack(spacing: 14) {
                             ZStack {
@@ -1753,6 +1758,18 @@ private struct MergeProgressionView: View {
                                     Image(systemName: tier.symbol)
                                         .font(.system(size: 26))
                                         .foregroundColor(tier.tint ?? tier.color)
+                                }
+                            }
+                            .overlay(alignment: .topTrailing) {
+                                // Nothing at zero: no "×0".
+                                if ownedCount > 0 {
+                                    Text("×\(ownedCount)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(red: 0.28, green: 0.50, blue: 0.72)))
+                                        .offset(x: 6, y: -6)
                                 }
                             }
 
@@ -1775,6 +1792,10 @@ private struct MergeProgressionView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(ownedCount > 0
+                            ? "\(tier.name), tier \(index + 1) of \(chain?.tiers.count ?? 0), you have \(ownedCount)"
+                            : "\(tier.name), tier \(index + 1) of \(chain?.tiers.count ?? 0)")
 
                         // Arrow connector between tiers
                         if index < (chain?.maxTier ?? 0) {
