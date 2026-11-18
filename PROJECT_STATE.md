@@ -1,6 +1,6 @@
 # PawSanctuary — Project State (maintained by the project-manager agent)
 
-Last updated: 2026-11-18 (scheduled run: PRs #109, #110)
+Last updated: 2026-11-18 evening (revision run: PRs #112–#116 and the tutorial fix)
 
 ## Autonomy settings (owner edits these)
 
@@ -10,6 +10,28 @@ Last updated: 2026-11-18 (scheduled run: PRs #109, #110)
 - Start worker sessions for independent tasks: **yes**
 - Run on a schedule: **yes** — weekdays ~08:09 local (scheduled task `pawsanctuary-pm-morning`; runs while the app is open)
 - Quiet hours / max parallel workers: 1 writer at a time
+
+## Revision: model on the references (D14, started 18 Nov 2026)
+
+The owner approved an in-depth revision modelled on Travel Town and Gossip Harbor. **D14** supersedes D12: orders are filled from items held on the board, through a delivery button on the card. Work list: `specs/Revision_Plan_ModelOnReferences.md` (task ids 0.1–9.7, recordings R1–R9). The owner follows it on the **PawSanctuary Revision Tracker** page (https://claude.ai/artifact/HxciwddQ9umVwjPJo6EhiB, collection `tasks`); keep it in step with this section.
+
+| Task | State | PR |
+|---|---|---|
+| 0.4 D14 + triage + revision plan + recording guide | review (docs; moved off `feat/chain-viewer-owned-badges` onto their own branch) | #112 |
+| 1.1 `Spec_HeldItemOrders.md` | review; **W1 lane stopped until the owner reads it and answers Q18** | #116 |
+| 2.1 Owned-count badges (commit 3942dd7) | review; worker found no defects; 895/895 tests on the Simulator (PM read the log); CI pending at hand-back; badge look on screen not checked | #115 |
+| 4.1 Tutorial "auto-spawns after each merge" line | review: the line was wrong (merges are free but spawn nothing; animals come from tapping a spawner). Text fixed; 889/889 tests on the Simulator (PM ran them); not checked on screen | #117 |
+| 6.1 `Spec_AlbumGrandPrize.md` | review (docs; CI green); Q19 | #113 |
+| 7.1 `Spec_RemoteEventData.md` | review (docs; CI green); Q20 | #114 |
+| 1.2–1.8, 3.x, 5.x, 6.2, 7.2, 9.x | blocked as the plan says (on 1.1 review, recordings, or owner picks) | — |
+
+Found by the workers, not yet acted on (each is a candidate code-health or follow-up item):
+- **Tutorial merge step is wrong too:** `OnboardingView.swift:188` says "tap an animal, then tap a matching one to merge", but tapping only selects; merging is drag-only (`MergeBoardViewModel.swift:1993-1995`). More misleading than the 4.1 line. Belongs with task 4.2 or a one-line fix like 4.1.
+- **Running-event state is wiped when an event id is not active:** a purchased Kibble Drive's state is dropped (`MergeBoardViewModel.swift:4288`) and the Parallel Board's saved board is lost. Harmless today (compiled calendar), a real risk once events are downloaded; `Spec_RemoteEventData.md` designs around it.
+- **Possible D7 gap:** the Event Pass purchase sheet and the event tiles in the task tray show no `isMonetizationUnlocked` check (`EventPanelView.swift:39-41`, `:55-57`; `TaskTrayView.swift:524-538`). Not checked on a device.
+- **Privacy manifest vs card trading:** the manifest declares no collected data, but card trading sends the Game Center player id to CloudKit (`CardTrading.swift:119`, `:219`). Whether trading ships enabled was not checked. Relevant to the App Store privacy answers.
+- **CLAUDE.md migration naming is stale:** since v29 every additive bump uses `migrateByInjecting`, not a named `migrateVNtoVN+1` helper (`GameStore.swift:702-717`). CLAUDE.md is the owner's file; proposal only.
+- Stale citations in `Feature_Parity_Audit.md` (album rows) and Calendar 2/4 specs (schema v44, `checkEventLifecycle` line); album set rewards do not ramp today (Sanctuary Friends pays 0 kibble).
 
 ## Where the project stands (verified 2026-11-18)
 
@@ -133,6 +155,10 @@ _Mirrored in the owner's pinned **PawSanctuary To-Do** page: https://claude.ai/a
 
 ## Decisions waiting on the owner
 
+- **Q18 — Held-item orders (spec PR #116, blocks W1).** (a) May a wildcard fill an order slot? Options: no, it stays a merge helper / yes, any one slot / build "no" and revisit after recording R2. **Recommend no.** (b) One held item wanted by two orders (or an order and a daily task)? Options: each card checks the board on its own, first delivery wins / allocate each copy to one card / build the first and revisit after R1 step 5. **Recommend first delivery wins** (same as daily tasks today). (c) Red shopping-cart buy button on a missing slot? Options: not in the first build, decide after R1 shows the price / only where the Dog Tag store already stocks the item / every missing slot at a formula price (needs D13's routing rule amended). **Recommend not in the first build.** (d) May new orders look at the board? Options: no / re-roll orders that would be ready on arrival / bias toward held items. **Recommend no.** (Tracker row 1.1q.)
+- **Q19 — Album grand prize (spec PR #113).** Six questions in the spec; the ones that matter: set rewards (recommend the reference's 100→500 kibble, ramping in the order sets are finished), grand prize (recommend 800 kibble + 100 Dog Tags + 5,000 coins), paid by a Claim button (recommended) rather than automatically, saves that already finished every set may claim once (recommended). Answering "go with the recommendations" is enough.
+- **Q20 — Remote event data (spec PR #114).** Eight questions in the spec; the ones that matter: host the file on GitHub Pages (recommended, free) vs Cloudflare vs CloudKit; protect it with a signature made on the owner's Mac (recommended); started events are frozen (recommended); Calendar 4 still ships compiled in before 2027-05-15 (recommended). This is its own sprint under CLAUDE.md rule 5 and needs the owner's go-ahead before any build.
+
 - **Q17 — Chain viewer "See in store" (D13, spec PR #108).** When a player taps it on a tier the Dog Tag store stocks, what happens? (a) the Dog Tag shop opens with that item in view, and the player buys there as usual; (b) the item is bought straight from the chain viewer (the draft spec's reading), with a confirm step showing the tag price. **Recommend (a)**: it matches the measured reference label ("SEE IN STORE"), cannot spend tags by accident, and keeps every purchase on one screen; D9 says not to optimise this for conversion. Owned-count badges do not depend on this and can be built first. (To-Do t38.)
 - **Q10 — Event-ends-soon reminder (PR #70).** Which option? (A) one 6 h reminder for the weekly event only; (A+) same, widened to Sanctuary Circle seasons, max one pending, quiet hours 21:00–09:00 with 19:00 fallback; (B) per-kind reminders incl. Parallel Board and Kibble Drive, daily cap; (C) reuse the 48 h re-engagement slot. **Recommend A+**, and no Kibble Drive reminder (it points at a $4.99 purchase; D9). The spec's §open questions (lead time, gate, copy, streak-day clash) can take the worker's defaults unless you say otherwise.
 - **Q11 — Tier B feel (PR #71).** Accept the plan's defaults? 0.06 s slide + 0.09 s implode to 25% scale; only the dragged item slides; sound/haptic at release; Reduce Motion keeps the 0.15 s delay; no halo (8.6 skipped); fixed-offset start. Options: (a) accept defaults, tune after a look; (b) change specific values. **Recommend (a).**
@@ -140,7 +166,7 @@ _Mirrored in the owner's pinned **PawSanctuary To-Do** page: https://claude.ai/a
 
 - **Q14 — Calendar batch 4 (PR #91).** Same terms as batch 3: may the PM merge build steps 4.1–4.6 itself when tests are green (stop and ask on any failure)? Options: (a) yes; (b) no, owner merges each. **Recommend (a).** Also FYI only: the last weekly event of the batch runs one day past the season's end, which is harmless and resolves itself when batch 5 is added.
 
-- **Q15 — Card album follow-ups from the parity re-read (PR #93).** (i) The reference pays a grand prize for completing the whole album; PawSanctuary pays per album only. Options: (a) PM writes a draft spec for a whole-collection prize (persisted-shape change, schema bump); (b) defer to post-launch. **Recommend (a)** — it is a long-horizon retention hook (D9). (ii) Selling missing cards for kibble (the reference's energy sink): **recommend leave as is** (star-paid jokers) until playtest. (To-Do t33.)
+- **Q15 — Card album follow-ups from the parity re-read (PR #93).** (i) The reference pays a grand prize for completing the whole album; PawSanctuary pays per album only. Options: (a) PM writes a draft spec for a whole-collection prize (persisted-shape change, schema bump); (b) defer to post-launch. **Recommend (a)** — it is a long-horizon retention hook (D9). (ii) Selling missing cards for kibble (the reference's energy sink): **recommend leave as is** (star-paid jokers) until playtest. (To-Do t33.) **Overtaken 18 Nov by D14:** (i) is now task 6.1, spec PR #113 (see Q19); (ii) is now revision task 8.1 (card purchase paid in energy, direction accepted). Close t33 once the owner confirms.
 - **Q16 — CLAUDE.md doc table.** May the PM add rows for `Spec_Phase7_Calendar2/3/4.md` and `Spec_EventExpiryNotifications_Draft.md`? (a) yes; (b) no. **Recommend (a).** (To-Do t34.)
 
 (Q12 answered 2026-11-11: (i) yes auto-merge batch 3 on green, (ii) no holiday handling — see Autonomy settings.)
@@ -164,6 +190,7 @@ Default the PM will use unless you object: calendar batch 2 reuses the existing 
 
 ## Run log
 
+- 2026-11-18 (evening) — Revision run (D14). 0.4 → **#112** (four docs moved off `feat/chain-viewer-owned-badges` via a fresh worktree; owner's working tree untouched; its first CI run failed only because no macOS runner was acquired, re-run started). Workers in separate worktrees: 2.1 → **#115** (895/895), 4.1 → **#117** (PM finished it after the worker's build was cut off by machine load; 889/889 on the Simulator), 6.1 → **#113**, 7.1 → **#114** (docs; CI green; PM spot-checked citations against main). PM wrote 1.1 → **#116**; **W1 stopped for the owner's review** (Q18). New Q18–Q20; Q15 overtaken by D14. Tracker rows updated, 1.1q added. Note: the machine ran a Travel Town process at ~300% CPU throughout (not started by this run), which slowed every build. No merges.
 - 2026-11-10 — PM agent and ledger created. No work started.
 - 2026-11-10 — First full triage. Read all sources; main green, PR #23 the only open PR. Found the live-ops content cliff (last windows 11-13 / 12-01 / 12-03; Kibble Drive has none left), 11 doc discrepancies, and that Phase D is done. Built a 9-item queue, 7 decisions, owner checklist. Nothing implemented, committed, pushed or merged.
 - 2026-11-10 — Run 2. Recorded Q1–Q6 (Q5 = AdMob rewarded-only). PR #54 (CLAUDE.md rewrite + 2 fixes), PR #55 (Q4/Q5 docs). Deleted 16 merged remote branches, pruned dead `qlane` worktree record. PR #23 update blocked by permission classifier (no push made). Started Queue #1 (calendar batch 2 spec). No merges.
