@@ -1702,7 +1702,9 @@ struct DogTagStoreSlot: Codable, Equatable, Identifiable {
 
 let kibbleRegenCap            = 100
 let kibbleRegenSecs           = 120
-let startingKibble            = 20
+// A new game starts at the regen cap, as Gossip Harbor does (measured: 100, and its
+// player never reached zero in a 26-minute first session). Was 20 until 17 Nov 2026.
+let startingKibble            = 100
 let totalInventorySlots       = 18
 let freeInventorySlots        = 6
 let inventoryRow1Cost         = 10
