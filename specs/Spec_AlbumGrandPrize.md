@@ -259,6 +259,8 @@ Task 4 has no dependency on 1 to 3 and can go first if the owner prefers.
 
 ## 12. Open questions for the owner
 
+**Resolved 18 Nov 2026: the owner answered "the way the project manager recommends" (relayed by the coordinating session), so every recommendation below stands:** Q1 (a) the reference's 100 to 500 kibble; Q2 (a) 800 kibble + 100 Dog Tags + 5,000 coins; Q3 (a) a Claim button on a collection banner; Q4 (a) saves that already finished all six sets may claim once; Q5 (a) keyed by collection ID (`"collection.1"`); Q6 (a) the ramp follows completion order (a recorded difference from the reference under D14). Build task 6.2 is now unblocked by the spec but **not started**; it needs its own session and the schema number assigned at build time.
+
 1. **Q1. Set-reward numbers?** (a) The reference's 100 to 500 kibble (1,800 total); (b) today's scale with a fixed shape, 20 to 100 kibble (335); (c) leave as is. **Recommend (a):** the units match 1:1 and the extra is ~4% of daily kibble over two months.
 2. **Q2. Grand prize contents?** (a) 800 kibble + 100 Dog Tags + 5,000 coins; (b) (a) plus a wildcard board item; (c) smaller, 300 kibble + 50 Dog Tags + 2,500 coins. **Recommend (a):** close to the reference, bounded, and no board-space failure case.
 3. **Q3. How is the prize paid?** (a) A Claim button on a collection banner in the album; (b) automatically, like sets today. **Recommend (a):** a visible, claimable goal, and it works the same for saves that are already complete.
