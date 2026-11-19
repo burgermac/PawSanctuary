@@ -24,6 +24,10 @@ final class QuestCoordinatorTests: XCTestCase {
                        "Get 1 animal to Primordial (Tier 12)")
     }
 
+    /// D14 / Q21 option B lowered `maxAchievableOrderTier` at level 51+ from 11 to
+    /// 10. Quest generation caps its tier target with the same function, so a
+    /// max-level player's legendary quests now top out at tier 10: the deep set is
+    /// [9, 10], no longer [9, 10, 11]. (Test name kept so the history reads.)
     func testLegendaryQuestPoolCanTargetTopThreeTiers() {
         let coordinator = QuestCoordinator()
         let dogID = ContentRegistry.animalChainID(.dog)
@@ -34,8 +38,8 @@ final class QuestCoordinatorTests: XCTestCase {
                 seenTopTiers.insert(tier)
             }
         }
-        XCTAssertEqual(seenTopTiers, [9, 10, 11],
-                       "A max-level player's legendary quests should eventually cover all three top tiers")
+        XCTAssertEqual(seenTopTiers, [9, 10],
+                       "A max-level player's legendary quests should eventually cover every tier up to the level cap (10 after Q21 option B)")
     }
 
     // Spec_DailyHandInTasks.md replaced the two daily-challenge tests that
