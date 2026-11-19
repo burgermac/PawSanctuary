@@ -1756,6 +1756,97 @@ final class PersistenceTests: XCTestCase {
         XCTAssertFalse(order.isComplete)
     }
 
+    // MARK: D14 held-item orders (task 1.3; no schema change)
+
+    /// A save written under the D12 rule can hold an unclaimed order credited by
+    /// a merge (`0 < fulfilled < count`). Under D14 that credit means nothing.
+    /// Restore clears it; the order's lines and rewards must be untouched, and a
+    /// claimed order keeps the filled lines that make it read as delivered.
+    private func makePartlyCreditedOrdersState() -> GameState {
+        let dog = ContentRegistry.animalChainID(.dog)
+        let cat = ContentRegistry.animalChainID(.cat)
+        var state = makeSampleState()
+        var claimed = AdoptionOrder(familyIndex: 2, wantedChainID: dog, wantedTier: 2, wantedCount: 1)
+        claimed.lines[0].fulfilled = 1
+        claimed.isClaimed = true
+        state.adoptionOrders = [
+            AdoptionOrder(familyIndex: 0,
+                          lines: [OrderLine(chainID: dog, tier: 4, count: 2, fulfilled: 1),
+                                  OrderLine(chainID: cat, tier: 3, count: 1, fulfilled: 1)],
+                          rewards: [OrderReward(kind: .coins, amount: 300)]),
+            claimed,
+        ]
+        state.urgentOrder = AdoptionOrder(
+            familyIndex: 1,
+            lines: [OrderLine(chainID: cat, tier: 5, count: 1, fulfilled: 1),
+                    OrderLine(chainID: dog, tier: 1, count: 1)],
+            rewards: [OrderReward(kind: .dogTags, amount: 9)])
+        state.urgentOrderTimeRemaining = 600
+        return state
+    }
+
+    @MainActor
+    func testV45SaveWithPartlyCreditedOrderLoadsWithNoCreditAndIntactLines() throws {
+        let dog = ContentRegistry.animalChainID(.dog)
+        let cat = ContentRegistry.animalChainID(.cat)
+        let original = makePartlyCreditedOrdersState()
+        GameStore.saveNow(original, sequence: 1)
+
+        // No shape change and no version bump: the save loads as it was written.
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.adoptionOrders[0].lines[0].fulfilled, 1,
+                       "the stored value is untouched until the game restores it")
+
+        let board = AdoptionBoard()
+        board.restore(from: loaded)
+
+        let order = board.adoptionOrders[0]
+        XCTAssertEqual(order.lines.map(\.fulfilled), [0, 0], "partial D12 credit is cleared")
+        XCTAssertFalse(order.isComplete)
+        XCTAssertEqual(order.id, original.adoptionOrders[0].id, "same order")
+        XCTAssertEqual(order.lines.map(\.chainID), [dog, cat], "lines are intact")
+        XCTAssertEqual(order.lines.map(\.tier), [4, 3])
+        XCTAssertEqual(order.lines.map(\.count), [2, 1])
+        XCTAssertEqual(order.rewards.first?.amount, 300, "rewards are untouched")
+
+        let claimed = board.adoptionOrders[1]
+        XCTAssertTrue(claimed.isClaimed)
+        XCTAssertEqual(claimed.lines[0].fulfilled, 1, "a delivered order keeps its filled lines")
+        XCTAssertTrue(claimed.isComplete)
+
+        let urgent = try XCTUnwrap(board.urgentOrder)
+        XCTAssertEqual(urgent.lines.map(\.fulfilled), [0, 0], "the urgent order is cleared too")
+        XCTAssertEqual(urgent.lines.map(\.tier), [5, 1])
+        XCTAssertEqual(urgent.rewards.first?.amount, 9)
+        XCTAssertEqual(board.urgentOrderTimeRemaining, original.urgentOrderTimeRemaining,
+                       "the urgent timer is not touched")
+    }
+
+    @MainActor
+    func testDeliveredOrderStateRoundTrips() throws {
+        let dog = ContentRegistry.animalChainID(.dog)
+        var delivered = AdoptionOrder(familyIndex: 0,
+                                      lines: [OrderLine(chainID: dog, tier: 3, count: 2)],
+                                      rewards: [OrderReward(kind: .coins, amount: 80)])
+        delivered.markDelivered()
+        var state = makeSampleState()
+        state.adoptionOrders = [delivered]
+        GameStore.saveNow(state, sequence: 1)
+
+        let loaded = try XCTUnwrap(GameStore.load())
+        let board = AdoptionBoard()
+        board.restore(from: loaded)
+
+        let order = try XCTUnwrap(board.adoptionOrders.first)
+        XCTAssertTrue(order.isClaimed, "delivered stays delivered across a save and restore")
+        XCTAssertEqual(order.lines[0].fulfilled, 2)
+        XCTAssertTrue(order.isComplete)
+        XCTAssertEqual(order.rewards.first?.amount, 80)
+        XCTAssertFalse(order.isReady(census: [ChainTierKey(chainID: dog, tier: 3): 2]),
+                       "a delivered order is never ready again")
+    }
+
     func testParallelBoardStateRoundTripsOnAFreshSave() throws {
         var state = makeSampleState()
         let board: [[BoardCell]] = [[BoardCell(position: GridPosition(row: 0, col: 0), item: BoardItem(chainID: "animal.cat", tier: 2), producer: nil, isUnlocked: true)]]
@@ -2116,27 +2207,36 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 20), 5)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 21), 6)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 30), 6)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 31), 9)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 40), 9)
+        // Q21 option B (D14): one step lower than the D12 cap of 9.
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 31), 8)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 40), 8)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 41), 10)
         XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 50), 10)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 51), 11)
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 99), 11)
+        // Q21 option B (D14): one step lower than the D12 cap of 11.
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 51), 10)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 99), 10)
     }
 
-    /// Phase 2b's whole purpose: the top of the chain must be inside the order
-    /// economy. At 15 tiers the cap stopped at 9, stranding stages 10-15.
-    func testEndgameOrdersCanReachTheTopOfTheChain() {
+    /// Phase 2b's purpose was to bring the top of the chain inside the order
+    /// economy (at 15 tiers the cap stopped at 9, stranding the deepest stages).
+    /// D14 / Q21 option B deliberately steps the endgame cap back from the top
+    /// tier to one below it: orders now consume the items they ask for, so a
+    /// top-tier order (2^11 kibble) was the one lever left that made the model
+    /// too hard. The top tier stays reachable by merging; it is just no longer
+    /// *ordered*. Changed from `XCTAssertEqual(cap(60), topTier)`.
+    func testEndgameOrdersAskForOneBelowTheTopOfTheChain() {
         let topTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(.dog))?.maxTier
         XCTAssertEqual(topTier, 11, "animal chains are 12 tiers as of Phase 2b")
-        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 60), topTier,
-                       "the endgame must be able to order the top tier")
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 60), (topTier ?? 0) - 1,
+                       "Q21 option B: the endgame cap is one step below the top tier")
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 60), orderMaxTierLevel51Plus)
+        XCTAssertEqual(maxAchievableOrderTier(forPlayerLevel: 35), orderMaxTierLevels31to40)
     }
 
     func testMaxAchievableOrderTierIsNonDecreasing() {
         // Tier cap must never decrease as the player levels up.
         var prev = maxAchievableOrderTier(forPlayerLevel: 1)
-        for level in 2...30 {
+        for level in 2...99 {
             let current = maxAchievableOrderTier(forPlayerLevel: level)
             XCTAssertGreaterThanOrEqual(current, prev,
                 "Max tier at level \(level) (\(current)) must not be less than level \(level-1) (\(prev))")
@@ -2160,13 +2260,13 @@ final class PersistenceTests: XCTestCase {
                        "Top-tier order roll at level 1 must clamp to the level's max achievable tier")
         XCTAssertEqual(maxTier, 2, "Level 1 max achievable tier")
 
-        // Phase 2b brought the top of the chain back inside the order economy:
-        // at 12 tiers the top item costs 2,048 kibble rather than 16,384, so the
-        // endgame cap reaches it and a top-tier roll is no longer clamped.
+        // Phase 2b brought the top of the chain back inside the order economy;
+        // D14 / Q21 option B then stepped the endgame cap back one tier (11 to
+        // 10), so a top-tier roll at max level is now clamped to tier 10.
         let maxTierHigh = maxAchievableOrderTier(forPlayerLevel: 99)
-        XCTAssertEqual(maxTierHigh, 11, "Endgame cap after the Phase 2b retune")
-        XCTAssertEqual(min(topTierRoll, maxTierHigh), topTierRoll,
-                       "a top-tier roll at max level must not be clamped")
+        XCTAssertEqual(maxTierHigh, 10, "Endgame cap after Q21 option B (was 11)")
+        XCTAssertEqual(min(topTierRoll, maxTierHigh), maxTierHigh,
+                       "a top-tier roll at max level is clamped to the endgame cap")
     }
 
     // MARK: Phase 5 — Coins, weekly/monthly goals, area upgrades

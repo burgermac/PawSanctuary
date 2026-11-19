@@ -1033,6 +1033,13 @@ struct ChainTierKey: Hashable {
     let tier: Int
 }
 
+/// What the board holds against an order card (D14): one flag per basket line,
+/// and whether the whole card is ready to deliver. Derived, never persisted.
+struct OrderHeldState: Equatable {
+    let heldLines: [Bool]
+    let isReady: Bool
+}
+
 /// A specific adoption request from a named family — a basket of one or more
 /// `OrderLine`s, all of which must be filled before the order pays out.
 struct AdoptionOrder: Identifiable, Codable {
@@ -1059,10 +1066,11 @@ struct AdoptionOrder: Identifiable, Codable {
     // the same compatibility approach `rewardDogTags` & co. took when Task 1.1
     // replaced the flat reward fields with `rewards: [OrderReward]`.
     //
-    // Deliberately NOT settable: incrementing "the" fulfilled count is
-    // ambiguous once a basket has several lines, so the two sites that used to
-    // do that (`AdoptionBoard.updateAfterMerge` / `updateUrgentOrderAfterMerge`)
-    // now credit the specific matching line instead.
+    // Deliberately NOT settable: "the" fulfilled count is ambiguous once a basket
+    // has several lines. Since D14 nothing advances it a line at a time at all:
+    // an order is filled by items *held on the board* (`heldState(census:)`), and
+    // `fulfilled` only jumps to `count` when the order is delivered
+    // (`markDelivered()`), so `isComplete` keeps meaning "delivered".
     var wantedChainID: ChainID { lines.first?.chainID ?? ContentRegistry.animalChainID(.dog) }
     var wantedTier: Int        { lines.first?.tier ?? 0 }
     var wantedCount: Int       { lines.reduce(0) { $0 + $1.count } }
@@ -1091,6 +1099,66 @@ struct AdoptionOrder: Identifiable, Codable {
         let wanted = wantedCount
         guard wanted > 0 else { return 0 }
         return min(Double(fulfilled) / Double(wanted), 1.0)
+    }
+
+    // ── Held-item rule (D14, Spec_HeldItemOrders.md §1) ─────────────────
+    //
+    // An order is filled by what the board *holds*, read live from the census
+    // (`MergeBoardViewModel.boardTaskCensus`), never accumulated. Nothing here is
+    // persisted; `fulfilled` is only set when the order is delivered.
+
+    /// Copies wanted per chain/tier, summed across lines (a basket may list the
+    /// same item as two separate lines, which must consume two copies).
+    var wantedCounts: [ChainTierKey: Int] {
+        var counts: [ChainTierKey: Int] = [:]
+        for line in lines {
+            counts[ChainTierKey(chainID: line.chainID, tier: line.tier), default: 0] += line.count
+        }
+        return counts
+    }
+
+    /// Which lines the board holds enough copies for, and whether the whole card
+    /// is ready. Lines naming the same item draw on the census in order, so two
+    /// lines of one Pup need two Pups held, not one. A claimed (delivered) order
+    /// holds nothing. Matching is by chain and tier only; a wildcard is never in
+    /// the census as another chain's item (Q18 a).
+    func heldState(census: [ChainTierKey: Int]) -> OrderHeldState {
+        guard !isClaimed, !lines.isEmpty else {
+            return OrderHeldState(heldLines: lines.map { _ in false }, isReady: false)
+        }
+        var drawn: [ChainTierKey: Int] = [:]
+        let held: [Bool] = lines.map { line in
+            let key = ChainTierKey(chainID: line.chainID, tier: line.tier)
+            drawn[key, default: 0] += line.count
+            return (census[key] ?? 0) >= drawn[key, default: 0]
+        }
+        return OrderHeldState(heldLines: held, isReady: held.allSatisfy { $0 })
+    }
+
+    /// Ready to deliver: every line held. A part-held card is not ready and
+    /// delivers nothing (no partial delivery).
+    func isReady(census: [ChainTierKey: Int]) -> Bool {
+        heldState(census: census).isReady
+    }
+
+    /// Items still missing from the board, summed across the basket.
+    func missingCount(census: [ChainTierKey: Int]) -> Int {
+        wantedCounts.reduce(0) { $0 + max(0, $1.value - (census[$1.key] ?? 0)) }
+    }
+
+    /// One item short of a basket of two or more, judged against the board
+    /// (`Spec_TravelTownReview_Draft.md` §5). The stored `isAlmostThere` can no
+    /// longer fire under D14 because `fulfilled` stays 0 until delivery.
+    func isAlmostThere(census: [ChainTierKey: Int]) -> Bool {
+        guard !isClaimed, wantedCount >= 2 else { return false }
+        return missingCount(census: census) == orderAlmostThereRemaining
+    }
+
+    /// Records delivery: every line reads as filled and the order as claimed, so
+    /// `isComplete` and the "Adopted!" state keep meaning "delivered".
+    mutating func markDelivered() {
+        for i in lines.indices { lines[i].fulfilled = lines[i].count }
+        isClaimed = true
     }
 
     /// Whether `chainID`/`tier` satisfies any still-unfilled line.
@@ -1836,9 +1904,9 @@ func maxAchievableOrderTier(forPlayerLevel level: Int) -> Int {
     case 7...9:   return 4
     case 10...20: return 5
     case 21...30: return 6    // holds through L30 — ratio ~0.56
-    case 31...40: return 9    // tightening; ratio ~0.83
-    case 41...50: return 10   // the ratio crosses 1.00 here — Phase 3's offer moment
-    default:      return 11   // the top of the chain is orderable; ratio ~1.18
+    case 31...40: return orderMaxTierLevels31to40    // Q21 option B (D14): one step lower than the D12 cap of 9
+    case 41...50: return 10   // unchanged by D14
+    default:      return orderMaxTierLevel51Plus      // Q21 option B (D14): one step lower than the D12 cap of 11
     }
 }
 
@@ -2451,3 +2519,14 @@ let loginDailyRewards: [(kibble: Int, dogTags: Int, label: String)] = [
     (kibble: 20, dogTags: 0, label: "Day 6"),
     (kibble: 15, dogTags: 5, label: "Day 7"),
 ]
+
+// MARK: - Held-item orders: tier caps (D14, Q21 option B)
+//
+// The highest 0-based tier an adoption order may ask for, per player-level band,
+// read by `maxAchievableOrderTier(forPlayerLevel:)`. Under D14 an order consumes
+// the items it asks for (D12 let one merge feed several orders and left the item
+// on the board), so the D12 caps were too hard at the top. Option B from the D14
+// economy model lowers two of them one step: levels 31 to 40 (9 to 8) and level
+// 51 and up (11 to 10). Levels 1 to 30 and 41 to 50 are unchanged.
+let orderMaxTierLevels31to40 = 8
+let orderMaxTierLevel51Plus  = 10

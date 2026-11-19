@@ -49,13 +49,32 @@ final class AlmostThereTests: XCTestCase {
         XCTAssertFalse(order.isAlmostThere)
     }
 
-    func testDeliveringTheLastButOneItemTurnsTheNudgeOn() {
-        let board = AdoptionBoard()
-        board.adoptionOrders = [basket([(dog, 3, 1, 0), (cat, 2, 1, 0)])]
-        XCTAssertFalse(board.adoptionOrders[0].isAlmostThere)
-        _ = board.updateAfterMerge(chainID: dog, tier: 3)
-        XCTAssertTrue(board.adoptionOrders[0].isAlmostThere)
-        _ = board.updateAfterMerge(chainID: cat, tier: 2)
-        XCTAssertFalse(board.adoptionOrders[0].isAlmostThere, "complete now")
+    // MARK: Judged against the board (D14)
+    //
+    // `fulfilled` no longer advances as items are produced, so the stored
+    // `isAlmostThere` cannot fire in play; the nudge is judged against what the
+    // board holds. The order card still reads the stored property until task 1.4
+    // (card UI) switches it over.
+
+    private func census(_ held: [(ChainID, Int, Int)]) -> [ChainTierKey: Int] {
+        Dictionary(uniqueKeysWithValues: held.map { (ChainTierKey(chainID: $0.0, tier: $0.1), $0.2) })
+    }
+
+    func testHoldingAllButOneItemTurnsTheNudgeOn() {
+        let order = basket([(dog, 3, 1, 0), (cat, 2, 1, 0)])
+        XCTAssertFalse(order.isAlmostThere(census: [:]), "two short")
+        XCTAssertTrue(order.isAlmostThere(census: census([(dog, 3, 1)])), "one short")
+        XCTAssertFalse(order.isAlmostThere(census: census([(dog, 3, 1), (cat, 2, 1)])),
+                       "everything held is ready, not almost there")
+    }
+
+    func testASingleItemOrderNeverNudgesFromTheBoard() {
+        XCTAssertFalse(basket([(dog, 3, 1, 0)]).isAlmostThere(census: [:]))
+    }
+
+    func testAClaimedOrderNeverNudgesFromTheBoard() {
+        var order = basket([(dog, 3, 1, 0), (cat, 2, 1, 0)])
+        order.isClaimed = true
+        XCTAssertFalse(order.isAlmostThere(census: census([(dog, 3, 1)])))
     }
 }
