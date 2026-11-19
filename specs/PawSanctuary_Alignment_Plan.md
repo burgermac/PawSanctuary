@@ -267,6 +267,8 @@ Daily hand-in tasks already read the live board, so the game now has one rule fo
 
 **5. Other rows.** Direction accepted for rows 3 (fifteen tiers), 6, 7, 11, 14, 15, 16 of the triage as sequenced in the revision plan. Row 3 changes saved tier indices (migration) and needs its own spec before any code. Rows 8 (story: Travel Town portraits or Gossip Harbor story layer) and 12 (telemetry stance) are **still the owner's picks**. Rows 5, 9 and 17 wait on measurements the owner is recording (`Recording_Guide.md`). Rows 18, 19 and 21 stay deferred or cannot converge.
 
+**6. Tier caps (19 Nov 2026).** To keep the economy inside its targets under held-item delivery, the highest tier an order may ask for is one lower at levels 31 to 40 (8) and 51 and up (10). That cap (`maxAchievableOrderTier`) is shared with daily hand-in tasks and legendary quests, and the owner chose to keep it shared, so they ask for one tier lower at those levels too (`Spec_HeldItemOrders.md` §6).
+
 **Applies to:** every spec that changes how orders count progress or how an item leaves the board. **Does not reopen** D2 (row 3 revisits D2b through its own spec), D3, D7, D9, D13.
 
 ---
