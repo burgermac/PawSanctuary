@@ -896,6 +896,9 @@ struct MergeBoardView: View {
                         let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
+                        let tileHighlight = cell.item.flatMap {
+                            taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
+                        }
                         // Producer affordance shimmer gate (Spec_BoardAnimation_Draft.md §5):
                         // `species` is non-nil only for family-spawner tiles, so this is
                         // naturally false for every other producer type.
@@ -919,9 +922,8 @@ struct MergeBoardView: View {
                                     && viewModel.spawnFlights.contains { $0.to == pos },
                                 isMergeImploding: !reduceMotion
                                     && viewModel.mergeImplosions.contains { $0.to == pos },
-                                dailyTaskHighlight: cell.item.flatMap {
-                                    taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
-                                } ?? .none
+                                dailyTaskHighlight: tileHighlight?.level ?? .none,
+                                heldItemFamily: tileHighlight?.family ?? .dailyTask
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
                             if let leaving = departing[pos] {

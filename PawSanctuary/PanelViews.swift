@@ -294,9 +294,10 @@ struct UrgentOrderCooldownCard: View {
 /// state (`Spec_HeldItemOrders.md` §4). A line wanting two copies is two slots.
 ///
 /// The colours are `OrderSlotState`'s (OrderLaneView.swift), shared with the
-/// lane's `CompactOrderSlot` so the two cannot drift apart: muted blue when the
-/// board holds this copy, vivid blue on every slot of a ready card, green once
-/// delivered. Only the colours are shared; the geometry is not, deliberately.
+/// lane's `CompactOrderSlot` so the two cannot drift apart: muted olive green
+/// when the board holds this copy, vivid lime on every slot of a ready card,
+/// green once delivered. Held slots also wear a check mark. Only the colours
+/// are shared; the geometry is not, deliberately.
 private struct OrderLineSlot: View {
     let line: OrderLine
     let state: OrderSlotState
@@ -326,6 +327,11 @@ private struct OrderLineSlot: View {
                     .padding(3)
                     .background(Circle().fill(line.color))
                     .offset(x: 4, y: 4)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if state.showsCheck {
+                OrderSlotCheck(size: 9).offset(x: 5, y: -5)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -371,7 +377,7 @@ struct AdoptionOrderCard: View {
 
     private var timerColor: Color {
         if order.isComplete { return .green }
-        if isReady { return heldItemVividBorder }
+        if isReady { return orderReadyText }
         if isUrgentCountdown { return .red }
         return Color(red: 0.7, green: 0.25, blue: 0.35)
     }
@@ -491,9 +497,6 @@ struct AdoptionOrderCard: View {
                             .foregroundColor(.green)
                         Text("Adopted!").font(.system(size: 8, weight: .bold)).foregroundColor(.green)
                     }
-                } else if isReady {
-                    // Only a ready card has a button: no partial delivery.
-                    OrderDeliverButton(order: order, compact: false, onDeliver: onDeliver)
                 }
             }
             .padding(.top, 8)
@@ -528,7 +531,7 @@ struct AdoptionOrderCard: View {
                     Text(order.isComplete ? "Adopted!" : isReady ? "Ready to deliver!" : "Open — no rush")
                         .font(.system(size: 9))
                         .foregroundColor(order.isComplete ? .green
-                                         : isReady ? heldItemVividBorder : .secondary)
+                                         : isReady ? orderReadyText : .secondary)
                     Spacer()
                 }
                 .padding(.top, 6)
@@ -536,12 +539,22 @@ struct AdoptionOrderCard: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)
-            .fill(isReady ? heldItemVividBlue.opacity(0.10)
+            .fill(isReady ? orderReadyLime.opacity(0.35)
                           : Color.white.opacity(order.isClaimed ? 0.5 : 0.85))
             .overlay(RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(isReady ? heldItemVividBlue.opacity(0.60) : Color.clear, lineWidth: 1.5))
+                .strokeBorder(isReady ? orderReadyLimeBorder : Color.clear, lineWidth: 1.5))
             .shadow(color: .black.opacity(0.05), radius: 4))
         .opacity(order.isClaimed ? 0.7 : 1.0)
+        // The Deliver pill straddles the card's top edge, as Travel Town's GO
+        // does. The sheet leaves room for it: 14pt between cards, 12pt of panel
+        // padding above the first.
+        .overlay(alignment: .topTrailing) {
+            if isReady {
+                OrderDeliverButton(order: order, compact: false, onDeliver: onDeliver)
+                    .padding(.trailing, 16)
+                    .offset(y: -12)
+            }
+        }
     }
 }
 

@@ -23,10 +23,15 @@ import SwiftUI
 
 /// What each `OrderSlotState` looks like (`Spec_HeldItemOrders.md` §4).
 ///
-/// Held items speak the board's highlight language: the same blue, at the same
-/// two intensities, that board tiles use for daily tasks and orders
-/// (`CellView`'s held-item tint), so a muted slot matches its muted tile and a
-/// vivid slot its vivid tile. Delivered stays the existing green "Adopted!".
+/// Orders follow Travel Town's measured highlight (`Triage_ModelOnReferences.md`
+/// §2.10 (d)): a muted olive green while a wanted item is held, a vivid lime on
+/// every slot of a card whose items are all held. The board tiles that hold the
+/// items use the same two greens (`CellView`), so a muted slot matches its muted
+/// tile and a vivid slot its vivid tile. Daily hand-in tasks keep their blue.
+/// Delivered stays the existing green "Adopted!".
+///
+/// A held slot also carries a check mark (`showsCheck`, Gossip Harbor's marker),
+/// so the state never rests on colour alone.
 ///
 /// Extracted so the lane's compact slot and the sheet's full-size
 /// `OrderLineSlot` cannot drift apart. Only the colour logic is shared — the
@@ -36,8 +41,8 @@ extension OrderSlotState {
     var background: Color {
         switch self {
         case .delivered: return Color.green.opacity(0.20)
-        case .ready:     return heldItemVividBlue.opacity(0.38)
-        case .held:      return heldItemMutedBlue.opacity(0.22)
+        case .ready:     return orderReadyLime
+        case .held:      return orderHeldMutedGreen.opacity(0.85)
         case .missing:   return Color.gray.opacity(0.10)
         }
     }
@@ -45,8 +50,8 @@ extension OrderSlotState {
     var border: Color {
         switch self {
         case .delivered: return .green
-        case .ready:     return heldItemVividBorder
-        case .held:      return heldItemMutedBlue.opacity(0.70)
+        case .ready:     return orderReadyLimeBorder
+        case .held:      return orderHeldOliveBorder
         case .missing:   return Color.gray.opacity(0.25)
         }
     }
@@ -62,6 +67,9 @@ extension OrderSlotState {
         }
     }
 
+    /// Held and ready slots wear a small check mark.
+    var showsCheck: Bool { self == .held || self == .ready }
+
     /// Spoken after the item's name: each slot says held or missing.
     var accessibilitySuffix: String {
         switch self {
@@ -73,11 +81,34 @@ extension OrderSlotState {
     }
 }
 
-/// The held-item blues. The vivid pair matches the daily task's Claim button
-/// and its stocked board tile; the muted one its wanted tile.
-let heldItemMutedBlue   = Color(red: 0.24, green: 0.52, blue: 0.85)
-let heldItemVividBlue   = Color(red: 0.05, green: 0.55, blue: 1.00)
-let heldItemVividBorder = Color(red: 0.02, green: 0.42, blue: 0.95)
+// The order-highlight greens, measured from Travel Town's order cards
+// (Triage_ModelOnReferences.md §2.10 (d), ±5 per channel): the slot while a
+// wanted item is held is about #7EA23D, and every slot and tile turns about
+// #C8F777 once the whole card is held. The three below them are not measured:
+// darker edges and text so the pale lime and the olive stay legible on the
+// cream card, and the Deliver pill, which the reference shows only as "green".
+// Daily hand-in tasks keep their own blue (CellView, DailyTaskLaneView).
+let orderHeldMutedGreen  = Color(red: 126.0 / 255, green: 162.0 / 255, blue: 61.0 / 255)   // #7EA23D
+let orderReadyLime       = Color(red: 200.0 / 255, green: 247.0 / 255, blue: 119.0 / 255)  // #C8F777
+let orderHeldOliveBorder = Color(red: 0.36, green: 0.49, blue: 0.14)
+let orderReadyLimeBorder = Color(red: 0.40, green: 0.60, blue: 0.08)
+/// Spoken-in-text green for "Ready to deliver!": dark enough on cream.
+let orderReadyText       = Color(red: 0.20, green: 0.42, blue: 0.06)
+/// The Deliver pill and the slot check mark.
+let orderDeliverGreen    = Color(red: 0.16, green: 0.53, blue: 0.20)
+
+/// The check mark a held slot wears in its top corner.
+struct OrderSlotCheck: View {
+    var size: CGFloat
+    var body: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: size, weight: .heavy))
+            .foregroundColor(.white)
+            .padding(size * 0.35)
+            .background(Circle().fill(orderDeliverGreen))
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 0.75))
+    }
+}
 
 // ============================================================
 // MARK: - DELIVER BUTTON (shared with the sheet)
@@ -100,10 +131,12 @@ extension AdoptionOrder {
     }
 }
 
-/// The Deliver button (`Spec_HeldItemOrders.md` §4). A card shows it only when
-/// every slot is held; it disables itself the moment it is pressed so a double
-/// tap cannot pay twice (the view model re-checks readiness anyway, and a
-/// delivered order cannot be delivered again).
+/// The Deliver button (`Spec_HeldItemOrders.md` §4): a green pill that sits on
+/// the card's top edge, as Travel Town's GO does (`Triage` §2.10 (d)). The card
+/// places it (`.overlay`); a card shows it only when every slot is held. It
+/// disables itself the moment it is pressed so a double tap cannot pay twice (the
+/// view model re-checks readiness anyway, and a delivered order cannot be
+/// delivered again).
 struct OrderDeliverButton: View {
     let order: AdoptionOrder
     var compact: Bool = true
@@ -125,10 +158,10 @@ struct OrderDeliverButton: View {
             Text("Deliver")
                 .font(.system(size: compact ? 10 : 12, weight: .bold))
                 .foregroundColor(.white)
-                .frame(maxWidth: compact ? .infinity : nil, minHeight: compact ? 20 : 28)
-                .padding(.horizontal, compact ? 0 : 14)
-                .background(RoundedRectangle(cornerRadius: compact ? 7 : 9)
-                    .fill(heldItemVividBlue.opacity(isDelivering ? 0.45 : 1)))
+                .padding(.horizontal, compact ? 10 : 16)
+                .frame(minHeight: compact ? 17 : 24)
+                .background(Capsule().fill(orderDeliverGreen.opacity(isDelivering ? 0.45 : 1)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.9), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(isDelivering)
@@ -165,6 +198,11 @@ private struct CompactOrderSlot: View {
                     .offset(x: 3, y: 3)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if state.showsCheck {
+                OrderSlotCheck(size: 6).offset(x: 4, y: -4)
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("\(line.tierName), \(state.accessibilitySuffix)"))
     }
@@ -176,7 +214,7 @@ private struct CompactOrderSlot: View {
 
 private let orderLaneCardWidth: CGFloat = 148
 
-private struct OrderLaneCard: View {
+struct OrderLaneCard: View {
     let order: AdoptionOrder
     /// The live board census (`MergeBoardViewModel.boardTaskCensus`), computed
     /// once for the whole lane.
@@ -227,14 +265,10 @@ private struct OrderLaneCard: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(Capsule().fill(Color.green))
-                } else if isReady && timer != nil {
-                    // The button below takes the timer bar's place, so the
-                    // clock moves up here: it is still running.
-                    Text(timeText)
-                        .font(.system(size: 8, weight: isExpiring ? .bold : .regular))
-                        .foregroundColor(isExpiring ? .red : .secondary)
                 }
             }
+            // Leaves the top-trailing corner to the Deliver pill when it shows.
+            .padding(.trailing, isReady ? 50 : 0)
 
             HStack(spacing: 5) {
                 ForEach(slots.indices, id: \.self) { i in
@@ -246,10 +280,9 @@ private struct OrderLaneCard: View {
 
             Spacer(minLength: 0)
 
-            if isReady {
-                OrderDeliverButton(order: order, onDeliver: onDeliver)
-                    .id(order.id)
-            } else if let timer {
+            if let timer {
+                // The urgent clock keeps its bar whether or not the card is
+                // ready: the Deliver pill sits on the top edge, not down here.
                 VStack(alignment: .leading, spacing: 2) {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -265,6 +298,11 @@ private struct OrderLaneCard: View {
                         .font(.system(size: 8, weight: isExpiring ? .bold : .regular))
                         .foregroundColor(isExpiring ? .red : .secondary)
                 }
+            } else if isReady {
+                Text("Ready to deliver!")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(orderReadyText)
+                    .lineLimit(1)
             } else if order.isAlmostThere(census: census) {
                 // The family speaking (Spec_TravelTownReview_Draft.md §5): with
                 // one item left to put on the board, the count is replaced by a
@@ -294,16 +332,32 @@ private struct OrderLaneCard: View {
         .frame(width: orderLaneCardWidth, height: trayBandHeight, alignment: .topLeading)
         .reportOrderCardFrame(order.id)
         .background(
+            // The cream base is always drawn, with the state tint over it: the
+            // card's text is fixed dark, so a tint over a dark-mode background
+            // alone would leave it unreadable.
             RoundedRectangle(cornerRadius: 12)
-                .fill(order.isClaimed ? Color.green.opacity(0.10)
-                      : isReady ? heldItemVividBlue.opacity(0.13)
-                      : Color(red: 1.0, green: 0.94, blue: 0.95))
+                .fill(Color(red: 1.0, green: 0.94, blue: 0.95))
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .fill(order.isClaimed ? Color.green.opacity(0.10)
+                          : isReady ? orderReadyLime.opacity(0.35)
+                          : Color.clear))
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(order.isClaimed ? Color.green.opacity(0.55)
-                                  : isReady ? heldItemVividBlue.opacity(0.60)
+                                  : isReady ? orderReadyLimeBorder
                                   : Color(red: 0.7, green: 0.25, blue: 0.35).opacity(0.20),
                                   lineWidth: isReady ? 1.5 : 1))
         )
+        // The Deliver pill on the card's top edge. Inside the card, flush with
+        // the edge: the lane is a scroll view exactly as tall as its cards, so
+        // anything hanging above the edge would be clipped.
+        .overlay(alignment: .topTrailing) {
+            if isReady {
+                OrderDeliverButton(order: order, onDeliver: onDeliver)
+                    .id(order.id)
+                    .padding(.top, 2)
+                    .padding(.trailing, 7)
+            }
+        }
     }
 }
 

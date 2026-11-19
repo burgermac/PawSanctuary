@@ -46,6 +46,9 @@ struct CellView: View {
     /// Drives the muted/bright blue tint that tells the player where a card's
     /// pieces are. Fed from `MergeBoardViewModel.heldItemHighlights`.
     var dailyTaskHighlight: MergeBoardViewModel.DailyTaskHighlight = .none
+    /// Whose hue the highlight wears: daily tasks stay blue, orders are Travel
+    /// Town's olive (muted) and lime (vivid). Ignored while the highlight is `.none`.
+    var heldItemFamily: MergeBoardViewModel.HeldItemFamily = .dailyTask
 
     /// Merge-burst sparkles (`Spec_BoardAnimation_Draft.md` §3 Tier A), spawned
     /// when `isAnimating` goes true. Each `MergeSparkleView` runs its own
@@ -301,19 +304,25 @@ struct CellView: View {
     // chain is also a chain tasks ask for — visually won. The highlight existed
     // and did nothing. Both states now carry a real fill *and* a real ring.
 
-    /// A task wants this creature but is still short of it.
+    /// A card wants this creature but is still short of something.
     private var dailyTaskWantedTint: Color {
-        Color(red: 0.24, green: 0.52, blue: 0.85).opacity(0.38)
+        heldItemFamily == .order
+            ? orderHeldMutedGreen.opacity(0.78)
+            : Color(red: 0.24, green: 0.52, blue: 0.85).opacity(0.38)
     }
-    /// Every line of a task this cell serves is stocked — hand it in.
+    /// Every line of a card this cell serves is held — hand it in.
     private var dailyTaskStockedTint: Color {
-        Color(red: 0.05, green: 0.55, blue: 1.00).opacity(0.62)
+        heldItemFamily == .order
+            ? orderReadyLime.opacity(0.95)
+            : Color(red: 0.05, green: 0.55, blue: 1.00).opacity(0.62)
     }
     private var dailyTaskBorder: Color {
-        switch dailyTaskHighlight {
-        case .stocked: return Color(red: 0.02, green: 0.42, blue: 0.95)
-        case .wanted:  return Color(red: 0.24, green: 0.52, blue: 0.85).opacity(0.85)
-        case .none:    return .clear
+        switch (dailyTaskHighlight, heldItemFamily) {
+        case (.stocked, .order):     return orderReadyLimeBorder
+        case (.wanted, .order):      return orderHeldOliveBorder
+        case (.stocked, .dailyTask): return Color(red: 0.02, green: 0.42, blue: 0.95)
+        case (.wanted, .dailyTask):  return Color(red: 0.24, green: 0.52, blue: 0.85).opacity(0.85)
+        case (.none, _):             return .clear
         }
     }
     private var dailyTaskBorderWidth: CGFloat {

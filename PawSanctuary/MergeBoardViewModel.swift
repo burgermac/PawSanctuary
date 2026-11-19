@@ -798,24 +798,40 @@ class MergeBoardViewModel {
         return result
     }
 
+    /// Which kind of card a board tile's highlight comes from. It picks the
+    /// hue: daily hand-in tasks stay blue, orders follow Travel Town's olive
+    /// and lime (`Triage_ModelOnReferences.md` §2.10 (d)).
+    enum HeldItemFamily {
+        case dailyTask
+        case order
+    }
+
+    /// One board tile's highlight: how strong, and whose hue.
+    struct HeldItemHighlight: Equatable {
+        var level: DailyTaskHighlight
+        var family: HeldItemFamily
+    }
+
     /// What the board tiles show (`Spec_HeldItemOrders.md` §4): every unclaimed
     /// daily task and every open adoption order (the urgent one included while
     /// its clock runs). A tile wanted by any of them is muted; vivid if any card
-    /// it serves is ready. Vivid wins when a tile serves several cards. Computed
-    /// once per render pass for the whole board, never per cell.
-    var heldItemHighlights: [ChainTierKey: DailyTaskHighlight] {
+    /// it serves is ready. Vivid wins when a tile serves several cards, and the
+    /// hue is the winning card's. When both are vivid, or both muted, the
+    /// order's green shows. Computed once per render pass for the whole board,
+    /// never per cell.
+    var heldItemHighlights: [ChainTierKey: HeldItemHighlight] {
         let census = boardTaskCensus
-        var result: [ChainTierKey: DailyTaskHighlight] = [:]
+        var result: [ChainTierKey: HeldItemHighlight] = [:]
         for task in dailyChallenges where !task.isClaimed {
-            Self.mergeHighlight(task.lines.map(\.key),
+            Self.mergeHighlight(task.lines.map(\.key), family: .dailyTask,
                                 stocked: task.isStocked(census: census), into: &result)
         }
         for order in adoptionBoardCoordinator.adoptionOrders where !order.isClaimed {
-            Self.mergeHighlight(Array(order.wantedCounts.keys),
+            Self.mergeHighlight(Array(order.wantedCounts.keys), family: .order,
                                 stocked: order.isReady(census: census), into: &result)
         }
         if let urgent = adoptionBoardCoordinator.urgentOrder, !urgent.isClaimed {
-            Self.mergeHighlight(Array(urgent.wantedCounts.keys),
+            Self.mergeHighlight(Array(urgent.wantedCounts.keys), family: .order,
                                 stocked: isUrgentOrderDeliverable && urgent.isReady(census: census),
                                 into: &result)
         }
@@ -823,7 +839,23 @@ class MergeBoardViewModel {
     }
 
     /// `.stocked` wins: a creature serving one finished card and one unfinished
-    /// one should read as "this is ready to hand in."
+    /// one should read as "this is ready to hand in." The winner's family is
+    /// kept; on a tie of strength, an order's green beats a daily task's blue.
+    private static func mergeHighlight(_ keys: [ChainTierKey], family: HeldItemFamily, stocked: Bool,
+                                       into result: inout [ChainTierKey: HeldItemHighlight]) {
+        let incoming = HeldItemHighlight(level: stocked ? .stocked : .wanted, family: family)
+        for key in keys {
+            guard let existing = result[key] else { result[key] = incoming; continue }
+            if incoming.level == .stocked && existing.level == .wanted {
+                result[key] = incoming
+            } else if incoming.level == existing.level && family == .order {
+                result[key] = incoming
+            }
+        }
+    }
+
+    /// Daily-task-only version of `heldItemHighlights`' merge, for
+    /// `dailyTaskHighlights`.
     private static func mergeHighlight(_ keys: [ChainTierKey], stocked: Bool,
                                        into result: inout [ChainTierKey: DailyTaskHighlight]) {
         for key in keys where stocked || result[key] == nil {

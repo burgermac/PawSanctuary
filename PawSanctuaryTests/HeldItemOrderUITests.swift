@@ -19,6 +19,7 @@
 //
 
 import XCTest
+import SwiftUI
 @testable import PawSanctuary
 
 @MainActor
@@ -188,9 +189,9 @@ final class HeldItemOrderUITests: XCTestCase {
         put(vm, dog, tier: wantedTier, col: 1)
 
         let map = vm.heldItemHighlights
-        XCTAssertEqual(map[key(cat, 2)], .wanted, "wanted by a part-held card: muted")
-        XCTAssertEqual(map[key(cat, 4)], .wanted)
-        XCTAssertEqual(map[key(dog, wantedTier)], .stocked, "wanted by a ready card: vivid")
+        XCTAssertEqual(map[key(cat, 2)]?.level, .wanted, "wanted by a part-held card: muted")
+        XCTAssertEqual(map[key(cat, 4)]?.level, .wanted)
+        XCTAssertEqual(map[key(dog, wantedTier)]?.level, .stocked, "wanted by a ready card: vivid")
         XCTAssertNil(map[key(dog, 0)], "control: an item no card wants is not tinted")
     }
 
@@ -205,7 +206,7 @@ final class HeldItemOrderUITests: XCTestCase {
 
         XCTAssertEqual(vm.dailyTaskHighlights[key(dog, wantedTier)], .wanted,
                        "control: the daily task alone would mute the tile")
-        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .stocked,
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)]?.level, .stocked,
                        "the ready order makes it vivid; vivid wins")
     }
 
@@ -220,8 +221,79 @@ final class HeldItemOrderUITests: XCTestCase {
         ], difficulty: .easy, coinReward: 50)]
         put(vm, dog, tier: wantedTier, col: 0)
 
-        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .stocked)
-        XCTAssertEqual(vm.heldItemHighlights[key(cat, 2)], .wanted, "the order's missing item stays muted")
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)]?.level, .stocked)
+        XCTAssertEqual(vm.heldItemHighlights[key(cat, 2)]?.level, .wanted, "the order's missing item stays muted")
+    }
+
+    // MARK: Whose hue a tile wears (orders: green, daily tasks: blue)
+
+    private func dailyTask(_ lines: [DailyTaskLine]) -> DailyChallenge {
+        DailyChallenge(lines: lines, difficulty: .easy, coinReward: 50)
+    }
+
+    func testAnOrderTileWearsTheOrderHueAndADailyTaskTileKeepsBlue() {
+        let vm = makeViewModel()
+        vm.quests.dailyChallenges = [dailyTask([DailyTaskLine(chainID: cat, tier: 1, count: 1)])]
+        put(vm, dog, tier: wantedTier, col: 0)
+        put(vm, cat, tier: 1, col: 1)
+
+        let map = vm.heldItemHighlights
+        XCTAssertEqual(map[key(dog, wantedTier)], .init(level: .stocked, family: .order))
+        XCTAssertEqual(map[key(cat, 1)], .init(level: .stocked, family: .dailyTask),
+                       "a daily-task-only tile stays blue")
+    }
+
+    func testAVividOrderBeatsAMutedDailyTaskAndShowsTheOrderHue() {
+        let vm = makeViewModel()
+        vm.quests.dailyChallenges = [dailyTask([DailyTaskLine(chainID: dog, tier: wantedTier, count: 1),
+                                                DailyTaskLine(chainID: cat, tier: 0, count: 1)])]
+        put(vm, dog, tier: wantedTier, col: 0)
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .init(level: .stocked, family: .order))
+    }
+
+    func testAVividDailyTaskBeatsAMutedOrderAndShowsTheDailyHue() {
+        let vm = makeViewModel()
+        vm.adoptionBoardCoordinator.adoptionOrders = [AdoptionOrder(familyIndex: 0, lines: [
+            OrderLine(chainID: dog, tier: wantedTier, count: 1),
+            OrderLine(chainID: cat, tier: 2, count: 1),
+        ])]
+        vm.quests.dailyChallenges = [dailyTask([DailyTaskLine(chainID: dog, tier: wantedTier, count: 1)])]
+        put(vm, dog, tier: wantedTier, col: 0)
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .init(level: .stocked, family: .dailyTask),
+                       "vivid wins, and the vivid card's hue shows")
+    }
+
+    func testWhenBothAreVividOrBothMutedTheOrderGreenShows() {
+        // Both vivid.
+        var vm = makeViewModel()
+        vm.quests.dailyChallenges = [dailyTask([DailyTaskLine(chainID: dog, tier: wantedTier, count: 1)])]
+        put(vm, dog, tier: wantedTier, col: 0)
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .init(level: .stocked, family: .order))
+
+        // Both muted: each card is short of something else.
+        vm = makeViewModel()
+        vm.adoptionBoardCoordinator.adoptionOrders = [AdoptionOrder(familyIndex: 0, lines: [
+            OrderLine(chainID: dog, tier: wantedTier, count: 1),
+            OrderLine(chainID: cat, tier: 2, count: 1),
+        ])]
+        vm.quests.dailyChallenges = [dailyTask([DailyTaskLine(chainID: dog, tier: wantedTier, count: 1),
+                                                DailyTaskLine(chainID: cat, tier: 0, count: 1)])]
+        put(vm, dog, tier: wantedTier, col: 0)
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .init(level: .wanted, family: .order))
+    }
+
+    func testTheOrderHighlightColoursAreTheMeasuredTravelTownGreens() {
+        func rgb(_ color: Color) -> [Int] {
+            let ui = UIColor(color)
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return [r, g, b].map { Int(($0 * 255).rounded()) }
+        }
+        XCTAssertEqual(rgb(orderHeldMutedGreen), [126, 162, 61], "#7EA23D, Triage §2.10 (d)")
+        XCTAssertEqual(rgb(orderReadyLime), [200, 247, 119], "#C8F777, Triage §2.10 (d)")
+        XCTAssertTrue(OrderSlotState.held.showsCheck && OrderSlotState.ready.showsCheck,
+                      "held slots wear a check mark, so state never rests on colour alone")
+        XCTAssertFalse(OrderSlotState.missing.showsCheck || OrderSlotState.delivered.showsCheck)
     }
 
     func testDeliveredAndOutOfTimeOrdersDoNotLightTheBoard() {
@@ -233,11 +305,11 @@ final class HeldItemOrderUITests: XCTestCase {
             familyIndex: 0, wantedChainID: dog, wantedTier: wantedTier, wantedCount: 1)
         vm.adoptionBoardCoordinator.urgentOrderTimeRemaining = 0
 
-        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .wanted,
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)]?.level, .wanted,
                        "a delivered order adds nothing; an out-of-time urgent order is muted, never vivid")
 
         vm.adoptionBoardCoordinator.urgentOrderTimeRemaining = 60
-        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)], .stocked, "control: on time, vivid")
+        XCTAssertEqual(vm.heldItemHighlights[key(dog, wantedTier)]?.level, .stocked, "control: on time, vivid")
     }
 
     // MARK: The stopgap is gone
