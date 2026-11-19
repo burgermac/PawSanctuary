@@ -10,9 +10,8 @@
 //    counts   items on unlocked board cells, and items in the animal inventory
 //    excludes bubbled items (not yet the player's), other chains, other tiers
 //
-//  It is deliberately not `boardTaskCensus` (board only) or `mergeReadyKeys`
-//  (includes bubbled items); a change that collapses it into either should fail
-//  here.
+//  It is deliberately not `boardTaskCensus` (board only); a change that
+//  collapses it into that should fail here.
 //
 
 import XCTest
