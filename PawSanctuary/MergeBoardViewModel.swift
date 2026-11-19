@@ -768,6 +768,30 @@ class MergeBoardViewModel {
         return counts
     }
 
+    /// How many of each (chain, tier) the player holds right now — what the chain
+    /// viewer's owned-count badges show (`Spec_ChainViewerUpgrades_Draft.md` Task 1).
+    ///
+    /// Counts items on unlocked board cells **plus** the animal inventory, and
+    /// skips bubbled items: a creature still encased is not yet the player's,
+    /// the same reasoning as `boardTaskCensus`. Inventory is included, unlike
+    /// `boardTaskCensus`, because "what do I have" should count a banked item.
+    /// It differs from `mergeReadyKeys` in excluding bubbled items. Power-up
+    /// inventory, materials and producers are other categories and not counted.
+    /// Pinned by `ChainViewerOwnedCountTests`.
+    ///
+    /// Computed once per render by the viewer, not per row, as `dailyTaskHighlights` is.
+    var ownedItemCounts: [ChainTierKey: Int] {
+        var counts: [ChainTierKey: Int] = [:]
+        for cell in flatBoard where cell.isUnlocked {
+            guard let item = cell.item, item.bubbledAt == nil else { continue }
+            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
+        }
+        for case let item? in inventory where item.bubbledAt == nil {
+            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
+        }
+        return counts
+    }
+
     /// How a board cell should be tinted for the daily tasks
     /// (`Spec_DailyHandInTasks.md` D-B — one colour, two intensities).
     enum DailyTaskHighlight {
