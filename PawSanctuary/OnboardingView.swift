@@ -185,7 +185,7 @@ struct OnboardingOverlay: View {
         case .rescue:
             return "Tap the house icon (spawner tile) on the board to rescue your first animal. It costs 1 Kibble."
         case .merge:
-            return "Tap an animal to select it, then tap a matching one to merge them into a higher stage!"
+            return "Drag an animal onto a matching one to merge them into a higher stage!"
         case .quest:
             return "Your rescue and merge counted toward a quest. Tap 'Quests' in the strip above the board to open it and claim your reward."
         case .done:
