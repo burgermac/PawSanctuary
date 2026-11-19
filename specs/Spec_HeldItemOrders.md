@@ -126,6 +126,8 @@ What D14 changes in that model:
 
 **What task 1.2 delivers to the owner:** the ratio table at the report levels before and after (2) is added; if any target band is broken, the proposed lever, which per the model's own header is **order tiers or line counts** (`orderDifficultyBands`, `orderBasketLineCounts`, `orderCyclesPerDay`), never the measured supply values; and the congestion figures. The rule change (1.3) does not ship until the owner has seen those numbers. If (1) alone is judged too hard in play, the honest response is a tier retune in 1.2, not a hidden discount.
 
+**Decided 19 Nov 2026 (owner, Q22 / tracker 1.3q): the order tier cap stays shared.** `maxAchievableOrderTier` also caps daily hand-in tasks and legendary quests, so the option B caps chosen after task 1.2 lower what those can ask for too: tier 11 no longer appears in either at level 51 and up, and tier 9 no longer appears in daily tasks at levels 31 to 40. The owner chose to keep one shared cap rather than give those two their old limits. Task 1.2's numbers already assumed this, because the model's daily-task demand term reads the same function, so nothing needs re-checking.
+
 ## 7. Tasks (one per session; W1 is one lane, run in order)
 
 | Id | Task | Depends on |
