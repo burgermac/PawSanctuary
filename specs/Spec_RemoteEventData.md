@@ -314,6 +314,8 @@ Running-total test pins (`EventSystemTests.swift:858`, `ParallelBoardEventsTests
 
 ## 12. Open owner questions
 
+**Resolved 18 Nov 2026: the owner answered "the way the project manager recommends" (relayed by the coordinating session), so every recommendation below stands:** Q1 (a) GitHub Pages; Q2 (b) HTTPS plus a signature made on the owner's Mac; Q3 (a) started-event pins stored in the save (schema bump); Q4 (a) running events frozen except text and colours; Q5 (a) event windows and track reward tables only; Q6 (a) reject a partly bad file whole and keep the last good one; Q7 (a) Calendar 4's remainder ships compiled in, before 2027-05-15; Q8 (a) a new file takes effect at the next launch. **No hosting, account or key has been set up; setting up GitHub Pages and the signing key are owner-hands steps for task 7.2.** The build (7.2) is its own sprint under CLAUDE.md rule 5 and is **not started**.
+
 1. **Q1 — Where is the file hosted?** (a) GitHub Pages, (b) Cloudflare Pages or R2, (c) CloudKit public database. **Recommend (a).**
 2. **Q2 — How is the file protected?** (a) HTTPS only, (b) HTTPS plus an Ed25519 signature with the key on the owner's Mac, (c) HTTPS plus certificate pinning. **Recommend (b).**
 3. **Q3 — Where do started-event pins live?** (a) in the save, schema v46, so they follow iCloud sync, (b) in a side file next to the save with no schema bump, (c) no pins, rely on validation only. **Recommend (a).**
