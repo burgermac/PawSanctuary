@@ -48,6 +48,38 @@ struct EconomySimulation {
     /// unaffected by that split). 8 cycles ≈ 2 h of active play.
     static let orderCyclesPerDay = 8
 
+    // MARK: What-if levers (proposals only; never applied to the game)
+    //
+    // The order tier cap and the order cycles per day are the two dials this
+    // model's header allows ("tune order tiers"; `orderCyclesPerDay` is a
+    // claim-cadence assumption). They are read through the two helpers below so
+    // a proposed change can be costed here, with its own before/after numbers,
+    // WITHOUT editing the app's `maxAchievableOrderTier` or this file's
+    // `orderCyclesPerDay`. Outside `withLevers` both helpers return the real
+    // values, so every existing assertion is unaffected.
+
+    struct Levers {
+        /// Replacement for `maxAchievableOrderTier(forPlayerLevel:)`.
+        var tierCap: ((Int) -> Int)? = nil
+        /// Replacement for `orderCyclesPerDay`.
+        var cyclesPerDay: Int? = nil
+    }
+
+    private static var activeLevers = Levers()
+
+    static func orderTierCap(level: Int) -> Int {
+        activeLevers.tierCap?(level) ?? maxAchievableOrderTier(forPlayerLevel: level)
+    }
+    static var effectiveCyclesPerDay: Int { activeLevers.cyclesPerDay ?? orderCyclesPerDay }
+
+    /// Runs `body` with `levers` in force and restores the real values after.
+    static func withLevers<T>(_ levers: Levers, _ body: () -> T) -> T {
+        let saved = activeLevers
+        activeLevers = levers
+        defer { activeLevers = saved }
+        return body()
+    }
+
     // MARK: Row
 
     struct Row {
@@ -91,7 +123,7 @@ struct EconomySimulation {
     /// `AdoptionBoard.generateUrgentOrder`. Mirrors
     /// `AdoptionBoard.difficulty(forSlot:)` + `rollTier(difficulty:)` — keep in step.
     static func tierDistribution(level: Int) -> [(tier: Int, p: Double)] {
-        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        let maxTier = orderTierCap(level: level)
         let persistentSlots = slotCount(level: level)
         let totalSlots = persistentSlots + 1   // + the urgent order
         var weights: [Int: Double] = [:]
@@ -115,7 +147,7 @@ struct EconomySimulation {
     static func expectedLineCost(difficulty: OrderDifficulty,
                                  level: Int,
                                  applyCountRoll: Bool) -> Double {
-        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        let maxTier = orderTierCap(level: level)
         var total = 0.0
         for (bandProbability, tiers) in orderDifficultyBands[difficulty] ?? [] {
             let each = bandProbability / Double(tiers.count)
@@ -163,22 +195,35 @@ struct EconomySimulation {
 
     // MARK: Daily hand-in tasks (Spec_DailyHandInTasks.md)
     //
-    // **Coin side only, deliberately — there is no demand-side term below.**
+    // **Two views of the same item cost, depending on which rule is in force.**
     //
-    // A daily task destroys board items, which looks like kibble demand. It is
-    // not, in this model's terms, because PawSanctuary's orders credit on
-    // *merge* and never consume: an order pays out the moment the item is
-    // built, and the item then stays on the board. The kibble that built it is
-    // already counted in `grossDemand`. A hand-in spends that same item a
-    // second time, so counting its build cost again would double-count the
-    // build and report a wall the game does not have.
+    // Under D12 (orders credit when an item is *produced* and nothing leaves
+    // the board) this section carried no demand-side term, and said so: an
+    // order paid out the instant its item was built and the item then stayed
+    // put, so a daily hand-in spent that same item a second time. Counting its
+    // build cost again would have reported a wall the game did not have.
     //
-    // What a hand-in really is here is a **sink on the item stock** — a reason
-    // for the board to clear, which is the thing this economy was previously
-    // short of. `Row`/`ratio` is a flow model (kibble per day in, kibble per
-    // day asked for), so it has nowhere to express a stock drain, and inventing
-    // an overlap fraction to smuggle one in would be tuning the ratio to taste
-    // — exactly what the supply model's own header forbids.
+    // Under D14 (Spec_HeldItemOrders.md: orders are filled from items HELD on
+    // the board, and delivery consumes them) that premise is gone. An order now
+    // removes the items it takes, so an item handed in to a daily task is an
+    // item that is no longer there to fill an order, and the other way round.
+    // The two channels compete for one stock of items, and a daily task's item
+    // cost is real kibble demand on top of the orders'.
+    //
+    // The D12 model (`grossDemand`, `row`) is kept as it was, so the existing
+    // ratio assertions still describe the rule they were written for. The D14
+    // model is a separate set of quantities (`grossDemandHeldItem`,
+    // `heldItemRow`) that adds `dailyTaskKibbleHandedIn` as a demand term.
+    //
+    // What the flow model still cannot express: *which* copy goes where. A held
+    // item can be wanted by an order and a daily task at once and only one of
+    // them gets it (first delivery wins), and the displaced card then needs a
+    // second copy. That is a stock effect; the model charges each card its own
+    // full build cost, which is the right charge when the two never share a
+    // copy and a slight overcharge when they could (see `d12SharedCreditBound`
+    // for the order-to-order version of the same question). No overlap fraction
+    // is applied: that would be tuning the ratio to taste, which the supply
+    // model's own header forbids.
     //
     // The coin side has no such ambiguity: the coins are simply paid.
 
@@ -197,7 +242,7 @@ struct EconomySimulation {
     static func dailyTaskCostDistribution(difficulty: QuestDifficulty,
                                           level: Int) -> [(cost: Double, p: Double)] {
         let band    = difficulty.dailyTaskOrderBand
-        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        let maxTier = orderTierCap(level: level)
 
         func tierOutcomes(_ d: OrderDifficulty) -> [(cost: Double, p: Double)] {
             var weights: [Int: Double] = [:]
@@ -263,11 +308,152 @@ struct EconomySimulation {
     }
 
     static func ordersPerDay(level: Int) -> Double {
-        Double(slotCount(level: level) + 1) * Double(orderCyclesPerDay)   // + the urgent order
+        Double(slotCount(level: level) + 1) * Double(effectiveCyclesPerDay)   // + the urgent order
     }
 
+    /// Kibble the **orders alone** ask for per day: every order generated is
+    /// charged the full build cost `2^tier` of every item on every line.
+    ///
+    /// This is the D12 model's demand and is kept unchanged. See
+    /// `grossDemandHeldItem` for the D14 (held-item) model, which adds the daily
+    /// tasks. The formula itself is still the right charge under D14 for orders;
+    /// what changes is the meaning, not the arithmetic — under D12 it was an
+    /// upper bound on what orders really cost the player (one produced item
+    /// could credit several orders), under D14 every delivered item is consumed
+    /// by exactly one order, so it is the real charge.
     static func grossDemand(level: Int) -> Double {
         ordersPerDay(level: level) * expectedOrderCost(level: level)
+    }
+
+    // MARK: Demand under held-item delivery (D14, Spec_HeldItemOrders.md §6)
+
+    /// Kibble per day the three daily hand-in tasks consume, on top of the
+    /// orders. Equal to `dailyTaskKibbleHandedIn`; named separately so the demand
+    /// build-up reads as "orders + daily tasks".
+    ///
+    /// Assumes the player clears all three tasks every day. For a *demand* term
+    /// that is the upper-bound direction (a player who skips a task asks the
+    /// economy for less), so the D14 ratio below is, if anything, slightly high.
+    static func dailyTaskDemand(level: Int) -> Double {
+        dailyTaskKibbleHandedIn(level: level)
+    }
+
+    /// Kibble per day asked for under D14: orders plus daily tasks.
+    static func grossDemandHeldItem(level: Int) -> Double {
+        grossDemand(level: level) + dailyTaskDemand(level: level)
+    }
+
+    /// The D14 counterpart of `Row`. Supply and recirculation are identical to
+    /// the D12 row (they are supply-side and the rule change does not touch
+    /// them); only the demand differs.
+    struct HeldItemRow {
+        let level: Int
+        let supply: Int
+        let orderDemand: Double
+        let dailyTaskDemand: Double
+        let recirculation: Double
+        var grossDemand: Double { orderDemand + dailyTaskDemand }
+        var netDemand: Double { max(0, grossDemand - recirculation) }
+        var ratio: Double { supply == 0 ? .infinity : netDemand / Double(supply) }
+
+        var description: String {
+            String(format: "L%-3d  supply %4d   orders %8.0f  +dailies %6.0f = demand %8.0f   recirc %7.0f   net %8.0f   ratio %5.2f",
+                   level, supply, orderDemand, dailyTaskDemand, grossDemand, recirculation, netDemand, ratio)
+        }
+    }
+
+    static func heldItemRow(level: Int) -> HeldItemRow {
+        HeldItemRow(level: level,
+                    supply: dailySupply(level: level),
+                    orderDemand: grossDemand(level: level),
+                    dailyTaskDemand: dailyTaskDemand(level: level),
+                    recirculation: recirculation(level: level,
+                                                 deepestTier: assumedDeepestTier(level: level)))
+    }
+
+    // MARK: How much did D12 overstate order demand? (a bound, not a correction)
+
+    /// Deterministic generator so the bound below is reproducible run to run.
+    struct SplitMix64: RandomNumberGenerator {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+    }
+
+    /// Upper bound on the share of order kibble that D12 let the player skip,
+    /// as a fraction of what `grossDemand` charges. **Printed for information;
+    /// never applied to the ratio** (an overlap fraction fed into the ratio would
+    /// be tuning it to taste, which this model's header forbids).
+    ///
+    /// Under D12 a produced item credits *every* open order that wants it, and
+    /// building a tier-T item passes through lower tiers of the same chain on
+    /// the way, so those lower tiers credit open orders too. The most favourable
+    /// case for the player is therefore: of all open lines on one chain, only
+    /// the costliest one (`2^tier × count`) has to be built, and every other
+    /// line on that chain is paid for as a by-product. Under D14 each line must
+    /// be a separate held item and is consumed on delivery, so nothing is free.
+    ///
+    /// Method: sample the set of orders open at once (the persistent slots plus
+    /// the urgent order) with the real band tables, line counts and count roll,
+    /// assign each line a chain uniformly from `families` unlocked chains, and
+    /// compare the sum of line costs (D14) with the sum over chains of the
+    /// costliest line (D12, best case). `families` is an input, not derived,
+    /// because which chains a player has unlocked is the material faucet's
+    /// question and this model does not invent a curve for it.
+    ///
+    /// What this cannot express: it looks at one snapshot of the open orders.
+    /// Under D12 a *leftover* item kept on the board after its order paid out
+    /// could also feed a later order, a stock effect across time that a
+    /// per-snapshot flow model does not see. The true D12 saving could
+    /// therefore be somewhat larger than this bound in a long play session;
+    /// it cannot be smaller than zero and is not a number to tune against.
+    static func d12SharedCreditBound(level: Int, families: Int,
+                                     trials: Int = 20_000,
+                                     seed: UInt64 = 0x5041_5753) -> Double {
+        let maxTier = orderTierCap(level: level)
+        var rng = SplitMix64(state: seed &+ UInt64(level) &* 7919 &+ UInt64(families))
+        let persistentSlots = slotCount(level: level)
+        let chains = max(1, families)
+
+        func rollTier(_ difficulty: OrderDifficulty, _ rng: inout SplitMix64) -> Int {
+            var roll = Double.random(in: 0..<1, using: &rng)
+            let bands = orderDifficultyBands[difficulty] ?? []
+            for band in bands {
+                roll -= band.probability
+                if roll < 0 { return min(band.tiers.randomElement(using: &rng) ?? 0, maxTier) }
+            }
+            return min(bands.last?.tiers.last ?? 0, maxTier)
+        }
+
+        var paidD14 = 0.0
+        var paidD12Best = 0.0
+        for _ in 0..<trials {
+            var difficulties = (0..<persistentSlots).map { AdoptionBoard.difficulty(forSlot: $0) }
+            difficulties.append(.medium)   // the urgent order
+            var costliestPerChain: [Int: Double] = [:]
+            for difficulty in difficulties {
+                let lineCount = Int.random(in: orderBasketLineCounts[difficulty] ?? 1...1, using: &rng)
+                let tiers = (0..<lineCount).map { index in
+                    rollTier(index == 0 ? difficulty : difficulty.basketFillerDifficulty, &rng)
+                }
+                var counts = [Int](repeating: 1, count: lineCount)
+                if lineCount == 1, tiers[0] <= 5, Int.random(in: 1...3, using: &rng) == 1 { counts[0] = 2 }
+                for (tier, count) in zip(tiers, counts) {
+                    let cost = Double(spawnCost(forTier: tier) * count)
+                    paidD14 += cost
+                    let chain = Int.random(in: 0..<chains, using: &rng)
+                    costliestPerChain[chain] = max(costliestPerChain[chain] ?? 0, cost)
+                }
+            }
+            paidD12Best += costliestPerChain.values.reduce(0, +)
+        }
+        guard paidD14 > 0 else { return 0 }
+        return 1 - paidD12Best / paidD14
     }
 
     // MARK: Recirculation
@@ -416,13 +602,58 @@ struct EconomySimulation {
     /// Taken over the hard slot only: a player stages one deep build at a time
     /// and the easy/medium asks are shallow enough to sit inside its shadow.
     static func dailyTaskStagingCells(level: Int) -> Double {
-        let maxTier = maxAchievableOrderTier(forPlayerLevel: level)
+        let maxTier = orderTierCap(level: level)
         var expectedTier = 0.0
         for (bandProbability, tiers) in orderDifficultyBands[.hard] ?? [] {
             let each = bandProbability / Double(tiers.count)
             for t in tiers { expectedTier += each * Double(min(t, maxTier)) }
         }
         return expectedTier + 1.0
+    }
+
+    /// Expected items (= board cells) one order of `difficulty` asks for at
+    /// `level`: the basket's line count, plus the single-line "bring me two of
+    /// these" roll (count 2 one time in three, tiers 0...5 only), which is the
+    /// one place an order line carries more than one item.
+    ///
+    /// Counts items, not kibble, for the same reason `dailyTaskHoldCells` does.
+    /// Unlike a daily task there is no duplicate-collapse step to reason about:
+    /// two lines of one chain and tier on an order stay two lines, still two
+    /// items.
+    static func expectedOrderItems(difficulty: OrderDifficulty, level: Int) -> Double {
+        let sizes = Array(orderBasketLineCounts[difficulty] ?? 1...1)
+        guard !sizes.isEmpty else { return 0 }
+        let maxTier = orderTierCap(level: level)
+        // Probability that a single-line order's one line is eligible for the roll.
+        var pEligible = 0.0
+        for (bandProbability, tiers) in orderDifficultyBands[difficulty] ?? [] {
+            let each = bandProbability / Double(tiers.count)
+            for t in tiers where min(t, maxTier) <= 5 { pEligible += each }
+        }
+        let singleLineItems = 1.0 + pEligible / 3.0
+        return sizes.reduce(0.0) { $0 + ($1 == 1 ? singleLineItems : Double($1)) } / Double(sizes.count)
+    }
+
+    /// Cells the open orders ask the player to hold at once, under D14
+    /// (Spec_HeldItemOrders.md §6 point 5): the persistent slots plus the urgent
+    /// order, if the player is working toward all of them.
+    ///
+    /// Same convention as `dailyTaskHoldCells`: it counts what the cards *want*
+    /// standing on the board simultaneously, not what a player has built so far,
+    /// so it is an upper bound on the cells held at any one instant. The urgent
+    /// order is counted as always present; after a miss it is absent for the
+    /// cooldown, so this slightly overstates.
+    ///
+    /// Under D12 this number was effectively zero: an order took nothing from
+    /// the board, and an item's job was done the moment it was made.
+    static func openOrderHoldCells(level: Int) -> Double {
+        var total = 0.0
+        for slotIndex in 0..<slotCount(level: level) {
+            total += expectedOrderItems(difficulty: AdoptionBoard.difficulty(forSlot: slotIndex),
+                                        level: level)
+        }
+        total += expectedOrderItems(difficulty: .medium, level: level)   // the urgent order
+        return total
     }
 
     // ============================================================
@@ -496,7 +727,7 @@ struct EconomySimulation {
     static func hardOrdersPerDay(level: Int) -> Double {
         let hardSlots = (0..<slotCount(level: level))
             .filter { AdoptionBoard.difficulty(forSlot: $0) == .hard }.count
-        return Double(hardSlots) * Double(orderCyclesPerDay)
+        return Double(hardSlots) * Double(effectiveCyclesPerDay)
     }
 
     /// Tier-0 material equivalents earned per day.
@@ -558,20 +789,24 @@ struct EconomySimulation {
         let supplyProducers: Int
         let hold: Double
         let staging: Double
+        /// Cells held by open adoption orders. Zero in the D12 model (orders took
+        /// nothing from the board); set by `congestionRowHeldItem` for D14.
+        var orderHold: Double = 0
 
         /// Cells left to merge in once everything with a claim on the board has
         /// taken its share.
         var workingCells: Double {
-            Double(capacity - spawners - supplyProducers) - hold - staging
+            Double(capacity - spawners - supplyProducers) - hold - orderHold - staging
         }
         var occupancy: Double {
-            capacity == 0 ? 1 : (Double(spawners + supplyProducers) + hold + staging) / Double(capacity)
+            capacity == 0 ? 1 : (Double(spawners + supplyProducers) + hold + orderHold + staging) / Double(capacity)
         }
 
         var description: String {
-            String(format: "L%-3d fam %2d  cap %2d  spawners %2d  supply %d  hold %4.1f  staging %4.1f  |  working %5.1f  occupancy %3.0f%%",
-                   level, familiesOwned, capacity, spawners, supplyProducers,
-                   hold, staging, workingCells, occupancy * 100)
+            let orders = orderHold > 0 ? String(format: "  orders %4.1f", orderHold) : ""
+            return String(format: "L%-3d fam %2d  cap %2d  spawners %2d  supply %d  hold %4.1f%@  staging %4.1f  |  working %5.1f  occupancy %3.0f%%",
+                          level, familiesOwned, capacity, spawners, supplyProducers,
+                          hold, orders, staging, workingCells, occupancy * 100)
         }
     }
 
@@ -583,6 +818,18 @@ struct EconomySimulation {
                       supplyProducers: supplyProducerCells(level: level),
                       hold: dailyTaskHoldCells(),
                       staging: dailyTaskStagingCells(level: level))
+    }
+
+    /// The D14 board: the D12 row plus the cells the open orders now hold.
+    ///
+    /// Staging is left as the D12 row has it (one deep build at a time, taken
+    /// over the hard band). The hard order and the hard daily task both draw
+    /// from that band, but a player stages one deep build at once, so a second
+    /// staging term would double-count the same working space.
+    static func congestionRowHeldItem(level: Int, familiesOwned: Int) -> CongestionRow {
+        var row = congestionRow(level: level, familiesOwned: familiesOwned)
+        row.orderHold = openOrderHoldCells(level: level)
+        return row
     }
 
     /// The corner this model exists to find: capacity is gated on **deepest
@@ -600,12 +847,24 @@ struct EconomySimulation {
         return worst
     }
 
+    /// `worstCaseCongestion`, on the D14 board.
+    static func worstCaseCongestionHeldItem() -> CongestionRow {
+        var worst = congestionRowHeldItem(level: 1, familiesOwned: 1)
+        for level in reportLevels {
+            for families in 1...totalFamilySpawners {
+                let row = congestionRowHeldItem(level: level, familiesOwned: families)
+                if row.workingCells < worst.workingCells { worst = row }
+            }
+        }
+        return worst
+    }
+
     // MARK: Report
 
     /// Deepest tier a player at `level` is assumed to have reached. Recirculation
     /// scales off this, so the model needs a value per level band.
     static func assumedDeepestTier(level: Int) -> Int {
-        maxAchievableOrderTier(forPlayerLevel: level)
+        orderTierCap(level: level)
     }
 
     static func row(level: Int) -> Row {
@@ -796,4 +1055,151 @@ struct EconomySimulation {
 
     /// Prints `report()`. Call from a debug menu or a breakpoint.
     static func printReport() { print(report()) }
+
+    // MARK: Target bands (the ones `testDemandSupplyRatioMatchesTheTargetCurve` pins)
+
+    /// Whether a ratio at `level` sits inside the target band for that level.
+    /// Mirrors `EconomyTests.testDemandSupplyRatioMatchesTheTargetCurve`; keep in step.
+    /// Levels the test does not pin (for example L15, L25, L45) return `nil`.
+    static func targetBandAllows(ratio: Double, level: Int) -> Bool? {
+        switch level {
+        case 1, 5, 10, 20, 30: return ratio < 0.70
+        case 35, 40:           return ratio >= 0.60 && ratio < 1.00
+        case 50:               return ratio > 1.00
+        case 55, 60:           return ratio > 1.00 && ratio < 1.35
+        default:               return nil
+        }
+    }
+
+    /// The levels the target-band test pins, in order.
+    static let bandLevels = [1, 5, 10, 20, 30, 35, 40, 50, 55, 60]
+
+    /// Levels at which the D14 ratio breaks its band.
+    static func heldItemBandBreaks() -> [Int] {
+        bandLevels.filter { targetBandAllows(ratio: heldItemRow(level: $0).ratio, level: $0) == false }
+    }
+
+    // MARK: Proposed levers (costed here, NOT applied)
+
+    static let proposedLevers: [(name: String, levers: Levers)] = [
+        ("A: orderCyclesPerDay 8 -> 7 (model assumption, no game change)",
+         Levers(cyclesPerDay: 7)),
+        ("B: order tier cap L31-40 9 -> 8, L51+ 11 -> 10",
+         Levers(tierCap: { l in
+             if (31...40).contains(l) { return 8 }
+             if l >= 51 { return 10 }
+             return maxAchievableOrderTier(forPlayerLevel: l)
+         })),
+        ("C: B, and L21-30 6 -> 5",
+         Levers(tierCap: { l in
+             if (21...30).contains(l) { return 5 }
+             if (31...40).contains(l) { return 8 }
+             if l >= 51 { return 10 }
+             return maxAchievableOrderTier(forPlayerLevel: l)
+         })),
+    ]
+
+    /// Whether the D14 ratio never falls as level rises across `reportLevels`
+    /// (the property `EconomyTests.testRatioIsMonotonicallyNonDecreasing` pins for D12).
+    static func heldItemRatioIsMonotone() -> Bool {
+        let ratios = reportLevels.map { heldItemRow(level: $0).ratio }
+        return zip(ratios, ratios.dropFirst()).allSatisfy { $0 <= $1 + 0.001 }
+    }
+
+    static func leverReport() -> String {
+        var out = "PROPOSED LEVERS (D14 model; costed in the model, NOT applied to the game)\n"
+        out += "ratio = orders + daily tasks, net of recirculation. Coin days are the Phase 2c projection under the same lever.\n\n"
+        out += "ratios at " + bandLevels.map { "L\($0)" }.joined(separator: " ") + "\n"
+        func line(_ name: String) -> String {
+            let ratios = bandLevels.map { String(format: "%4.2f", heldItemRow(level: $0).ratio) }.joined(separator: " ")
+            let breaks = heldItemBandBreaks()
+            let verdict = (breaks.isEmpty ? "all bands hold" : "breaks " + breaks.map { "L\($0)" }.joined(separator: ","))
+                        + (heldItemRatioIsMonotone() ? ", monotone" : ", NOT monotone")
+            return name + "\n    " + ratios + "   | " + verdict
+                + String(format: "   | coin days never-sell %.1f / sell-20%% %.1f\n",
+                         daysToFullMap(sells: false), daysToFullMap(sells: true))
+        }
+        out += line("current tuning (D14 model, no lever)")
+        for (name, levers) in proposedLevers {
+            out += withLevers(levers) { line(name) }
+        }
+        out += "\nboard under each lever (reachable board: families after 60 days), D14 rows\n"
+        for (name, levers) in [("current tuning", Levers())] + proposedLevers {
+            out += withLevers(levers) {
+                var l = "  \(name)\n"
+                for level in [20, 30, 35, 55] {
+                    l += "    " + congestionRowHeldItem(level: level, familiesOwned: familiesOwned(level: level, days: 60)).description + "\n"
+                }
+                return l
+            }
+        }
+        return out
+    }
+
+    // MARK: Report — D12 against D14 (task 1.2)
+
+    /// Before/after for the held-item rule: the D12 model (orders only) against
+    /// the D14 model (orders plus daily tasks), plus congestion with and without
+    /// the open orders' held cells. Printed, not asserted; the assertions live in
+    /// `EconomyTests`.
+    static func heldItemReport() -> String {
+        var out = "PawSanctuary economy model — D12 (before) vs D14 held-item delivery (after)\n"
+        out += "before = orders only (D12: orders credit on production, take nothing)\n"
+        out += "after  = orders + the three daily hand-in tasks (D14: delivery consumes the items)\n"
+        out += "bands: <0.70 to L30 · 0.60-1.00 L35/40 · >1.00 at L50 · 1.00-1.35 at L55/60\n\n"
+
+        out += "KIBBLE DEMAND ÷ SUPPLY\n"
+        out += "level supply | before: demand  recirc    net  ratio | dailies | after: demand    net  ratio | delta\n"
+        for level in reportLevels {
+            let before = row(level: level)
+            let after  = heldItemRow(level: level)
+            out += String(format: "L%-3d  %5d  |        %6.0f  %6.0f  %6.0f  %5.2f | %7.0f |       %6.0f  %6.0f  %5.2f | %+5.2f\n",
+                          level, before.supply, before.grossDemand, before.recirculation,
+                          before.netDemand, before.ratio,
+                          after.dailyTaskDemand, after.grossDemand, after.netDemand, after.ratio,
+                          after.ratio - before.ratio)
+        }
+
+        out += "\nTARGET BANDS (the levels EconomyTests pins), ratio to 3 places\n"
+        for level in bandLevels {
+            let before = row(level: level).ratio
+            let after  = heldItemRow(level: level).ratio
+            func verdict(_ r: Double) -> String {
+                (targetBandAllows(ratio: r, level: level) ?? true) ? "in band" : "BREAKS BAND"
+            }
+            out += String(format: "L%-3d  before %.3f (%@)   after %.3f (%@)\n", level,
+                          before, verdict(before) as NSString, after, verdict(after) as NSString)
+        }
+
+        out += "\nHOW MUCH D12 OVERSTATED ORDER DEMAND (upper bound, best-case play, not applied to the ratio)\n"
+        out += "share of order kibble that one produced item could pay for twice, by families unlocked\n"
+        out += "level   1 family   4 families   15 families\n"
+        for level in reportLevels {
+            out += String(format: "L%-3d     %5.1f%%       %5.1f%%        %5.1f%%\n", level,
+                          d12SharedCreditBound(level: level, families: 1) * 100,
+                          d12SharedCreditBound(level: level, families: 4) * 100,
+                          d12SharedCreditBound(level: level, families: 15) * 100)
+        }
+
+        out += "\nBOARD CONGESTION — cells spoken for (upper bound: every card worked toward at once)\n"
+        out += String(format: "daily tasks hold %.1f cells; open orders hold %.1f cells at L1-12 and %.1f at L13+\n",
+                      dailyTaskHoldCells(), openOrderHoldCells(level: 1), openOrderHoldCells(level: 13))
+        out += "(each row: BEFORE = D12 board, AFTER = D14 board with open orders holding cells)\n\n"
+        for level in reportLevels {
+            for families in [1, totalFamilySpawners / 2, totalFamilySpawners] {
+                out += "before " + congestionRow(level: level, familiesOwned: families).description + "\n"
+                out += "after  " + congestionRowHeldItem(level: level, familiesOwned: families).description + "\n"
+            }
+        }
+        out += "\nworst corner before: " + worstCaseCongestion().description + "\n"
+        out += "worst corner after:  " + worstCaseCongestionHeldItem().description + "\n"
+
+        out += "\nREACHABLE BOARD (families derived from the material faucet after 60 days)\n"
+        for level in reportLevels {
+            let fam = familiesOwned(level: level, days: 60)
+            out += "before " + congestionRow(level: level, familiesOwned: fam).description + "\n"
+            out += "after  " + congestionRowHeldItem(level: level, familiesOwned: fam).description + "\n"
+        }
+        return out
+    }
 }

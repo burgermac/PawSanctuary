@@ -789,6 +789,207 @@ final class EconomyTests: XCTestCase {
         print(EconomySimulation.report())
     }
 
+    /// Prints the D12-against-D14 comparison (task 1.2). Not an assertion.
+    func testPrintHeldItemEconomyReport() {
+        print(EconomySimulation.heldItemReport())
+        print(EconomySimulation.leverReport())
+    }
+
+    // MARK: Task 1.2 — held-item delivery (D14, Spec_HeldItemOrders.md §6)
+    //
+    // The D12 assertions above are untouched and still describe the D12 model.
+    // These pin the D14 model's own facts. They deliberately do NOT assert the
+    // D14 ratio at the levels where it leaves the target bands (L30, L35, L40,
+    // L55, L60): `testPrintHeldItemEconomyReport` prints that curve and the PR
+    // proposes a lever for it, which is the owner's call.
+
+    /// The per-order charge `grossDemand` uses is only a fair charge under D14 if
+    /// the model's expected order cost matches what the generator really rolls.
+    /// Under D14 every item is consumed by exactly one order, so this number is
+    /// the real kibble cost of an order, not an upper bound.
+    func testTheModelsOrderCostMatchesWhatIsActuallyGenerated() {
+        let board = AdoptionBoard()
+        let dog = ContentRegistry.animalChainID(.dog)
+        let level = 45
+        for difficulty in OrderDifficulty.allCases {
+            let slot = orderSlotDifficultyPattern.firstIndex(of: difficulty) ?? 0
+            let sample = 8_000
+            var total = 0
+            for _ in 0..<sample {
+                total += orderBuildCost(lines: board.generateOrder(unlockedChainIDs: [dog],
+                                                                   playerLevel: level,
+                                                                   forSlot: slot).lines)
+            }
+            let measured = Double(total) / Double(sample)
+            let modelled = EconomySimulation.expectedOrderCost(difficulty: difficulty, level: level)
+            XCTAssertEqual(measured, modelled, accuracy: modelled * 0.12,
+                           "\(difficulty.rawValue): generator averages \(measured) kibble, model says \(modelled)")
+        }
+    }
+
+    /// The D14 demand is the D12 demand plus the daily tasks, so it can never be
+    /// lower, and the ratio moves the same way.
+    func testHeldItemDemandIsNeverBelowTheD12Demand() {
+        for level in EconomySimulation.reportLevels {
+            let before = EconomySimulation.row(level: level)
+            let after  = EconomySimulation.heldItemRow(level: level)
+            XCTAssertEqual(after.orderDemand, before.grossDemand, accuracy: 0.0001,
+                           "L\(level): the order half of the demand is the same formula")
+            XCTAssertEqual(after.grossDemand, EconomySimulation.grossDemandHeldItem(level: level), accuracy: 0.0001)
+            XCTAssertGreaterThan(after.grossDemand, before.grossDemand, "L\(level)")
+            XCTAssertGreaterThan(after.ratio, before.ratio, "L\(level)")
+            XCTAssertEqual(after.supply, before.supply, "supply is measured and untouched")
+            XCTAssertEqual(after.recirculation, before.recirculation, accuracy: 0.0001,
+                           "recirculation is supply-side and untouched")
+        }
+    }
+
+    /// The daily-task term is real kibble: positive at every level, never falling
+    /// as the tier cap rises, and the same number the coin side already enumerates.
+    func testTheDailyTaskDemandTermIsPositiveAndRisesWithLevel() {
+        let terms = EconomySimulation.reportLevels.map { EconomySimulation.dailyTaskDemand(level: $0) }
+        for (level, term) in zip(EconomySimulation.reportLevels, terms) {
+            XCTAssertGreaterThan(term, 0, "L\(level)")
+            XCTAssertEqual(term, EconomySimulation.dailyTaskKibbleHandedIn(level: level), accuracy: 0.0001)
+        }
+        for (a, b) in zip(terms, terms.dropFirst()) {
+            XCTAssertLessThanOrEqual(a, b + 0.001, "a deeper tier cap must not make the dailies cheaper")
+        }
+    }
+
+    /// Wherever the D14 ratio is still inside the target band it is asserted
+    /// there; the levels that leave the bands are covered by the printed report.
+    func testTheD14RatioStillMeetsTheBandsWhereItDoes() {
+        for level in [1, 5, 10, 20] {
+            XCTAssertLessThan(EconomySimulation.heldItemRow(level: level).ratio, 0.70,
+                              "L\(level) must stay comfortable under D14")
+        }
+        XCTAssertGreaterThan(EconomySimulation.heldItemRow(level: 50).ratio, 1.00,
+                             "the first wall is still in L41-50 under D14")
+    }
+
+    func testTheD14RatioIsMonotonicallyNonDecreasing() {
+        XCTAssertTrue(EconomySimulation.heldItemRatioIsMonotone(),
+                      "difficulty must never fall as the player levels under D14 either")
+    }
+
+    /// `heldItemBandBreaks` is the model's own record of where D14 leaves the
+    /// bands. It must agree with `targetBandAllows`, which mirrors the D12 test.
+    func testTheBandCheckMirrorsTheD12AssertionOnTheD12Model() {
+        for level in EconomySimulation.bandLevels {
+            XCTAssertEqual(EconomySimulation.targetBandAllows(
+                ratio: EconomySimulation.row(level: level).ratio, level: level), true,
+                           "L\(level): the D12 model satisfies its own band, which this helper mirrors")
+        }
+    }
+
+    /// The what-if harness must leave the real model alone: nothing leaks out of
+    /// `withLevers`, and a lever really does move the answer inside it.
+    func testTheLeverHarnessRestoresTheRealModel() {
+        let before = EconomySimulation.heldItemRow(level: 35).ratio
+        let moved = EconomySimulation.withLevers(.init(cyclesPerDay: 7)) {
+            EconomySimulation.heldItemRow(level: 35).ratio
+        }
+        XCTAssertLessThan(moved, before, "fewer cycles a day must lower the demand")
+        XCTAssertEqual(EconomySimulation.heldItemRow(level: 35).ratio, before, accuracy: 0.0000001,
+                       "the real model is back as soon as the closure returns")
+        XCTAssertEqual(EconomySimulation.effectiveCyclesPerDay, EconomySimulation.orderCyclesPerDay)
+    }
+
+    // The congestion half.
+
+    /// Closed-form items per order, so a change to the line-count table or the
+    /// count roll fails loudly here rather than silently moving the board figures.
+    func testExpectedOrderItemsFollowTheBasketTables() {
+        // L20: every easy/medium tier is <= 5, so the "two of these" roll can fire.
+        XCTAssertEqual(EconomySimulation.expectedOrderItems(difficulty: .easy, level: 20), 4.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(EconomySimulation.expectedOrderItems(difficulty: .medium, level: 20),
+                       0.5 * (4.0 / 3.0) + 0.5 * 2.0, accuracy: 1e-9)
+        XCTAssertEqual(EconomySimulation.expectedOrderItems(difficulty: .hard, level: 20), 2.5, accuracy: 1e-9,
+                       "a hard basket is 2 or 3 lines and never rolls the count-2 bonus")
+    }
+
+    /// Sampled against the real generator, as the daily-task hold figure is.
+    func testOpenOrderCellsMatchWhatTheGeneratorActuallyAsksFor() {
+        let board = AdoptionBoard()
+        let dog = ContentRegistry.animalChainID(.dog)
+        for level in [5, 45] {
+            for difficulty in OrderDifficulty.allCases {
+                let slot = orderSlotDifficultyPattern.firstIndex(of: difficulty) ?? 0
+                let sample = 6_000
+                var items = 0
+                for _ in 0..<sample {
+                    items += board.generateOrder(unlockedChainIDs: [dog], playerLevel: level, forSlot: slot).wantedCount
+                }
+                let measured = Double(items) / Double(sample)
+                let modelled = EconomySimulation.expectedOrderItems(difficulty: difficulty, level: level)
+                XCTAssertEqual(measured, modelled, accuracy: 0.1,
+                               "L\(level) \(difficulty.rawValue): generator asks for \(measured) items, model says \(modelled)")
+            }
+        }
+    }
+
+    /// Under D14 the open orders hold cells, so the board is strictly tighter than
+    /// under D12 by exactly that many cells, and the orders' own claim fits inside
+    /// the unlocked board at every report level.
+    func testOpenOrdersHoldCellsInsideTheUnlockedBoard() {
+        for level in EconomySimulation.reportLevels {
+            let capacity = EconomySimulation.unlockedCells(
+                deepestTier: EconomySimulation.assumedDeepestTier(level: level))
+            let orders = EconomySimulation.openOrderHoldCells(level: level)
+            XCTAssertGreaterThan(orders, 0, "L\(level)")
+            XCTAssertLessThan(orders + EconomySimulation.dailyTaskHoldCells()
+                              + EconomySimulation.dailyTaskStagingCells(level: level),
+                              Double(capacity),
+                              "L\(level): orders, dailies and staging must fit on the unlocked board")
+            for families in [1, EconomySimulation.totalFamilySpawners] {
+                let before = EconomySimulation.congestionRow(level: level, familiesOwned: families)
+                let after  = EconomySimulation.congestionRowHeldItem(level: level, familiesOwned: families)
+                XCTAssertEqual(before.orderHold, 0)
+                XCTAssertEqual(after.orderHold, orders, accuracy: 1e-9)
+                XCTAssertEqual(before.workingCells - after.workingCells, orders, accuracy: 1e-9,
+                               "L\(level) fam \(families)")
+                XCTAssertGreaterThan(after.occupancy, before.occupancy)
+            }
+        }
+    }
+
+    /// One more persistent slot from L13 means one more open order.
+    func testOpenOrderCellsStepUpWhenTheFifthSlotOpens() {
+        XCTAssertGreaterThan(EconomySimulation.openOrderHoldCells(level: 13),
+                             EconomySimulation.openOrderHoldCells(level: 12))
+        XCTAssertEqual(EconomySimulation.openOrderHoldCells(level: 12),
+                       EconomySimulation.openOrderHoldCells(level: 1), accuracy: 1e-9,
+                       "the slot count, not the level, drives the cells held (at equal tier caps)")
+    }
+
+    /// The tightest D14 board is strictly tighter than the tightest D12 one. This
+    /// is stated, not judged: the PR reports where it goes below zero and why that
+    /// number is an upper bound.
+    func testTheD14BoardIsTighterThanTheD12BoardAtItsWorst() {
+        XCTAssertLessThan(EconomySimulation.worstCaseCongestionHeldItem().workingCells,
+                          EconomySimulation.worstCaseCongestion().workingCells)
+    }
+
+    // The overstatement bound.
+
+    /// More chains in play means fewer coincidences, so the share D12 could skip
+    /// falls as families are unlocked, and it is a proper fraction throughout.
+    func testTheD12OverstatementBoundFallsAsFamiliesAreUnlocked() {
+        for level in [5, 20, 45] {
+            let one     = EconomySimulation.d12SharedCreditBound(level: level, families: 1)
+            let four    = EconomySimulation.d12SharedCreditBound(level: level, families: 4)
+            let fifteen = EconomySimulation.d12SharedCreditBound(level: level, families: 15)
+            XCTAssertGreaterThan(one, four, "L\(level)")
+            XCTAssertGreaterThan(four, fifteen, "L\(level)")
+            XCTAssertGreaterThanOrEqual(fifteen, 0, "L\(level)")
+            XCTAssertLessThan(one, 1, "L\(level)")
+        }
+        XCTAssertEqual(EconomySimulation.d12SharedCreditBound(level: 20, families: 4),
+                       EconomySimulation.d12SharedCreditBound(level: 20, families: 4),
+                       "the bound is seeded, so it is reproducible")
+    }
+
     // MARK: Gap_Analysis_Round2 3.7 — the VIP ladder
 
     func testVIPTiersAreSequentialStartingAt1() {
