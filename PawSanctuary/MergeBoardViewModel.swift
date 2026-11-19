@@ -1685,12 +1685,18 @@ class MergeBoardViewModel {
     /// board has no room; a bonus should never itself trigger a "Board Full"
     /// complaint. Free (cost: 0) and routed through `finishSpawn` so it still
     /// counts as a rescue and grants XP.
-    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int, from: GridPosition? = nil) {
+    ///
+    /// `bonusRoll` and `legendaryRoll` exist only so a test can force the two
+    /// dice (the defaults are the production rolls, unchanged); the landing
+    /// cell is still chosen at random among the empty unlocked cells.
+    func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int, from: GridPosition? = nil,
+                              bonusRoll: Double = Double.random(in: 0..<1),
+                              legendaryRoll: Double = Double.random(in: 0..<1)) {
         let chance = bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
-        guard chance > 0, Double.random(in: 0..<1) < chance,
+        guard chance > 0, bonusRoll < chance,
               let target = emptyUnlockedCells.randomElement() else { return }
         let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? spawnTier
-        let isLegendary = Double.random(in: 0..<1) < legendaryBonusShare
+        let isLegendary = legendaryRoll < legendaryBonusShare
         let bonusTier = isLegendary ? min(spawnTier + 1, maxTier) : spawnTier
         let label = ContentRegistry.shared.tier(chainID, bonusTier)?.name ?? species.name
         enqueueToast(Toast(kind: .info(isLegendary ? "✨ Legendary! +1 \(label)" : "🍀 Lucky! +1 \(label)")))
