@@ -169,6 +169,8 @@ Replace `OrderFulfilmentRuleTests.swift` (its four D12 tests) with a D14 suite. 
 
 ## 10. Owner questions (also in `PROJECT_STATE.md`, Decisions waiting, as Q18)
 
+**Resolved 18 Nov 2026: the owner accepted all four recommendations (relayed to the project manager by the coordinating session).** (a) A wildcard does not fill an order slot. (b) Each card checks the board on its own; the first delivery takes a shared item. (c) The red-cart buy button is left out of the first build until recording R1 shows the price. (d) Order generation stays blind to the board. Sections 3.3 to 3.6 are therefore settled as their option (a), and the "(owner)" markers there are closed. Task 1.8 stays blocked on R1.
+
 - **Q18 a — Wildcard:** may a wildcard fill an order slot? (a) no, it stays a merge helper; (b) yes, any one slot; (c) build (a), revisit after R2. **Recommend (a).**
 - **Q18 b — One item, two cards:** (a) each card checks the board on its own, first delivery wins (as daily tasks do); (b) allocate each copy to one card; (c) build (a), revisit after R1 step 5. **Recommend (a).**
 - **Q18 c — Red cart on a missing slot:** (a) not in the first build, decide after R1 shows the price; (b) only where the Dog Tag store already stocks the item; (c) every missing slot at a formula price (needs D13 amended). **Recommend (a).**
