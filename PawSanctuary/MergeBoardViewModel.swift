@@ -731,26 +731,6 @@ class MergeBoardViewModel {
         return nil
     }
 
-    /// Chain/tier pairs the player could produce with **one merge, right now** —
-    /// they hold at least two of the tier directly below, across the unlocked
-    /// board and the animal inventory.
-    ///
-    /// This is what the order card's "you can fill this" tint keys off. Note the
-    /// deliberate difference from the reference titles the mechanic came from:
-    /// there, an order slot lights up when you *hold* the item, because those
-    /// games fulfil an order by dragging the item onto it. PawSanctuary fulfils
-    /// orders only as a side effect of a merge producing the wanted item
-    /// (`updateOrdersAfterMerge`), so an item already sitting on the board does
-    /// nothing for an order asking for that same item. Tinting on "you hold it"
-    /// would therefore promise something the game does not deliver; tinting on
-    /// "you could make it next merge" is the same affordance translated to the
-    /// rule this game actually runs.
-    ///
-    /// Not cached: it depends on board *and* inventory contents, either of
-    /// which can change without touching the other, and it is read only while
-    /// the adoption panel is open. Recomputing the scan per access from a
-    /// rarely-open panel is cheaper than keeping a cache honest against two
-    /// independent sources of invalidation.
     /// Every creature standing in an unlocked board cell, counted by
     /// (chain, stage) — the live source of truth for daily hand-in tasks
     /// (`Spec_DailyHandInTasks.md` §3).
@@ -814,6 +794,26 @@ class MergeBoardViewModel {
         task.isStocked(census: boardTaskCensus)
     }
 
+    /// Chain/tier pairs the player could produce with **one merge, right now** —
+    /// they hold at least two of the tier directly below, across the unlocked
+    /// board and the animal inventory.
+    ///
+    /// This is what the order card's "you can fill this" tint keys off. Note the
+    /// deliberate difference from the reference titles the mechanic came from:
+    /// there, an order slot lights up when you *hold* the item, because those
+    /// games fulfil an order by dragging the item onto it. PawSanctuary fulfils
+    /// orders only as a side effect of a merge producing the wanted item
+    /// (`updateOrdersAfterMerge`), so an item already sitting on the board does
+    /// nothing for an order asking for that same item. Tinting on "you hold it"
+    /// would therefore promise something the game does not deliver; tinting on
+    /// "you could make it next merge" is the same affordance translated to the
+    /// rule this game actually runs.
+    ///
+    /// Not cached: it depends on board *and* inventory contents, either of
+    /// which can change without touching the other, and it is read only while
+    /// the adoption panel is open. Recomputing the scan per access from a
+    /// rarely-open panel is cheaper than keeping a cache honest against two
+    /// independent sources of invalidation.
     var mergeReadyKeys: Set<ChainTierKey> {
         var counts: [ChainTierKey: Int] = [:]
         for cell in flatBoard where cell.isUnlocked {
