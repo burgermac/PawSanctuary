@@ -1034,10 +1034,37 @@ struct ChainTierKey: Hashable {
 }
 
 /// What the board holds against an order card (D14): one flag per basket line,
-/// and whether the whole card is ready to deliver. Derived, never persisted.
+/// how many copies of each line's item the board holds for it, and whether the
+/// whole card is ready to deliver. Derived, never persisted.
 struct OrderHeldState: Equatable {
     let heldLines: [Bool]
+    /// Copies held for each line, `0...line.count`. Lines naming the same item
+    /// draw on the census in order, so the second line only gets what the first
+    /// left over. Drives the per-copy slots (`AdoptionOrder.slots(census:)`).
+    let heldCopies: [Int]
     let isReady: Bool
+}
+
+/// What one slot on an order card shows (`Spec_HeldItemOrders.md` §4). A card
+/// shows one slot per wanted copy, so a line with `count` 2 is two slots.
+enum OrderSlotState: Equatable {
+    /// The board does not hold this copy.
+    case missing
+    /// The board holds this copy but the card is still short of something:
+    /// the muted highlight.
+    case held
+    /// Every slot on the card is held: the vivid highlight, and Deliver shows.
+    case ready
+    /// The order was delivered; shown during the replacement pause ("Adopted!").
+    case delivered
+}
+
+/// One slot on an order card: which line it belongs to, which copy of that
+/// line it is, and its state.
+struct OrderSlot: Equatable {
+    let lineIndex: Int
+    let copy: Int
+    let state: OrderSlotState
 }
 
 /// A specific adoption request from a named family — a basket of one or more
@@ -1124,15 +1151,40 @@ struct AdoptionOrder: Identifiable, Codable {
     /// the census as another chain's item (Q18 a).
     func heldState(census: [ChainTierKey: Int]) -> OrderHeldState {
         guard !isClaimed, !lines.isEmpty else {
-            return OrderHeldState(heldLines: lines.map { _ in false }, isReady: false)
+            return OrderHeldState(heldLines: lines.map { _ in false },
+                                  heldCopies: lines.map { _ in 0 }, isReady: false)
         }
         var drawn: [ChainTierKey: Int] = [:]
-        let held: [Bool] = lines.map { line in
+        let copies: [Int] = lines.map { line in
             let key = ChainTierKey(chainID: line.chainID, tier: line.tier)
+            let available = max(0, (census[key] ?? 0) - drawn[key, default: 0])
             drawn[key, default: 0] += line.count
-            return (census[key] ?? 0) >= drawn[key, default: 0]
+            return min(line.count, available)
         }
-        return OrderHeldState(heldLines: held, isReady: held.allSatisfy { $0 })
+        let held = zip(lines, copies).map { $0.1 >= $0.0.count }
+        return OrderHeldState(heldLines: held, heldCopies: copies, isReady: held.allSatisfy { $0 })
+    }
+
+    /// One slot per wanted copy, in line order (`Spec_HeldItemOrders.md` §4).
+    /// `canDeliver` is false for an urgent order whose clock has run out: its
+    /// items may all be held, but it can no longer be delivered, so it never
+    /// reads as ready.
+    func slots(census: [ChainTierKey: Int], canDeliver: Bool = true) -> [OrderSlot] {
+        let held = heldState(census: census)
+        let ready = held.isReady && canDeliver
+        var result: [OrderSlot] = []
+        for (i, line) in lines.enumerated() {
+            let heldCount = held.heldCopies.indices.contains(i) ? held.heldCopies[i] : 0
+            for copy in 0..<max(0, line.count) {
+                let state: OrderSlotState
+                if isClaimed { state = .delivered }
+                else if ready { state = .ready }
+                else if copy < heldCount { state = .held }
+                else { state = .missing }
+                result.append(OrderSlot(lineIndex: i, copy: copy, state: state))
+            }
+        }
+        return result
     }
 
     /// Ready to deliver: every line held. A part-held card is not ready and
@@ -2413,7 +2465,7 @@ func coinCurrencyValue(tier: Int) -> Int {
 // ── XP constants ──────────────────────────────────────────────
 let xpPerMergeBase     = 5    // multiplied by srcItem.stage.rawValue in code
 let xpPerRescue        = 2    // player-initiated rescue (kibble spend)
-let xpPerOrderFulfil   = 15   // adoption order auto-claimed
+let xpPerOrderFulfil   = 15   // adoption order delivered
 let xpDailyComplete    = 30   // all daily challenges done
 
 // ── Level-up system ───────────────────────────────────────────
@@ -2530,3 +2582,12 @@ let loginDailyRewards: [(kibble: Int, dogTags: Int, label: String)] = [
 // 51 and up (11 to 10). Levels 1 to 30 and 41 to 50 are unchanged.
 let orderMaxTierLevels31to40 = 8
 let orderMaxTierLevel51Plus  = 10
+
+// MARK: - Held-item orders: delivery (D14, tasks 1.4 and 1.5)
+//
+// How long a delivered item takes to leave its board cell (a short fade and
+// shrink, no blur or shadow), and how small it gets on the way out. Under
+// Reduce Motion the item only fades. The payout's own flight to the HUD is
+// `RewardBurst`, unchanged.
+let orderDepartureDuration: Double = 0.35
+let orderDepartureEndScale: CGFloat = 0.2

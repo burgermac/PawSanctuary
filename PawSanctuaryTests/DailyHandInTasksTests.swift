@@ -173,8 +173,8 @@ final class DailyHandInTaskCensusTests: XCTestCase {
     }
 
     /// Hand-in asks the player to hold the creature *on the board* — that
-    /// board-space pressure is the mechanic. `mergeReadyKeys` counts inventory
-    /// because "can I merge this next" genuinely spans both; this must not.
+    /// board-space pressure is the mechanic. `ownedItemCounts` counts inventory
+    /// because "what do I have" genuinely spans both; this must not.
     func testDoesNotCountInventory() {
         let vm = makeViewModel()
         XCTAssertTrue(vm.addToInventory(BoardItem(chainID: dog, tier: 0)))

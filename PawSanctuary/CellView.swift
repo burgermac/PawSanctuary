@@ -40,10 +40,11 @@ struct CellView: View {
     /// section 8, task 8.4) is drawing the two sources in this cell. The merge
     /// result is already in `cell`, so it stays hidden until the burst.
     var isMergeImploding: Bool = false
-    /// Whether an unclaimed daily hand-in task wants what is standing in this
-    /// cell, and whether that task is fully stocked
-    /// (`Spec_DailyHandInTasks.md` D-B). Drives the muted/bright blue tint
-    /// that tells the player where a task's pieces are.
+    /// Whether an unclaimed daily hand-in task or an open adoption order wants
+    /// what is standing in this cell, and whether a card it serves is ready
+    /// (`Spec_DailyHandInTasks.md` D-B; `Spec_HeldItemOrders.md` §4, D14).
+    /// Drives the muted/bright blue tint that tells the player where a card's
+    /// pieces are. Fed from `MergeBoardViewModel.heldItemHighlights`.
     var dailyTaskHighlight: MergeBoardViewModel.DailyTaskHighlight = .none
 
     /// Merge-burst sparkles (`Spec_BoardAnimation_Draft.md` §3 Tier A), spawned

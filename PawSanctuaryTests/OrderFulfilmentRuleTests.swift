@@ -16,11 +16,10 @@
 //  ready or deliverable once the thing that should satisfy it is present, so a
 //  negative result cannot come from a mis-built order.
 //
-//  Task 1.3 has no Deliver button yet: a TEMPORARY stopgap auto-delivers every
-//  ready card on the next main-actor turn after a board change. The tests that
-//  look at held or ready state call the engine directly and read it before that
-//  turn, and one test (`testTheInterimTriggerDeliversAReadyCard...`) pins the
-//  stopgap itself so it is removed deliberately in tasks 1.4/1.5.
+//  Delivery happens only through the card's Deliver button (tasks 1.4/1.5),
+//  which calls `deliverOrder(id:)` / `deliverUrgentOrder()`. The task 1.3
+//  stopgap that auto-delivered ready cards is gone; `HeldItemOrderUITests`
+//  pins that a board change alone delivers nothing.
 //
 
 import XCTest
@@ -225,7 +224,6 @@ final class OrderFulfilmentRuleTests: XCTestCase {
 
         // The bookkeeping a merge runs, naming exactly the item the order wants.
         vm.updateAllAfterMerge(chainID: dog, tier: wantedTier)
-        vm.autoDeliverReadyOrders()
 
         XCTAssertEqual(order(vm).lines[0].fulfilled, 0,
                        "producing the item is not holding it; nothing may credit the order")
@@ -415,38 +413,5 @@ final class OrderFulfilmentRuleTests: XCTestCase {
 
         put(vm, cat, tier: 2, col: 1)
         XCTAssertTrue(vm.deliverUrgentOrder(), "control")
-    }
-
-    // MARK: The temporary interim trigger (task 1.3; remove in 1.4/1.5)
-
-    func testTheInterimTriggerDeliversAReadyCardAfterABoardChange() async {
-        let vm = makeViewModel()
-        let slot = DogTagStoreSlot(chainID: dog, tier: wantedTier, priceDogTags: 10)
-        vm.dogTagStore.slots = [slot]
-        // Let the fresh game's own scheduled check run first, so what follows
-        // is caused by the purchase and nothing else.
-        try? await Task.sleep(for: .milliseconds(100))
-
-        XCTAssertTrue(vm.purchaseDogTagStoreSlot(slot))
-        XCTAssertFalse(order(vm).isClaimed, "not inside the purchase call itself")
-
-        for _ in 0..<50 where !order(vm).isClaimed {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
-        XCTAssertTrue(order(vm).isClaimed,
-                      "TEMPORARY: a ready card is delivered through deliverOrder after the change")
-        XCTAssertEqual(held(vm, dog, tier: wantedTier), 0, "the delivery took the item off the board")
-    }
-
-    func testTheInterimTriggerLeavesAPartHeldCardAlone() async {
-        let vm = makeViewModel()
-        vm.adoptionBoardCoordinator.adoptionOrders = [twoLineBasket()]
-        put(vm, dog, tier: wantedTier, col: 0)
-        XCTAssertTrue(vm.placeOrBankItem(BoardItem(chainID: cat, tier: 0)))   // a board change
-
-        try? await Task.sleep(for: .milliseconds(300))
-
-        XCTAssertFalse(order(vm).isClaimed)
-        XCTAssertEqual(held(vm, dog, tier: wantedTier), 1)
     }
 }

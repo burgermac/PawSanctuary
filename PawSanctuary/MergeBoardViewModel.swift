@@ -736,7 +736,7 @@ class MergeBoardViewModel {
     /// (`Spec_DailyHandInTasks.md` §3) and, since D14, for adoption orders
     /// (`Spec_HeldItemOrders.md` §3.1: what "on the board" means).
     ///
-    /// Inventory is deliberately excluded, unlike `mergeReadyKeys`: a hand-in
+    /// Inventory is deliberately excluded, unlike `ownedItemCounts`: a hand-in
     /// task asks the player to hold the creature *on the board*, and that
     /// board-space pressure is the mechanic. Bubbled items are excluded too —
     /// a creature still encased is not yet the player's to give.
@@ -756,8 +756,7 @@ class MergeBoardViewModel {
     /// skips bubbled items: a creature still encased is not yet the player's,
     /// the same reasoning as `boardTaskCensus`. Inventory is included, unlike
     /// `boardTaskCensus`, because "what do I have" should count a banked item.
-    /// It differs from `mergeReadyKeys` in excluding bubbled items. Power-up
-    /// inventory, materials and producers are other categories and not counted.
+    /// Power-up inventory, materials and producers are other categories and not counted.
     /// Pinned by `ChainViewerOwnedCountTests`.
     ///
     /// Computed once per render by the viewer, not per row, as `dailyTaskHighlights` is.
@@ -773,34 +772,63 @@ class MergeBoardViewModel {
         return counts
     }
 
-    /// How a board cell should be tinted for the daily tasks
-    /// (`Spec_DailyHandInTasks.md` D-B — one colour, two intensities).
+    /// How a board cell should be tinted for a held-item card
+    /// (`Spec_DailyHandInTasks.md` D-B — one colour, two intensities). Shared
+    /// by daily hand-in tasks and, since D14, adoption orders
+    /// (`Spec_HeldItemOrders.md` §4), so the board has one highlight language.
     enum DailyTaskHighlight {
-        /// No unclaimed task wants what is in this cell.
+        /// No open card wants what is in this cell.
         case none
-        /// A task wants this creature but is still short of something.
+        /// A card wants this creature but is still short of something (muted).
         case wanted
-        /// Every line of a task this cell serves is stocked — press Claim.
+        /// Every slot of a card this cell serves is held — Claim or Deliver (vivid).
         case stocked
     }
 
     /// Computed once per render pass for the whole board rather than per cell:
     /// each cell would otherwise re-run the census and rescan all three tasks
-    /// for itself. Same reasoning as `mergeReadyKeys`.
+    /// for itself. Daily tasks only; the board reads `heldItemHighlights`.
     var dailyTaskHighlights: [ChainTierKey: DailyTaskHighlight] {
         let census = boardTaskCensus
         var result: [ChainTierKey: DailyTaskHighlight] = [:]
         for task in dailyChallenges where !task.isClaimed {
-            let stocked = task.isStocked(census: census)
-            for line in task.lines {
-                // `.stocked` wins: a creature serving one finished task and one
-                // unfinished one should read as "this is ready to hand in."
-                if stocked || result[line.key] == nil {
-                    result[line.key] = stocked ? .stocked : .wanted
-                }
-            }
+            Self.mergeHighlight(task.lines.map(\.key),
+                                stocked: task.isStocked(census: census), into: &result)
         }
         return result
+    }
+
+    /// What the board tiles show (`Spec_HeldItemOrders.md` §4): every unclaimed
+    /// daily task and every open adoption order (the urgent one included while
+    /// its clock runs). A tile wanted by any of them is muted; vivid if any card
+    /// it serves is ready. Vivid wins when a tile serves several cards. Computed
+    /// once per render pass for the whole board, never per cell.
+    var heldItemHighlights: [ChainTierKey: DailyTaskHighlight] {
+        let census = boardTaskCensus
+        var result: [ChainTierKey: DailyTaskHighlight] = [:]
+        for task in dailyChallenges where !task.isClaimed {
+            Self.mergeHighlight(task.lines.map(\.key),
+                                stocked: task.isStocked(census: census), into: &result)
+        }
+        for order in adoptionBoardCoordinator.adoptionOrders where !order.isClaimed {
+            Self.mergeHighlight(Array(order.wantedCounts.keys),
+                                stocked: order.isReady(census: census), into: &result)
+        }
+        if let urgent = adoptionBoardCoordinator.urgentOrder, !urgent.isClaimed {
+            Self.mergeHighlight(Array(urgent.wantedCounts.keys),
+                                stocked: isUrgentOrderDeliverable && urgent.isReady(census: census),
+                                into: &result)
+        }
+        return result
+    }
+
+    /// `.stocked` wins: a creature serving one finished card and one unfinished
+    /// one should read as "this is ready to hand in."
+    private static func mergeHighlight(_ keys: [ChainTierKey], stocked: Bool,
+                                       into result: inout [ChainTierKey: DailyTaskHighlight]) {
+        for key in keys where stocked || result[key] == nil {
+            result[key] = stocked ? .stocked : .wanted
+        }
     }
 
     /// Daily tasks still awaiting a claim — what the horizontal lane shows.
@@ -817,26 +845,6 @@ class MergeBoardViewModel {
 
     func isDailyTaskStocked(_ task: DailyChallenge) -> Bool {
         task.isStocked(census: boardTaskCensus)
-    }
-
-    /// Chain/tier pairs one merge could produce right now (two of the tier below
-    /// held, across the unlocked board and the inventory). **No longer part of the
-    /// order rule:** D14 fills an order from items *held* on the board
-    /// (`orderHeldState`), not from what a merge could make. The order cards still
-    /// read this for their old green tint until task 1.4 (card UI) replaces it;
-    /// delete it then if nothing else reads it.
-    var mergeReadyKeys: Set<ChainTierKey> {
-        var counts: [ChainTierKey: Int] = [:]
-        for cell in flatBoard where cell.isUnlocked {
-            guard let item = cell.item else { continue }
-            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
-        }
-        for case let item? in inventory {
-            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
-        }
-        // Two of tier N merge into one of tier N+1.
-        return Set(counts.filter { $0.value >= 2 }
-                         .map { ChainTierKey(chainID: $0.key.chainID, tier: $0.key.tier + 1) })
     }
 
     /// One entry per species that has ≥ 3 Ambassador-tier tiles on the unlocked board.
@@ -1598,8 +1606,6 @@ class MergeBoardViewModel {
     private func recalcBoardIsFull() {
         boardState.recalc()
         recalcExchangeableTrios()
-        // TEMPORARY (task 1.3): auto-delivers until task 1.4 adds the Deliver button; remove in 1.4/1.5
-        scheduleInterimOrderAutoDelivery()
     }
 
     // MARK: Spawning
@@ -3612,9 +3618,13 @@ class MergeBoardViewModel {
     /// precedent for surrendering board pieces.
     ///
     /// Does not recalc the board: the caller does, after it has finished.
-    private func surrenderBoardItems(_ wanted: [ChainTierKey: Int]) {
+    /// Returns what it removed and from where, for the order-delivery
+    /// departure animation.
+    @discardableResult
+    private func surrenderBoardItems(_ wanted: [ChainTierKey: Int]) -> [DepartingItem] {
+        var removed: [DepartingItem] = []
         var remaining = wanted.filter { $0.value > 0 }
-        guard !remaining.isEmpty else { return }
+        guard !remaining.isEmpty else { return removed }
         outer: for r in 0..<rows {
             for c in 0..<cols {
                 let pos = GridPosition(row: r, col: c)
@@ -3623,11 +3633,25 @@ class MergeBoardViewModel {
                 let key = ChainTierKey(chainID: item.chainID, tier: item.tier)
                 guard let left = remaining[key] else { continue }
                 boardState.clearItem(at: pos)
+                removed.append(DepartingItem(position: pos, item: item))
                 if left <= 1 { remaining[key] = nil } else { remaining[key] = left - 1 }
                 if remaining.isEmpty { break outer }
             }
         }
+        return removed
     }
+
+    /// An item a delivery has just taken off the board, still drawn fading and
+    /// shrinking out of its cell for `orderDepartureDuration`. Session-only,
+    /// never persisted; the item is already gone from board state.
+    struct DepartingItem: Identifiable, Equatable {
+        let id = UUID()
+        let position: GridPosition
+        let item: BoardItem
+    }
+
+    /// Items currently leaving the board after an order delivery (task 1.5).
+    var departingItems: [DepartingItem] = []
 
     func updateQuestsAfterMerge(chainID: ChainID, tier: Int) {
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
@@ -3712,6 +3736,23 @@ class MergeBoardViewModel {
         return true
     }
 
+    /// Delivers the persistent order with this id: what the card's Deliver button
+    /// calls, so a card never acts on a stale index. Same rule as
+    /// `deliverOrder(at:)`; `false` and no change if it is not open and ready.
+    @discardableResult
+    func deliverOrder(id: UUID) -> Bool {
+        guard let index = adoptionBoardCoordinator.adoptionOrders.firstIndex(where: { $0.id == id })
+        else { return false }
+        return deliverOrder(at: index)
+    }
+
+    /// Whether the urgent order can still be delivered: live, undelivered, and
+    /// its clock not yet run out. Its card only reads as ready while this holds.
+    var isUrgentOrderDeliverable: Bool {
+        guard let order = adoptionBoardCoordinator.urgentOrder else { return false }
+        return !order.isClaimed && adoptionBoardCoordinator.urgentOrderTimeRemaining > 0
+    }
+
     /// Delivers the urgent order (Task 5.2): same rule as `deliverOrder(at:)`,
     /// one slot and no index. Its timer keeps running until this succeeds, so an
     /// urgent order that is held but never delivered still expires. Marks it
@@ -3745,7 +3786,15 @@ class MergeBoardViewModel {
     /// frees their cells before the payout so a `.boardItem` reward can land in
     /// one, then pays through the unchanged order payout path.
     private func completeDelivery(of order: AdoptionOrder) {
-        surrenderBoardItems(order.wantedCounts)
+        let departed = surrenderBoardItems(order.wantedCounts)
+        if !departed.isEmpty {
+            departingItems.append(contentsOf: departed)
+            let ids = Set(departed.map(\.id))
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(orderDepartureDuration + 0.05))
+                self.departingItems.removeAll { ids.contains($0.id) }
+            }
+        }
         recalcBoardIsFull()
         // Kibble is intentionally NOT an order reward (regen timer, dog tags,
         // quests, IAP only).
@@ -3756,43 +3805,6 @@ class MergeBoardViewModel {
         feedParallelBoardEnergy()
         awardCarePoints(carePointsPerOrder)
         awardSmilePoints(order.smileValue)
-    }
-
-    // ── TEMPORARY (task 1.3): auto-delivers until task 1.4 adds the Deliver button; remove in 1.4/1.5
-    //
-    // With the production-credit path gone and no Deliver button yet (task 1.4),
-    // a ready card would otherwise sit there forever. So after any board change
-    // that can make a card ready, every READY card is delivered through the same
-    // `deliverOrder(at:)` / `deliverUrgentOrder()` the button will call. It runs
-    // on the next main-actor turn, not inside `recalcBoardIsFull`, so the
-    // operation that changed the board (a merge, a spawn, a purchase) finishes
-    // before items are taken off it.
-
-    @ObservationIgnored private var interimOrderAutoDeliveryScheduled = false
-
-    private func scheduleInterimOrderAutoDelivery() {
-        guard !interimOrderAutoDeliveryScheduled else { return }
-        interimOrderAutoDeliveryScheduled = true
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.interimOrderAutoDeliveryScheduled = false
-            self.autoDeliverReadyOrders()
-        }
-    }
-
-    /// TEMPORARY (task 1.3): see above. The urgent order goes first (it has a
-    /// clock); each delivery re-reads the live census, so two cards sharing one
-    /// held item deliver in order and the second falls back to not ready.
-    func autoDeliverReadyOrders() {
-        for _ in 0..<64 {
-            if deliverUrgentOrder() { continue }
-            var delivered = false
-            for index in adoptionBoardCoordinator.adoptionOrders.indices where deliverOrder(at: index) {
-                delivered = true
-                break
-            }
-            if !delivered { return }
-        }
     }
 
     /// Applies a reward list to player state. Shared by `deliverOrder(at:)`,

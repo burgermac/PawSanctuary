@@ -867,9 +867,14 @@ struct MergeBoardView: View {
     /// Renders the merge board at the given cell size (computed dynamically from available space).
     func boardGridView(cellSize: CGFloat) -> some View {
         // Computed once for the whole board rather than per cell: each cell
-        // would otherwise re-census the board and rescan all three daily tasks
-        // for itself. Same reasoning as `OrderLaneView`'s `mergeReadyKeys`.
-        let taskHighlights = viewModel.dailyTaskHighlights
+        // would otherwise re-census the board and rescan every daily task and
+        // order for itself. One highlight language for every held-item card
+        // (D14): muted where a card wants the item, vivid where a card is ready.
+        let taskHighlights = viewModel.heldItemHighlights
+        // Items an order delivery just took off the board, still leaving their
+        // cells (task 1.5). Usually empty; keyed once here, not per cell.
+        let departing = Dictionary(viewModel.departingItems.map { ($0.position, $0) },
+                                   uniquingKeysWith: { _, latest in latest })
         return VStack(spacing: cellSpacing) {
             ForEach(0..<viewModel.rows, id: \.self) { row in
                 // A cell's own .zIndex below only wins against its *same-row*
@@ -919,6 +924,12 @@ struct MergeBoardView: View {
                                 } ?? .none
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
+                            if let leaving = departing[pos] {
+                                DepartingItemView(item: leaving.item, cellSize: cellSize,
+                                                  reduceMotion: reduceMotion)
+                                    .id(leaving.id)
+                                    .allowsHitTesting(false)
+                            }
                             // Drag ghost — animal or producer icon follows the finger
                             if isDragging {
                                 Group {
