@@ -3700,8 +3700,11 @@ class MergeBoardViewModel {
         adoptionBoardCoordinator.markClaimed(at: index)
         // Persistent slots have no timer, so delivering one doesn't touch the
         // rescue-expiring notification: that's the urgent order's job.
-        Task { @MainActor in
+        // Weak: a view model that has gone away must not be kept alive for the
+        // pause only to regenerate an order nobody will see.
+        Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
             self.adoptionBoardCoordinator.replaceOrder(
                 at: index,
                 unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
@@ -3727,8 +3730,9 @@ class MergeBoardViewModel {
         order.markDelivered()
         adoptionBoardCoordinator.urgentOrder = order
         NotificationManager.shared.cancelRescueExpiring()
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
             self.adoptionBoardCoordinator.urgentOrder = nil
             self.adoptionBoardCoordinator.ensureUrgentOrder(
                 unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
