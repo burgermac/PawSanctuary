@@ -1,6 +1,6 @@
 # PawSanctuary — Album Grand Prize and Set-Reward Ramp
 
-**Status: Task 1 (schema v46, persistence only) in review, PR #130 (22 Nov 2026); Tasks 2–4 not started.** Owner answers recorded in §12 (18 Nov 2026). Originally a draft written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Task 6.2 (build) is blocked on this spec and on the owner's answers in §12. Four implementation tasks, one per session, in §11.
+**Status (22 Nov 2026): owner answers in §12. Task 1 (schema v46) is merged, PR #130. Task 2 (grand prize rule) is PR #132 and task 4 (set-reward ramp) is PR #131, both in review. Task 3 (banner) is not yet a PR.** Originally: Draft, 18 Nov 2026, not reviewed, no code. Written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Four implementation tasks, one per session, in §11.
 
 **Self-contained brief.** Assumes no prior conversation. Every code claim is cited `file:line` as read on 18 Nov 2026; line numbers drift, so search by name if a number no longer lands.
 
@@ -254,6 +254,12 @@ Add under a `// MARK: v45 → v46 (Album grand prize)` heading, mirroring `testV
 - **Tests:** ramp is monotonic in every currency; rung N pays rung N whichever set completes; total equals the table; `EconomyTests` green, including `testDemandSupplyRatioMatchesTheTargetCurve` (`:754-771`), which this does not touch because `dailySupply` is unchanged.
 
 Task 4 has no dependency on 1 to 3 and can go first if the owner prefers.
+
+**Task 4 as built (22 Nov 2026, in review).** Three choices the bullets above left open:
+- The per-set `rewardKibble`/`rewardDogTags`/`rewardCoins` fields were **removed** from `CardAlbumDefinition` and `CardRegistry.albums`, since nothing pays them any more and leaving them would show the wrong numbers. Not persisted; no save change.
+- The set detail banner reads `viewModel.nextAlbumSetReward` and says "Next set completed earns:", with kibble shown after the Pass bonus (what will actually land). A finished set shows "Reward claimed!" with no amounts, because saves completed before the ramp were paid the old per-set numbers and the rung cannot be recovered honestly.
+- `EconomySimulation.albumKibblePerDay` counts **ramp kibble only** (1,800 ÷ 60 = 30/day, 4.3% of L5 supply). The grand prize kibble is excluded until Task 2 adds it. The album coin term now sums the ramp (same 6,250 total).
+- Not done here: W6 in `Revision_Plan_ModelOnReferences.md` stays open (Tasks 1–3).
 
 ---
 
