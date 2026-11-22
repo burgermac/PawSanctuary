@@ -52,9 +52,8 @@ struct CardAlbumDefinition: Identifiable {
     let description: String
     let sfSymbol: String
     let cardIDs: [String]
-    let rewardKibble: Int
-    let rewardDogTags: Int
-    let rewardCoins: Int
+    // No per-set reward: a completed set pays by completion order from
+    // `albumSetRewardRamp` (AnimalSpecies.swift, Spec_AlbumGrandPrize.md §4.2).
 }
 
 // ============================================================
@@ -241,48 +240,42 @@ enum CardRegistry {
             name: "Rescue Profiles",
             description: "Stories from the rescue journey",
             sfSymbol: "pawprint.fill",
-            cardIDs: allCards.filter { $0.albumID == "album.rescue" }.map(\.id),
-            rewardKibble: 30, rewardDogTags: 5, rewardCoins: 0
+            cardIDs: allCards.filter { $0.albumID == "album.rescue" }.map(\.id)
         ),
         CardAlbumDefinition(
             id: "album.sanctuary",
             name: "Sanctuary Friends",
             description: "The people and places that make it happen",
             sfSymbol: "house.fill",
-            cardIDs: allCards.filter { $0.albumID == "album.sanctuary" }.map(\.id),
-            rewardKibble: 0, rewardDogTags: 8, rewardCoins: 500
+            cardIDs: allCards.filter { $0.albumID == "album.sanctuary" }.map(\.id)
         ),
         CardAlbumDefinition(
             id: "album.wildlife",
             name: "Animal Kingdom",
             description: "Portraits of the residents",
             sfSymbol: "hare.fill",
-            cardIDs: allCards.filter { $0.albumID == "album.wildlife" }.map(\.id),
-            rewardKibble: 40, rewardDogTags: 10, rewardCoins: 1_000
+            cardIDs: allCards.filter { $0.albumID == "album.wildlife" }.map(\.id)
         ),
         CardAlbumDefinition(
             id: "album.vet",
             name: "Vet Records",
             description: "The medical side of rescue",
             sfSymbol: "cross.fill",
-            cardIDs: allCards.filter { $0.albumID == "album.vet" }.map(\.id),
-            rewardKibble: 50, rewardDogTags: 12, rewardCoins: 750
+            cardIDs: allCards.filter { $0.albumID == "album.vet" }.map(\.id)
         ),
         CardAlbumDefinition(
             id: "album.adventures",
             name: "Adventures Abroad",
             description: "Field rescues and outreach events",
             sfSymbol: "map.fill",
-            cardIDs: allCards.filter { $0.albumID == "album.adventures" }.map(\.id),
-            rewardKibble: 60, rewardDogTags: 15, rewardCoins: 1_500
+            cardIDs: allCards.filter { $0.albumID == "album.adventures" }.map(\.id)
         ),
         CardAlbumDefinition(
             id: "album.fame",
             name: "Hall of Fame",
             description: "The sanctuary's most legendary animals",
             sfSymbol: "crown.fill",
-            cardIDs: allCards.filter { $0.albumID == "album.fame" }.map(\.id),
-            rewardKibble: 100, rewardDogTags: 25, rewardCoins: 2_500
+            cardIDs: allCards.filter { $0.albumID == "album.fame" }.map(\.id)
         ),
     ]
 

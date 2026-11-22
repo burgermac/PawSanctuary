@@ -2913,15 +2913,24 @@ class MergeBoardViewModel {
         persist()
     }
 
+    /// What the next set completed will pay: rung `completedAlbumIDs.count` of
+    /// `albumSetRewardRamp` (completion order, Spec_AlbumGrandPrize.md Q6 a).
+    /// Kibble is before the Pass bonus.
+    var nextAlbumSetReward: AlbumSetReward {
+        albumSetReward(forRung: completedAlbumIDs.count)
+    }
+
     private func checkAlbumCompletions() {
         for album in CardRegistry.albums {
             guard !completedAlbumIDs.contains(album.id) else { continue }
             let complete = album.cardIDs.allSatisfy { cardInventory[$0, default: 0] > 0 }
             guard complete else { continue }
+            // Rung is read before the append, so the first set completed pays rung 1.
+            let reward = nextAlbumSetReward
             completedAlbumIDs.append(album.id)
-            kibbleEngine.kibble  += withPassBonus(album.rewardKibble)
-            kibbleEngine.dogTags += album.rewardDogTags
-            earnCoins(album.rewardCoins)
+            kibbleEngine.kibble  += withPassBonus(reward.kibble)
+            kibbleEngine.dogTags += reward.dogTags
+            earnCoins(reward.coins)
             albumCompleteQueue.append(album)
             if albumCompleteQueue.count == 1 { scheduleAlbumCompleteDismiss(id: album.id) }
         }

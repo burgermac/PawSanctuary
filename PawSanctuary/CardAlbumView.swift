@@ -765,18 +765,26 @@ struct AlbumDetailView: View {
 
     private var rewardBanner: some View {
         let done = viewModel.completedAlbumIDs.contains(album.id)
+        // Sets pay by completion order (albumSetRewardRamp), so an open set shows
+        // the next rung, the one it would pay if finished next. A finished set's
+        // payout is not recomputed: saves from before the ramp were paid the old
+        // per-set amounts, so it shows only that it was paid.
+        let next = viewModel.nextAlbumSetReward
+        let kibble = viewModel.withPassBonus(next.kibble)
         return HStack(spacing: 8) {
             Image(systemName: done ? "checkmark.circle.fill" : "gift.fill")
                 .font(.system(size: 20))
                 .foregroundColor(done ? .green : Color(red: 0.55, green: 0.25, blue: 0.75))
             VStack(alignment: .leading, spacing: 2) {
-                Text(done ? "Reward claimed!" : "Complete to earn:")
+                Text(done ? "Reward claimed!" : "Next set completed earns:")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(done ? .green : .primary)
-                HStack(spacing: 10) {
-                    if album.rewardKibble  > 0 { rewardPill("\(album.rewardKibble) Kibble", "pawprint.fill", .green) }
-                    if album.rewardDogTags > 0 { rewardPill("\(album.rewardDogTags) Tags",  "tag.fill",       .blue)  }
-                    if album.rewardCoins   > 0 { rewardPill("\(album.rewardCoins) Coins",   "coin.fill",      Color(red: 0.78, green: 0.56, blue: 0.08)) }
+                if !done {
+                    HStack(spacing: 10) {
+                        if kibble       > 0 { rewardPill("\(kibble) Kibble",       "pawprint.fill", .green) }
+                        if next.dogTags > 0 { rewardPill("\(next.dogTags) Tags",   "tag.fill",      .blue)  }
+                        if next.coins   > 0 { rewardPill("\(next.coins) Coins",    "coin.fill",     Color(red: 0.78, green: 0.56, blue: 0.08)) }
+                    }
                 }
             }
             Spacer()
