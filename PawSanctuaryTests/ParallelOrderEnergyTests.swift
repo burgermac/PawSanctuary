@@ -33,11 +33,35 @@ final class ParallelOrderEnergyTests: XCTestCase {
     }
 
     private func completeOrder() -> AdoptionOrder {
-        var order = AdoptionOrder(familyIndex: 0,
-                                  wantedChainID: ContentRegistry.animalChainID(.dog),
-                                  wantedTier: 1, wantedCount: 1)
-        order.lines[0].fulfilled = 1
-        return order
+        AdoptionOrder(familyIndex: 0,
+                      wantedChainID: ContentRegistry.animalChainID(.dog),
+                      wantedTier: 1, wantedCount: 1)
+    }
+
+    /// D14: an order pays only when it is delivered, and delivery needs every
+    /// wanted item held on the board. (These tests used to hand in an order
+    /// already marked complete, which only the removed merge-credit path made.)
+    private func holdWantedItem(_ vm: MergeBoardViewModel) {
+        // `MergeBoardViewModel()` has no board until `loadGame()`; give it a bare unlocked one.
+        if vm.board.isEmpty {
+            vm.board = (0..<boardRows).map { row in
+                (0..<7).map { col in
+                    BoardCell(position: GridPosition(row: row, col: col), item: nil, isUnlocked: true)
+                }
+            }
+        }
+        vm.boardState.recalc()
+        guard let cell = vm.boardState.emptyUnlockedCells.first else {
+            return XCTFail("no free cell to hold the wanted item")
+        }
+        vm.boardState.setItem(BoardItem(chainID: ContentRegistry.animalChainID(.dog), tier: 1),
+                              at: cell.position)
+    }
+
+    private func deliver(_ vm: MergeBoardViewModel, file: StaticString = #filePath, line: UInt = #line) {
+        vm.adoptionBoardCoordinator.urgentOrder = nil
+        holdWantedItem(vm)
+        XCTAssertTrue(vm.deliverOrder(at: 0), file: file, line: line)
     }
 
     // MARK: The pool
@@ -94,7 +118,7 @@ final class ParallelOrderEnergyTests: XCTestCase {
         coordinator.energy.balance = 10
 
         vm.adoptionBoardCoordinator.adoptionOrders = [completeOrder()]
-        vm.autoClaimOrder(at: 0)
+        deliver(vm)
         XCTAssertEqual(coordinator.energy.balance, 10 + parallelBoardEnergyPerOrder)
     }
 
@@ -105,7 +129,9 @@ final class ParallelOrderEnergyTests: XCTestCase {
         coordinator.energy.balance = 10
 
         vm.adoptionBoardCoordinator.urgentOrder = completeOrder()
-        vm.autoClaimUrgentOrder()
+        vm.adoptionBoardCoordinator.urgentOrderTimeRemaining = 600
+        holdWantedItem(vm)
+        XCTAssertTrue(vm.deliverUrgentOrder())
         XCTAssertEqual(coordinator.energy.balance, 10 + parallelBoardEnergyPerOrder)
     }
 
@@ -113,7 +139,7 @@ final class ParallelOrderEnergyTests: XCTestCase {
         let vm = MergeBoardViewModel()
         XCTAssertNil(vm.activeParallelBoardEvent)
         vm.adoptionBoardCoordinator.adoptionOrders = [completeOrder()]
-        vm.autoClaimOrder(at: 0)
+        deliver(vm)
         XCTAssertNil(vm.activeParallelBoardEvent)
     }
 
@@ -124,7 +150,7 @@ final class ParallelOrderEnergyTests: XCTestCase {
         coordinator.energy.balance = parallelBoardEnergyBankCap - 1
         for _ in 0..<5 {
             vm.adoptionBoardCoordinator.adoptionOrders = [completeOrder()]
-            vm.autoClaimOrder(at: 0)
+            deliver(vm)
         }
         XCTAssertEqual(coordinator.energy.balance, parallelBoardEnergyBankCap)
     }

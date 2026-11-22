@@ -2,13 +2,16 @@
 //  OrderBasketTests.swift
 //  PawSanctuaryTests
 //
-//  Covers `AdoptionOrder`'s basket shape (schema v37) and the fulfilment path
-//  that credits it — `AdoptionBoard.updateAfterMerge` /
-//  `updateUrgentOrderAfterMerge`.
+//  Covers `AdoptionOrder`'s basket shape (schema v37) and how a basket is judged
+//  against the board under D14 (Spec_HeldItemOrders.md): `heldState(census:)`,
+//  `isReady(census:)`, `markDelivered()`.
 //
-//  That fulfilment path had no unit coverage before this file: it was only
-//  exercised indirectly through view-model tests, which is why the basket
-//  reshape needed tests written alongside it rather than after.
+//  These tests originally pinned the D12 credit path
+//  (`AdoptionBoard.updateAfterMerge` / `updateUrgentOrderAfterMerge`), which
+//  advanced `fulfilled` a line at a time as merges produced items. That path is
+//  gone: an order is filled by what the board HOLDS, so the same behaviours are
+//  now checked against a census. Delivery itself (items leave the board, rewards
+//  paid) is covered by `OrderFulfilmentRuleTests`.
 //
 
 import XCTest
@@ -20,66 +23,59 @@ final class OrderBasketTests: XCTestCase {
     private var dog: ChainID { ContentRegistry.animalChainID(.dog) }
     private var cat: ChainID { ContentRegistry.animalChainID(.cat) }
 
-    private func makeBoard(orders: [AdoptionOrder]) -> AdoptionBoard {
-        let board = AdoptionBoard()
-        board.adoptionOrders = orders
-        return board
+    private func census(_ held: [(ChainID, Int, Int)]) -> [ChainTierKey: Int] {
+        var result: [ChainTierKey: Int] = [:]
+        for (chain, tier, count) in held {
+            result[ChainTierKey(chainID: chain, tier: tier), default: 0] += count
+        }
+        return result
     }
 
-    // MARK: Single-line orders behave exactly as they did pre-v37
+    // MARK: Single-line orders
 
-    func testSingleLineOrderCompletesOnTheExpectedDelivery() {
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 2),
-        ])
+    func testSingleLineOrderOfTwoIsReadyOnlyWithTwoHeld() {
+        let order = AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 2)
 
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [],
-                       "one of two delivered is not yet complete")
-        XCTAssertEqual(board.adoptionOrders[0].fulfilled, 1)
-        XCTAssertFalse(board.adoptionOrders[0].isComplete)
-
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [0],
-                       "the second delivery completes it")
-        XCTAssertTrue(board.adoptionOrders[0].isComplete)
+        XCTAssertFalse(order.isReady(census: census([(dog, 3, 1)])),
+                       "one of two held is not ready")
+        XCTAssertEqual(order.heldState(census: census([(dog, 3, 1)])).heldLines, [false])
+        XCTAssertTrue(order.isReady(census: census([(dog, 3, 2)])),
+                      "two held makes it ready")
+        XCTAssertTrue(order.isReady(census: census([(dog, 3, 5)])), "spares do no harm")
     }
 
-    func testNonMatchingDeliveryIsIgnored() {
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1),
-        ])
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 4), [], "wrong tier")
-        XCTAssertEqual(board.updateAfterMerge(chainID: cat, tier: 3), [], "wrong chain")
-        XCTAssertEqual(board.adoptionOrders[0].fulfilled, 0)
+    func testNonMatchingItemsAreIgnored() {
+        let order = AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1)
+        XCTAssertFalse(order.isReady(census: census([(dog, 4, 1)])), "wrong tier")
+        XCTAssertFalse(order.isReady(census: census([(cat, 3, 1)])), "wrong chain")
+        XCTAssertEqual(order.fulfilled, 0)
     }
 
-    func testAnOrderNeverOverfills() {
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1),
-        ])
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [0])
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [],
-                       "a complete order must not report completion twice")
-        XCTAssertEqual(board.adoptionOrders[0].fulfilled, 1)
+    func testADeliveredOrderIsNeverReadyAgain() {
+        var order = AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1)
+        order.markDelivered()
+        XCTAssertTrue(order.isComplete, "complete now means delivered")
+        XCTAssertTrue(order.isClaimed)
+        XCTAssertEqual(order.fulfilled, 1)
+        XCTAssertFalse(order.isReady(census: census([(dog, 3, 1)])),
+                       "a delivered order must not report ready twice")
     }
 
     // MARK: Baskets
 
-    func testBasketNeedsEveryLineBeforeItCompletes() {
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, lines: [
-                OrderLine(chainID: dog, tier: 2, count: 1),
-                OrderLine(chainID: cat, tier: 5, count: 1),
-            ]),
+    func testBasketNeedsEveryLineHeldBeforeItIsReady() {
+        let order = AdoptionOrder(familyIndex: 0, lines: [
+            OrderLine(chainID: dog, tier: 2, count: 1),
+            OrderLine(chainID: cat, tier: 5, count: 1),
         ])
 
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 2), [],
-                       "one line filled is not the whole basket")
-        XCTAssertFalse(board.adoptionOrders[0].isComplete)
-        XCTAssertEqual(board.adoptionOrders[0].progressFraction, 0.5, accuracy: 0.001)
+        let partHeld = order.heldState(census: census([(dog, 2, 1)]))
+        XCTAssertEqual(partHeld.heldLines, [true, false])
+        XCTAssertFalse(partHeld.isReady, "one line held is not the whole basket")
 
-        XCTAssertEqual(board.updateAfterMerge(chainID: cat, tier: 5), [0],
-                       "filling the last line completes the basket")
-        XCTAssertTrue(board.adoptionOrders[0].isComplete)
+        let allHeld = order.heldState(census: census([(dog, 2, 1), (cat, 5, 1)]))
+        XCTAssertEqual(allHeld.heldLines, [true, true])
+        XCTAssertTrue(allHeld.isReady, "holding the last line readies the basket")
     }
 
     func testBasketLinesMaySpanChainsAndTiersIndependently() {
@@ -92,62 +88,65 @@ final class OrderBasketTests: XCTestCase {
         XCTAssertFalse(order.wants(chainID: dog, tier: 7), "chain and tier must match together")
         XCTAssertFalse(order.wants(chainID: cat, tier: 1))
         XCTAssertEqual(order.wantedCount, 3, "demand sums across lines")
+        XCTAssertEqual(order.wantedCounts[ChainTierKey(chainID: cat, tier: 7)], 2)
     }
 
-    /// A basket listing the same item as two separate lines must still consume
-    /// two of them — one delivery may only ever credit one line.
-    func testOneDeliveryCreditsOnlyOneLineEvenWhenTwoLinesMatch() {
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, lines: [
-                OrderLine(chainID: dog, tier: 3, count: 1),
-                OrderLine(chainID: dog, tier: 3, count: 1),
-            ]),
+    /// A basket listing the same item as two separate lines must still need two
+    /// of them held: one copy may only ever cover one line.
+    func testTwoLinesOfOneItemNeedTwoCopiesHeld() {
+        let order = AdoptionOrder(familyIndex: 0, lines: [
+            OrderLine(chainID: dog, tier: 3, count: 1),
+            OrderLine(chainID: dog, tier: 3, count: 1),
         ])
+        XCTAssertEqual(order.wantedCounts[ChainTierKey(chainID: dog, tier: 3)], 2)
 
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [])
-        XCTAssertEqual(board.adoptionOrders[0].lines[0].fulfilled, 1)
-        XCTAssertEqual(board.adoptionOrders[0].lines[1].fulfilled, 0,
-                       "the second identical line must still be owed")
+        let one = order.heldState(census: census([(dog, 3, 1)]))
+        XCTAssertEqual(one.heldLines, [true, false], "the second identical line is still owed")
+        XCTAssertFalse(one.isReady)
 
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [0])
-        XCTAssertEqual(board.adoptionOrders[0].lines[1].fulfilled, 1)
+        XCTAssertTrue(order.isReady(census: census([(dog, 3, 2)])))
     }
 
-    func testDeliveriesFillEachLineToItsOwnCount() {
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, lines: [
-                OrderLine(chainID: dog, tier: 2, count: 2),
-                OrderLine(chainID: cat, tier: 4, count: 1),
-            ]),
+    func testEachLineIsHeldAgainstItsOwnCount() {
+        let order = AdoptionOrder(familyIndex: 0, lines: [
+            OrderLine(chainID: dog, tier: 2, count: 2),
+            OrderLine(chainID: cat, tier: 4, count: 1),
         ])
-        for _ in 0..<2 { _ = board.updateAfterMerge(chainID: dog, tier: 2) }
-        XCTAssertEqual(board.adoptionOrders[0].lines[0].fulfilled, 2)
-        XCTAssertFalse(board.adoptionOrders[0].isComplete, "the cat line is still owed")
+        let state = order.heldState(census: census([(dog, 2, 2)]))
+        XCTAssertEqual(state.heldLines, [true, false], "the dog line is held, the cat line is still owed")
+        XCTAssertFalse(state.isReady)
+        XCTAssertEqual(order.missingCount(census: census([(dog, 2, 2)])), 1)
 
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 2), [],
-                       "a filled line must not absorb further deliveries")
-        XCTAssertEqual(board.adoptionOrders[0].lines[0].fulfilled, 2)
-
-        XCTAssertEqual(board.updateAfterMerge(chainID: cat, tier: 4), [0])
+        XCTAssertTrue(order.isReady(census: census([(dog, 2, 2), (cat, 4, 1)])))
     }
 
-    func testClaimedOrdersAreSkipped() {
+    func testAClaimedOrderHoldsNothing() {
         var claimed = AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1)
         claimed.isClaimed = true
-        let board = makeBoard(orders: [claimed])
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [])
-        XCTAssertEqual(board.adoptionOrders[0].fulfilled, 0)
+        let state = claimed.heldState(census: census([(dog, 3, 1)]))
+        XCTAssertEqual(state.heldLines, [false])
+        XCTAssertFalse(state.isReady)
     }
 
-    func testSeveralOrdersWantingTheSameItemAllAdvanceOnOneDelivery() {
-        // Matches the pre-v37 behaviour: `updateAfterMerge` credits every
-        // matching order, not just the first. One merged animal satisfying two
-        // separate customers is deliberate.
-        let board = makeBoard(orders: [
-            AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1),
-            AdoptionOrder(familyIndex: 1, wantedChainID: dog, wantedTier: 3, wantedCount: 1),
+    func testSeveralOrdersWantingTheSameItemAreEachReadyFromOneCopy() {
+        // Q18 b: each card checks the board on its own; whichever is delivered
+        // first takes the copy (see OrderFulfilmentRuleTests).
+        let held = census([(dog, 3, 1)])
+        let a = AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 3, wantedCount: 1)
+        let b = AdoptionOrder(familyIndex: 1, wantedChainID: dog, wantedTier: 3, wantedCount: 1)
+        XCTAssertTrue(a.isReady(census: held))
+        XCTAssertTrue(b.isReady(census: held))
+    }
+
+    func testMarkDeliveredFillsEveryLineToItsCount() {
+        var order = AdoptionOrder(familyIndex: 0, lines: [
+            OrderLine(chainID: dog, tier: 2, count: 2),
+            OrderLine(chainID: cat, tier: 4, count: 1),
         ])
-        XCTAssertEqual(board.updateAfterMerge(chainID: dog, tier: 3), [0, 1])
+        order.markDelivered()
+        XCTAssertEqual(order.lines.map(\.fulfilled), [2, 1])
+        XCTAssertTrue(order.isComplete)
+        XCTAssertTrue(order.isClaimed)
     }
 
     // MARK: Empty basket
@@ -162,26 +161,30 @@ final class OrderBasketTests: XCTestCase {
 
     // MARK: Urgent order
 
-    func testUrgentOrderBasketCompletesOnlyWhenEveryLineIsFilled() {
+    func testUrgentOrderBasketIsReadyOnlyWhenEveryLineIsHeld() {
         let board = AdoptionBoard()
         board.urgentOrder = AdoptionOrder(familyIndex: 0, lines: [
             OrderLine(chainID: dog, tier: 2, count: 1),
             OrderLine(chainID: cat, tier: 3, count: 1),
         ])
         board.urgentOrderTimeRemaining = 600
+        let urgent = try? XCTUnwrap(board.urgentOrder)
 
-        XCTAssertFalse(board.updateUrgentOrderAfterMerge(chainID: dog, tier: 2))
-        XCTAssertTrue(board.updateUrgentOrderAfterMerge(chainID: cat, tier: 3))
-        XCTAssertTrue(try XCTUnwrap(board.urgentOrder).isComplete)
+        XCTAssertEqual(urgent?.isReady(census: census([(dog, 2, 1)])), false)
+        XCTAssertEqual(urgent?.isReady(census: census([(dog, 2, 1), (cat, 3, 1)])), true)
     }
 
-    func testUrgentOrderIgnoresDeliveriesOnceItsTimerHasExpired() {
+    func testTheUrgentTimerKeepsRunningWhileTheOrderIsOnlyHeld() {
+        // D14: its timer runs until delivery, not until it is filled. `fulfilled`
+        // stays 0, so the order is not complete and `tickUrgentOrder` keeps counting.
         let board = AdoptionBoard()
         board.urgentOrder = AdoptionOrder(familyIndex: 0, wantedChainID: dog,
                                           wantedTier: 2, wantedCount: 1)
-        board.urgentOrderTimeRemaining = 0
+        board.urgentOrderTimeRemaining = 600
+        XCTAssertTrue(board.urgentOrder?.isReady(census: census([(dog, 2, 1)])) ?? false)
 
-        XCTAssertFalse(board.updateUrgentOrderAfterMerge(chainID: dog, tier: 2))
+        board.tickUrgentOrder(unlockedChainIDs: [dog], playerLevel: 1)
+        XCTAssertEqual(board.urgentOrderTimeRemaining, 599)
         XCTAssertEqual(board.urgentOrder?.fulfilled, 0)
     }
 

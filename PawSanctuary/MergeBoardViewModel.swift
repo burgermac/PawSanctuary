@@ -731,31 +731,12 @@ class MergeBoardViewModel {
         return nil
     }
 
-    /// Chain/tier pairs the player could produce with **one merge, right now** —
-    /// they hold at least two of the tier directly below, across the unlocked
-    /// board and the animal inventory.
-    ///
-    /// This is what the order card's "you can fill this" tint keys off. Note the
-    /// deliberate difference from the reference titles the mechanic came from:
-    /// there, an order slot lights up when you *hold* the item, because those
-    /// games fulfil an order by dragging the item onto it. PawSanctuary fulfils
-    /// orders only as a side effect of a merge producing the wanted item
-    /// (`updateOrdersAfterMerge`), so an item already sitting on the board does
-    /// nothing for an order asking for that same item. Tinting on "you hold it"
-    /// would therefore promise something the game does not deliver; tinting on
-    /// "you could make it next merge" is the same affordance translated to the
-    /// rule this game actually runs.
-    ///
-    /// Not cached: it depends on board *and* inventory contents, either of
-    /// which can change without touching the other, and it is read only while
-    /// the adoption panel is open. Recomputing the scan per access from a
-    /// rarely-open panel is cheaper than keeping a cache honest against two
-    /// independent sources of invalidation.
     /// Every creature standing in an unlocked board cell, counted by
     /// (chain, stage) — the live source of truth for daily hand-in tasks
-    /// (`Spec_DailyHandInTasks.md` §3).
+    /// (`Spec_DailyHandInTasks.md` §3) and, since D14, for adoption orders
+    /// (`Spec_HeldItemOrders.md` §3.1: what "on the board" means).
     ///
-    /// Inventory is deliberately excluded, unlike `mergeReadyKeys`: a hand-in
+    /// Inventory is deliberately excluded, unlike `ownedItemCounts`: a hand-in
     /// task asks the player to hold the creature *on the board*, and that
     /// board-space pressure is the mechanic. Bubbled items are excluded too —
     /// a creature still encased is not yet the player's to give.
@@ -775,8 +756,7 @@ class MergeBoardViewModel {
     /// skips bubbled items: a creature still encased is not yet the player's,
     /// the same reasoning as `boardTaskCensus`. Inventory is included, unlike
     /// `boardTaskCensus`, because "what do I have" should count a banked item.
-    /// It differs from `mergeReadyKeys` in excluding bubbled items. Power-up
-    /// inventory, materials and producers are other categories and not counted.
+    /// Power-up inventory, materials and producers are other categories and not counted.
     /// Pinned by `ChainViewerOwnedCountTests`.
     ///
     /// Computed once per render by the viewer, not per row, as `dailyTaskHighlights` is.
@@ -792,34 +772,95 @@ class MergeBoardViewModel {
         return counts
     }
 
-    /// How a board cell should be tinted for the daily tasks
-    /// (`Spec_DailyHandInTasks.md` D-B — one colour, two intensities).
+    /// How a board cell should be tinted for a held-item card
+    /// (`Spec_DailyHandInTasks.md` D-B — one colour, two intensities). Shared
+    /// by daily hand-in tasks and, since D14, adoption orders
+    /// (`Spec_HeldItemOrders.md` §4), so the board has one highlight language.
     enum DailyTaskHighlight {
-        /// No unclaimed task wants what is in this cell.
+        /// No open card wants what is in this cell.
         case none
-        /// A task wants this creature but is still short of something.
+        /// A card wants this creature but is still short of something (muted).
         case wanted
-        /// Every line of a task this cell serves is stocked — press Claim.
+        /// Every slot of a card this cell serves is held — Claim or Deliver (vivid).
         case stocked
     }
 
     /// Computed once per render pass for the whole board rather than per cell:
     /// each cell would otherwise re-run the census and rescan all three tasks
-    /// for itself. Same reasoning as `mergeReadyKeys`.
+    /// for itself. Daily tasks only; the board reads `heldItemHighlights`.
     var dailyTaskHighlights: [ChainTierKey: DailyTaskHighlight] {
         let census = boardTaskCensus
         var result: [ChainTierKey: DailyTaskHighlight] = [:]
         for task in dailyChallenges where !task.isClaimed {
-            let stocked = task.isStocked(census: census)
-            for line in task.lines {
-                // `.stocked` wins: a creature serving one finished task and one
-                // unfinished one should read as "this is ready to hand in."
-                if stocked || result[line.key] == nil {
-                    result[line.key] = stocked ? .stocked : .wanted
-                }
-            }
+            Self.mergeHighlight(task.lines.map(\.key),
+                                stocked: task.isStocked(census: census), into: &result)
         }
         return result
+    }
+
+    /// Which kind of card a board tile's highlight comes from. It picks the
+    /// hue: daily hand-in tasks stay blue, orders follow Travel Town's olive
+    /// and lime (`Triage_ModelOnReferences.md` §2.10 (d)).
+    enum HeldItemFamily {
+        case dailyTask
+        case order
+    }
+
+    /// One board tile's highlight: how strong, and whose hue.
+    struct HeldItemHighlight: Equatable {
+        var level: DailyTaskHighlight
+        var family: HeldItemFamily
+    }
+
+    /// What the board tiles show (`Spec_HeldItemOrders.md` §4): every unclaimed
+    /// daily task and every open adoption order (the urgent one included while
+    /// its clock runs). A tile wanted by any of them is muted; vivid if any card
+    /// it serves is ready. Vivid wins when a tile serves several cards, and the
+    /// hue is the winning card's. When both are vivid, or both muted, the
+    /// order's green shows. Computed once per render pass for the whole board,
+    /// never per cell.
+    var heldItemHighlights: [ChainTierKey: HeldItemHighlight] {
+        let census = boardTaskCensus
+        var result: [ChainTierKey: HeldItemHighlight] = [:]
+        for task in dailyChallenges where !task.isClaimed {
+            Self.mergeHighlight(task.lines.map(\.key), family: .dailyTask,
+                                stocked: task.isStocked(census: census), into: &result)
+        }
+        for order in adoptionBoardCoordinator.adoptionOrders where !order.isClaimed {
+            Self.mergeHighlight(Array(order.wantedCounts.keys), family: .order,
+                                stocked: order.isReady(census: census), into: &result)
+        }
+        if let urgent = adoptionBoardCoordinator.urgentOrder, !urgent.isClaimed {
+            Self.mergeHighlight(Array(urgent.wantedCounts.keys), family: .order,
+                                stocked: isUrgentOrderDeliverable && urgent.isReady(census: census),
+                                into: &result)
+        }
+        return result
+    }
+
+    /// `.stocked` wins: a creature serving one finished card and one unfinished
+    /// one should read as "this is ready to hand in." The winner's family is
+    /// kept; on a tie of strength, an order's green beats a daily task's blue.
+    private static func mergeHighlight(_ keys: [ChainTierKey], family: HeldItemFamily, stocked: Bool,
+                                       into result: inout [ChainTierKey: HeldItemHighlight]) {
+        let incoming = HeldItemHighlight(level: stocked ? .stocked : .wanted, family: family)
+        for key in keys {
+            guard let existing = result[key] else { result[key] = incoming; continue }
+            if incoming.level == .stocked && existing.level == .wanted {
+                result[key] = incoming
+            } else if incoming.level == existing.level && family == .order {
+                result[key] = incoming
+            }
+        }
+    }
+
+    /// Daily-task-only version of `heldItemHighlights`' merge, for
+    /// `dailyTaskHighlights`.
+    private static func mergeHighlight(_ keys: [ChainTierKey], stocked: Bool,
+                                       into result: inout [ChainTierKey: DailyTaskHighlight]) {
+        for key in keys where stocked || result[key] == nil {
+            result[key] = stocked ? .stocked : .wanted
+        }
     }
 
     /// Daily tasks still awaiting a claim — what the horizontal lane shows.
@@ -836,20 +877,6 @@ class MergeBoardViewModel {
 
     func isDailyTaskStocked(_ task: DailyChallenge) -> Bool {
         task.isStocked(census: boardTaskCensus)
-    }
-
-    var mergeReadyKeys: Set<ChainTierKey> {
-        var counts: [ChainTierKey: Int] = [:]
-        for cell in flatBoard where cell.isUnlocked {
-            guard let item = cell.item else { continue }
-            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
-        }
-        for case let item? in inventory {
-            counts[ChainTierKey(chainID: item.chainID, tier: item.tier), default: 0] += 1
-        }
-        // Two of tier N merge into one of tier N+1.
-        return Set(counts.filter { $0.value >= 2 }
-                         .map { ChainTierKey(chainID: $0.key.chainID, tier: $0.key.tier + 1) })
     }
 
     /// One entry per species that has ≥ 3 Ambassador-tier tiles on the unlocked board.
@@ -1648,7 +1675,7 @@ class MergeBoardViewModel {
 
     /// Places a freshly-resolved spawn item on the board and applies the bookkeeping shared
     /// by every rescue-producer path in `activateProducer` (currency spend, notification
-    /// reschedule, XP/quest/order updates, spawn-in animation). Extracted because the
+    /// reschedule, XP/quest updates, spawn-in animation). Extracted because the
     /// family-spawner and legacy rescue-tier branches previously duplicated this verbatim.
     /// `from` is the producer that spawned the item; nil (or the same cell)
     /// places it with no flight.
@@ -1661,7 +1688,6 @@ class MergeBoardViewModel {
         recalcBoardIsFull()
         grantXP(xpPerRescue)
         updateAllAfterRescue()
-        updateOrdersAfterMerge(chainID: item.chainID, tier: item.tier)
         if let from, from != target.position {
             // The landing pop and sparkle wait for the arc to arrive.
             let flight = SpawnFlight(from: from, to: target.position, item: item)
@@ -1690,13 +1716,19 @@ class MergeBoardViewModel {
     /// tap's own drop resolved to. Silently does nothing at ×1 or when the
     /// board has no room; a bonus should never itself trigger a "Board Full"
     /// complaint. Free (cost: 0) and routed through `finishSpawn` so it still
-    /// counts as a rescue, grants XP, and can fulfil a matching order.
-    private func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int, from: GridPosition? = nil) {
+    /// counts as a rescue and grants XP.
+    ///
+    /// `bonusRoll` and `legendaryRoll` exist only so a test can force the two
+    /// dice (the defaults are the production rolls, unchanged); the landing
+    /// cell is still chosen at random among the empty unlocked cells.
+    func maybeGrantBonusSpawn(species: AnimalSpecies, chainID: ChainID, spawnTier: Int, from: GridPosition? = nil,
+                              bonusRoll: Double = Double.random(in: 0..<1),
+                              legendaryRoll: Double = Double.random(in: 0..<1)) {
         let chance = bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
-        guard chance > 0, Double.random(in: 0..<1) < chance,
+        guard chance > 0, bonusRoll < chance,
               let target = emptyUnlockedCells.randomElement() else { return }
         let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? spawnTier
-        let isLegendary = Double.random(in: 0..<1) < legendaryBonusShare
+        let isLegendary = legendaryRoll < legendaryBonusShare
         let bonusTier = isLegendary ? min(spawnTier + 1, maxTier) : spawnTier
         let label = ContentRegistry.shared.tier(chainID, bonusTier)?.name ?? species.name
         enqueueToast(Toast(kind: .info(isLegendary ? "✨ Legendary! +1 \(label)" : "🍀 Lucky! +1 \(label)")))
@@ -3104,7 +3136,6 @@ class MergeBoardViewModel {
         if chainID == hedgehogChain && unlockedSuperpowerSpecies.contains(AnimalSpecies.hedgehog.rawValue) {
             quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
         }
-        updateOrdersAfterMerge(chainID: chainID, tier: tier)
         if let rewards = quests.recordSpotlightMerge(chainID: chainID) {
             kibbleEngine.kibble  += rewards.kibble
             kibbleEngine.dogTags += rewards.dogTags
@@ -3598,7 +3629,8 @@ class MergeBoardViewModel {
             enqueueToast(Toast(kind: .info("Not everything is on the board yet.")))
             return
         }
-        surrenderBoardItems(for: task.lines)
+        surrenderBoardItems(Dictionary(task.lines.map { ($0.key, $0.count) },
+                                       uniquingKeysWith: +))
         earnCoins(task.coinReward)
         grantXP(task.difficulty.xpReward)
         awardCarePoints(carePoints(forQuest: task.difficulty))
@@ -3615,27 +3647,49 @@ class MergeBoardViewModel {
         persist()
     }
 
-    /// Clears exactly `count` matching creatures per line, in row-major scan
-    /// order, skipping bubbled ones for the same reason `boardTaskCensus` does
-    /// not count them. Mirrors `claimAmbassadorQuest()`, this codebase's
-    /// existing precedent for surrendering board pieces for coins.
-    private func surrenderBoardItems(for lines: [DailyTaskLine]) {
-        for line in lines {
-            var removed = 0
-            outer: for r in 0..<rows {
-                for c in 0..<cols {
-                    guard removed < line.count else { break outer }
-                    let pos = GridPosition(row: r, col: c)
-                    guard let item = boardState.item(at: pos),
-                          item.bubbledAt == nil,
-                          item.chainID == line.chainID,
-                          item.tier == line.tier else { continue }
-                    boardState.clearItem(at: pos)
-                    removed += 1
-                }
+    /// Clears exactly the wanted number of each chain/tier from the board, in
+    /// row-major scan order (top row first, left to right), skipping bubbled
+    /// items for the same reason `boardTaskCensus` does not count them. The ONE
+    /// removal helper for daily hand-in tasks and adoption-order delivery
+    /// (`Spec_HeldItemOrders.md` §3.2), so the scan order cannot drift between
+    /// them. Mirrors `claimAmbassadorQuest()`, this codebase's existing
+    /// precedent for surrendering board pieces.
+    ///
+    /// Does not recalc the board: the caller does, after it has finished.
+    /// Returns what it removed and from where, for the order-delivery
+    /// departure animation.
+    @discardableResult
+    private func surrenderBoardItems(_ wanted: [ChainTierKey: Int]) -> [DepartingItem] {
+        var removed: [DepartingItem] = []
+        var remaining = wanted.filter { $0.value > 0 }
+        guard !remaining.isEmpty else { return removed }
+        outer: for r in 0..<rows {
+            for c in 0..<cols {
+                let pos = GridPosition(row: r, col: c)
+                guard boardState.isUnlocked(at: pos),
+                      let item = boardState.item(at: pos), item.bubbledAt == nil else { continue }
+                let key = ChainTierKey(chainID: item.chainID, tier: item.tier)
+                guard let left = remaining[key] else { continue }
+                boardState.clearItem(at: pos)
+                removed.append(DepartingItem(position: pos, item: item))
+                if left <= 1 { remaining[key] = nil } else { remaining[key] = left - 1 }
+                if remaining.isEmpty { break outer }
             }
         }
+        return removed
     }
+
+    /// An item a delivery has just taken off the board, still drawn fading and
+    /// shrinking out of its cell for `orderDepartureDuration`. Session-only,
+    /// never persisted; the item is already gone from board state.
+    struct DepartingItem: Identifiable, Equatable {
+        let id = UUID()
+        let position: GridPosition
+        let item: BoardItem
+    }
+
+    /// Items currently leaving the board after an order delivery (task 1.5).
+    var departingItems: [DepartingItem] = []
 
     func updateQuestsAfterMerge(chainID: ChainID, tier: Int) {
         quests.updateQuestsAfterMerge(chainID: chainID, tier: tier)
@@ -3678,17 +3732,125 @@ class MergeBoardViewModel {
 
     // MARK: Adoption Order Board
 
-    func updateOrdersAfterMerge(chainID: ChainID, tier: Int) {
-        let completedIndices = adoptionBoardCoordinator.updateAfterMerge(chainID: chainID, tier: tier)
-        for idx in completedIndices { autoClaimOrder(at: idx) }
+    // D14 (Spec_HeldItemOrders.md): an order is filled by items HELD on the board,
+    // not by a merge or a spawn producing them. Nothing credits an order as a side
+    // effect any more; readiness is derived from `boardTaskCensus` on demand, and
+    // an order pays only when it is delivered (`deliverOrder(at:)`).
 
-        if adoptionBoardCoordinator.updateUrgentOrderAfterMerge(chainID: chainID, tier: tier) {
-            autoClaimUrgentOrder()
-        }
+    /// What the board holds against the persistent order at `index`.
+    func orderHeldState(at index: Int) -> OrderHeldState? {
+        guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index) else { return nil }
+        return adoptionBoardCoordinator.adoptionOrders[index].heldState(census: boardTaskCensus)
     }
 
-    /// Applies a reward list to player state. Shared by `autoClaimOrder`,
-    /// `autoClaimUrgentOrder`, and the milestone-track claim path (Phase 6b) —
+    /// What the board holds against the urgent order, if one is live.
+    var urgentOrderHeldState: OrderHeldState? {
+        adoptionBoardCoordinator.urgentOrder?.heldState(census: boardTaskCensus)
+    }
+
+    /// Delivers the persistent order at `index`: takes the wanted items off the
+    /// board and pays it. Returns `false`, changing nothing, unless every item is
+    /// held right now. The readiness check runs against the LIVE census here, so
+    /// a card left on screen while the board changed underneath it (or while
+    /// another card took a shared copy) cannot be delivered on stale state.
+    @discardableResult
+    func deliverOrder(at index: Int) -> Bool {
+        guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index) else { return false }
+        let order = adoptionBoardCoordinator.adoptionOrders[index]
+        guard !order.isClaimed, order.isReady(census: boardTaskCensus) else { return false }
+        completeDelivery(of: order)
+        adoptionBoardCoordinator.markClaimed(at: index)
+        // Persistent slots have no timer, so delivering one doesn't touch the
+        // rescue-expiring notification: that's the urgent order's job.
+        // Weak: a view model that has gone away must not be kept alive for the
+        // pause only to regenerate an order nobody will see.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
+            self.adoptionBoardCoordinator.replaceOrder(
+                at: index,
+                unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
+                playerLevel: self.progression.playerLevel
+            )
+        }
+        persist()
+        return true
+    }
+
+    /// Delivers the persistent order with this id: what the card's Deliver button
+    /// calls, so a card never acts on a stale index. Same rule as
+    /// `deliverOrder(at:)`; `false` and no change if it is not open and ready.
+    @discardableResult
+    func deliverOrder(id: UUID) -> Bool {
+        guard let index = adoptionBoardCoordinator.adoptionOrders.firstIndex(where: { $0.id == id })
+        else { return false }
+        return deliverOrder(at: index)
+    }
+
+    /// Whether the urgent order can still be delivered: live, undelivered, and
+    /// its clock not yet run out. Its card only reads as ready while this holds.
+    var isUrgentOrderDeliverable: Bool {
+        guard let order = adoptionBoardCoordinator.urgentOrder else { return false }
+        return !order.isClaimed && adoptionBoardCoordinator.urgentOrderTimeRemaining > 0
+    }
+
+    /// Delivers the urgent order (Task 5.2): same rule as `deliverOrder(at:)`,
+    /// one slot and no index. Its timer keeps running until this succeeds, so an
+    /// urgent order that is held but never delivered still expires. Marks it
+    /// claimed (reusing `AdoptionOrder.isClaimed`, so the card renders the same
+    /// "Adopted!" state), then respawns a fresh one after the same 2-second pause
+    /// the persistent slots use.
+    @discardableResult
+    func deliverUrgentOrder() -> Bool {
+        guard var order = adoptionBoardCoordinator.urgentOrder,
+              !order.isClaimed, adoptionBoardCoordinator.urgentOrderTimeRemaining > 0,
+              order.isReady(census: boardTaskCensus) else { return false }
+        completeDelivery(of: order)
+        order.markDelivered()
+        adoptionBoardCoordinator.urgentOrder = order
+        NotificationManager.shared.cancelRescueExpiring()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
+            self.adoptionBoardCoordinator.urgentOrder = nil
+            self.adoptionBoardCoordinator.ensureUrgentOrder(
+                unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
+                playerLevel: self.progression.playerLevel
+            )
+            self.rescheduleRescueExpiring()
+        }
+        persist()
+        return true
+    }
+
+    /// The shared half of both deliveries, run only after readiness was checked:
+    /// removes exactly the wanted items (the one removal helper daily tasks use),
+    /// frees their cells before the payout so a `.boardItem` reward can land in
+    /// one, then pays through the unchanged order payout path.
+    private func completeDelivery(of order: AdoptionOrder) {
+        let departed = surrenderBoardItems(order.wantedCounts)
+        if !departed.isEmpty {
+            departingItems.append(contentsOf: departed)
+            let ids = Set(departed.map(\.id))
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(orderDepartureDuration + 0.05))
+                self.departingItems.removeAll { ids.contains($0.id) }
+            }
+        }
+        recalcBoardIsFull()
+        // Kibble is intentionally NOT an order reward (regen timer, dog tags,
+        // quests, IAP only).
+        SoundManager.shared.playRescueClaim()
+        grantXP(xpPerOrderFulfil)
+        applyRewards(order.rewards)
+        emitRewardBurst(for: order)
+        feedParallelBoardEnergy()
+        awardCarePoints(carePointsPerOrder)
+        awardSmilePoints(order.smileValue)
+    }
+
+    /// Applies a reward list to player state. Shared by `deliverOrder(at:)`,
+    /// `deliverUrgentOrder()`, and the milestone-track claim path (Phase 6b) —
     /// previously duplicated verbatim between the first two (see QA-04 in
     /// docs/CODE_HEALTH.md for why that duplication pattern is worth avoiding
     /// from the start rather than fixing later).
@@ -3765,62 +3927,6 @@ class MergeBoardViewModel {
     /// so this does nothing outside one.
     private func feedParallelBoardEnergy() {
         activeParallelBoardEvent?.energy.addBonus(parallelBoardEnergyPerOrder)
-    }
-
-    func autoClaimOrder(at index: Int) {
-        guard adoptionBoardCoordinator.adoptionOrders.indices.contains(index),
-              adoptionBoardCoordinator.adoptionOrders[index].isComplete,
-              !adoptionBoardCoordinator.adoptionOrders[index].isClaimed else { return }
-        let order = adoptionBoardCoordinator.adoptionOrders[index]
-        // Adoption orders are fulfilled by merging animals on the board; kibble is
-        // intentionally NOT a merge reward (regen timer, dog tags, quests, IAP only).
-        SoundManager.shared.playRescueClaim()
-        grantXP(xpPerOrderFulfil)
-        applyRewards(order.rewards)
-        emitRewardBurst(for: order)
-        feedParallelBoardEnergy()
-        awardCarePoints(carePointsPerOrder)
-        awardSmilePoints(order.smileValue)
-        // Persistent slots have no timer, so claiming one doesn't touch the
-        // rescue-expiring notification — that's the urgent order's job now.
-        adoptionBoardCoordinator.markClaimed(at: index)
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            self.adoptionBoardCoordinator.replaceOrder(
-                at: index,
-                unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
-                playerLevel: self.progression.playerLevel
-            )
-        }
-    }
-
-    /// The urgent order's completion path (Task 5.2) — mirrors `autoClaimOrder`,
-    /// but there's exactly one slot and no index: mark it claimed (reusing
-    /// `AdoptionOrder.isClaimed` so the card renders the same "Adopted!" state),
-    /// grant rewards, then respawn a fresh urgent order after the same 2-second
-    /// claim-animation pause the persistent slots use.
-    func autoClaimUrgentOrder() {
-        guard var order = adoptionBoardCoordinator.urgentOrder,
-              order.isComplete, !order.isClaimed else { return }
-        SoundManager.shared.playRescueClaim()
-        grantXP(xpPerOrderFulfil)
-        applyRewards(order.rewards)
-        emitRewardBurst(for: order)
-        feedParallelBoardEnergy()
-        awardCarePoints(carePointsPerOrder)
-        awardSmilePoints(order.smileValue)
-        order.isClaimed = true
-        adoptionBoardCoordinator.urgentOrder = order
-        NotificationManager.shared.cancelRescueExpiring()
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            self.adoptionBoardCoordinator.urgentOrder = nil
-            self.adoptionBoardCoordinator.ensureUrgentOrder(
-                unlockedChainIDs: self.progression.unlockedAnimalChainIDs,
-                playerLevel: self.progression.playerLevel
-            )
-            self.rescheduleRescueExpiring()
-        }
     }
 
     /// Schedules (or cancels) the rescue-expiring notification against the

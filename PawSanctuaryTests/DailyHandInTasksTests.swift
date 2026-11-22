@@ -66,6 +66,9 @@ final class DailyHandInTaskGenerationTests: XCTestCase {
 
     /// Replaces `QuestCoordinatorTests.testDailyChallengeReachTierAnchorCanTargetTopThreeTiers`.
     /// Deep stages stay reachable — as basket lines now, not as a reachTier anchor.
+    /// D14 / Q21 option B lowered the shared tier cap (`maxAchievableOrderTier`)
+    /// for level 51+ from 11 to 10, and daily tasks draw from the same cap, so
+    /// the top tier (11) is no longer asked for; the deep set is now [9, 10].
     func testAMaxLevelPlayerEventuallySeesDeepStagesAsked() {
         let coordinator = QuestCoordinator()
         var seenDeep: Set<Int> = []
@@ -75,8 +78,8 @@ final class DailyHandInTaskGenerationTests: XCTestCase {
                 for line in task.lines where line.tier >= 9 { seenDeep.insert(line.tier) }
             }
         }
-        XCTAssertEqual(seenDeep, [9, 10, 11],
-                       "the hard band's tail must still reach the top of the chain")
+        XCTAssertEqual(seenDeep, [9, 10],
+                       "the hard band's tail must still reach the level cap (tier 10 after Q21 option B)")
     }
 
     /// A mix of stages is the point — a day that only ever asked for tier 0
@@ -170,8 +173,8 @@ final class DailyHandInTaskCensusTests: XCTestCase {
     }
 
     /// Hand-in asks the player to hold the creature *on the board* — that
-    /// board-space pressure is the mechanic. `mergeReadyKeys` counts inventory
-    /// because "can I merge this next" genuinely spans both; this must not.
+    /// board-space pressure is the mechanic. `ownedItemCounts` counts inventory
+    /// because "what do I have" genuinely spans both; this must not.
     func testDoesNotCountInventory() {
         let vm = makeViewModel()
         XCTAssertTrue(vm.addToInventory(BoardItem(chainID: dog, tier: 0)))

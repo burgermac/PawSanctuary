@@ -205,12 +205,11 @@ struct SpotlightBannerView: View {
 struct AdoptionOrderPanelView: View {
     var viewModel: MergeBoardViewModel
 
-    /// Computed once per panel render and handed to every card, rather than
-    /// each card rescanning the board and inventory for itself.
-    private var mergeReadyKeys: Set<ChainTierKey> { viewModel.mergeReadyKeys }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        // Computed once per panel render and handed to every card, rather than
+        // each card rescanning the board for itself.
+        let census = viewModel.boardTaskCensus
+        return VStack(alignment: .leading, spacing: 14) {
             // Urgent order (Task 5.2) — the one slot with a real clock and real
             // stakes; shown above the persistent board so it's never missed.
             VStack(alignment: .leading, spacing: 6) {
@@ -224,8 +223,10 @@ struct AdoptionOrderPanelView: View {
                         onSkip: {},
                         showSkip: false,
                         timer: (viewModel.urgentOrderTimeRemaining, urgentOrderDuration),
-                        mergeReadyKeys: mergeReadyKeys
+                        census: census,
+                        onDeliver: { viewModel.deliverUrgentOrder() }
                     )
+                    .id(urgent.id)
                 } else {
                     UrgentOrderCooldownCard(remaining: viewModel.urgentOrderCooldownRemaining)
                 }
@@ -248,7 +249,8 @@ struct AdoptionOrderPanelView: View {
                     order: order,
                     canSkip: viewModel.kibble >= adoptionSkipCost,
                     onSkip: { viewModel.skipOrder(at: idx) },
-                    mergeReadyKeys: mergeReadyKeys
+                    census: census,
+                    onDeliver: { viewModel.deliverOrder(id: order.id) }
                 )
             }
         }
@@ -288,40 +290,30 @@ struct UrgentOrderCooldownCard: View {
     }
 }
 
-/// One requested item in an order's basket: icon, tier badge, per-line progress,
-/// and the "you could make this next merge" tint.
+/// One requested copy in an order's basket: icon, tier badge, and its held
+/// state (`Spec_HeldItemOrders.md` §4). A line wanting two copies is two slots.
 ///
-/// The green tint is `MergeBoardViewModel.mergeReadyKeys` — see its doc comment
-/// for why this game tints on "you could produce it" rather than the reference
-/// titles' "you already hold it".
+/// The colours are `OrderSlotState`'s (OrderLaneView.swift), shared with the
+/// lane's `CompactOrderSlot` so the two cannot drift apart: muted olive green
+/// when the board holds this copy, vivid lime on every slot of a ready card,
+/// green once delivered. Held slots also wear a check mark. Only the colours
+/// are shared; the geometry is not, deliberately.
 private struct OrderLineSlot: View {
     let line: OrderLine
-    let isMergeReady: Bool
-
-    private var isComplete: Bool { line.isComplete }
-
-    /// Shared with the lane's `CompactOrderSlot` (OrderLaneView.swift) so the
-    /// two cannot drift apart on what "ready to merge" looks like. Only the
-    /// colours are shared; the geometry is not, deliberately — see the note on
-    /// `OrderSlotState`.
-    private var state: OrderSlotState {
-        OrderSlotState(isComplete: isComplete, isMergeReady: isMergeReady)
-    }
-    private var background: Color { state.background }
-    private var border: Color     { state.border }
+    let state: OrderSlotState
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Image(systemName: line.symbol)
                 .font(.system(size: 24))
-                // A line the player can't act on yet reads back, not broken.
-                .foregroundColor(isComplete || isMergeReady ? line.tint : line.tint.opacity(0.45))
+                // A copy the board doesn't hold yet reads back, not broken.
+                .foregroundColor(state.isDimmed ? line.tint.opacity(0.45) : line.tint)
                 .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 10).fill(background))
+                .background(RoundedRectangle(cornerRadius: 10).fill(state.background))
                 .overlay(RoundedRectangle(cornerRadius: 10)
-                    .stroke(border, lineWidth: isComplete || isMergeReady ? 1.5 : 1))
+                    .strokeBorder(state.border, lineWidth: state.borderWidth))
 
-            if isComplete {
+            if state == .delivered {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
@@ -336,20 +328,14 @@ private struct OrderLineSlot: View {
                     .background(Circle().fill(line.color))
                     .offset(x: 4, y: 4)
             }
-
-            // Per-line count, only when this one line wants more than one.
-            if line.count > 1 {
-                Text("\(line.fulfilled)/\(line.count)")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(Capsule().fill(Color.black.opacity(0.55)))
-                    .offset(x: -2, y: -30)
+        }
+        .overlay(alignment: .topTrailing) {
+            if state.showsCheck {
+                OrderSlotCheck(size: 9).offset(x: 5, y: -5)
             }
         }
-        .accessibilityLabel(Text(line.lineDescription
-                                 + (isComplete ? ", delivered"
-                                    : isMergeReady ? ", ready to merge" : "")))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(line.tierName), \(state.accessibilitySuffix)"))
     }
 }
 
@@ -361,10 +347,19 @@ struct AdoptionOrderCard: View {
     /// urgent order with `(remaining, duration)` so the bar/countdown render.
     var showSkip: Bool = true
     var timer: (remaining: Double, duration: Double)? = nil
-    /// Chain/tier pairs the player could produce with one merge right now.
-    /// Defaults to empty so a caller that doesn't care (previews, tests) still
-    /// renders — every slot simply shows as not-yet-actionable.
-    var mergeReadyKeys: Set<ChainTierKey> = []
+    /// The live board census (`MergeBoardViewModel.boardTaskCensus`). Defaults
+    /// to empty so a caller that doesn't care (previews) still renders — every
+    /// slot simply shows as missing.
+    var census: [ChainTierKey: Int] = [:]
+    /// Delivers the order; returns whether it went through. Only reachable from
+    /// the Deliver button, which only a ready card shows.
+    var onDeliver: () -> Bool = { false }
+
+    private var canDeliver: Bool { timer.map { $0.remaining > 0 } ?? true }
+    /// Every copy held and still deliverable: vivid slots and the Deliver button.
+    private var isReady: Bool {
+        !order.isClaimed && canDeliver && order.isReady(census: census)
+    }
 
     private var timeFraction: Double {
         guard let timer else { return 1 }
@@ -382,12 +377,16 @@ struct AdoptionOrderCard: View {
 
     private var timerColor: Color {
         if order.isComplete { return .green }
+        if isReady { return orderReadyText }
         if isUrgentCountdown { return .red }
         return Color(red: 0.7, green: 0.25, blue: 0.35)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let slots = order.slots(census: census, canDeliver: canDeliver)
+        let heldCount = slots.filter { $0.state != .missing }.count
+        let isReady = self.isReady
+        return VStack(spacing: 0) {
             // ── Family header row ─────────────────────────────────
             HStack(spacing: 10) {
                 // Avatar circle
@@ -434,15 +433,13 @@ struct AdoptionOrderCard: View {
             }
 
             // ── Requested animals ─────────────────────────────────
-            // One slot per basket line (schema v37). A single-line order renders
-            // exactly one slot, so this reads the same as it always did.
+            // One slot per wanted copy (D14): a line asking for two of an item
+            // is two slots, and holding one of them lights one.
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
-                    ForEach(order.lines.indices, id: \.self) { i in
-                        OrderLineSlot(line: order.lines[i],
-                                      isMergeReady: mergeReadyKeys.contains(
-                                          ChainTierKey(chainID: order.lines[i].chainID,
-                                                       tier: order.lines[i].tier)))
+                    ForEach(slots.indices, id: \.self) { i in
+                        OrderLineSlot(line: order.lines[slots[i].lineIndex],
+                                      state: slots[i].state)
                     }
                 }
                 .padding(.bottom, 4)
@@ -453,18 +450,15 @@ struct AdoptionOrderCard: View {
                         .font(.system(size: 13, weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    // Progress dots when more than one item is owed in total —
-                    // covers both "2 Pups" (one line, count 2) and a basket.
-                    if order.wantedCount > 1 {
-                        HStack(spacing: 4) {
-                            ForEach(0..<order.wantedCount, id: \.self) { i in
-                                Circle()
-                                    .fill(i < order.fulfilled ? Color.green : Color.gray.opacity(0.3))
-                                    .frame(width: 8, height: 8)
-                            }
-                            Text("\(order.fulfilled)/\(order.wantedCount)")
-                                .font(.system(size: 9)).foregroundColor(.secondary)
-                        }
+                    // How many wanted copies are on the board, when more than
+                    // one is owed — covers both "2 Pups" and a basket.
+                    if order.wantedCount > 1 && !order.isClaimed {
+                        Text(order.isAlmostThere(census: census)
+                             ? "Almost there! \(heldCount)/\(order.wantedCount) on the board"
+                             : "\(heldCount)/\(order.wantedCount) on the board")
+                            .font(.system(size: 9))
+                            .foregroundColor(order.isAlmostThere(census: census)
+                                             ? order.family.color : .secondary)
                     }
 
                     // Reward row
@@ -503,15 +497,6 @@ struct AdoptionOrderCard: View {
                             .foregroundColor(.green)
                         Text("Adopted!").font(.system(size: 8, weight: .bold)).foregroundColor(.green)
                     }
-                } else if order.isComplete {
-                    VStack(spacing: 2) {
-                        Image(systemName: "heart.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(Color(red: 0.7, green: 0.25, blue: 0.35))
-                            .symbolEffect(.pulse, options: .repeating)
-                        Text("Placing...").font(.system(size: 8, weight: .bold))
-                            .foregroundColor(Color(red: 0.7, green: 0.25, blue: 0.35))
-                    }
                 }
             }
             .padding(.top, 8)
@@ -531,8 +516,10 @@ struct AdoptionOrderCard: View {
 
                     HStack {
                         Text(order.isComplete
-                             ? "Ready for pickup!"
-                             : isUrgentCountdown ? "Hurrying! \(timeText) left" : "\(timeText) remaining")
+                             ? "Adopted!"
+                             : isReady
+                               ? "Ready to deliver! \(timeText) left"
+                               : isUrgentCountdown ? "Hurrying! \(timeText) left" : "\(timeText) remaining")
                             .font(.system(size: 9, weight: isUrgentCountdown ? .bold : .regular))
                             .foregroundColor(timerColor)
                         Spacer()
@@ -541,9 +528,10 @@ struct AdoptionOrderCard: View {
                 .padding(.top, 6)
             } else {
                 HStack {
-                    Text(order.isComplete ? "Ready for pickup!" : "Open — no rush")
+                    Text(order.isComplete ? "Adopted!" : isReady ? "Ready to deliver!" : "Open — no rush")
                         .font(.system(size: 9))
-                        .foregroundColor(order.isComplete ? .green : .secondary)
+                        .foregroundColor(order.isComplete ? .green
+                                         : isReady ? orderReadyText : .secondary)
                     Spacer()
                 }
                 .padding(.top, 6)
@@ -551,9 +539,22 @@ struct AdoptionOrderCard: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 14)
-            .fill(Color.white.opacity(order.isClaimed ? 0.5 : 0.85))
+            .fill(isReady ? orderReadyLime.opacity(0.35)
+                          : Color.white.opacity(order.isClaimed ? 0.5 : 0.85))
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(isReady ? orderReadyLimeBorder : Color.clear, lineWidth: 1.5))
             .shadow(color: .black.opacity(0.05), radius: 4))
         .opacity(order.isClaimed ? 0.7 : 1.0)
+        // The Deliver pill straddles the card's top edge, as Travel Town's GO
+        // does. The sheet leaves room for it: 14pt between cards, 12pt of panel
+        // padding above the first.
+        .overlay(alignment: .topTrailing) {
+            if isReady {
+                OrderDeliverButton(order: order, compact: false, onDeliver: onDeliver)
+                    .padding(.trailing, 16)
+                    .offset(y: -12)
+            }
+        }
     }
 }
 

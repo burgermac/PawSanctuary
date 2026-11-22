@@ -867,9 +867,14 @@ struct MergeBoardView: View {
     /// Renders the merge board at the given cell size (computed dynamically from available space).
     func boardGridView(cellSize: CGFloat) -> some View {
         // Computed once for the whole board rather than per cell: each cell
-        // would otherwise re-census the board and rescan all three daily tasks
-        // for itself. Same reasoning as `OrderLaneView`'s `mergeReadyKeys`.
-        let taskHighlights = viewModel.dailyTaskHighlights
+        // would otherwise re-census the board and rescan every daily task and
+        // order for itself. One highlight language for every held-item card
+        // (D14): muted where a card wants the item, vivid where a card is ready.
+        let taskHighlights = viewModel.heldItemHighlights
+        // Items an order delivery just took off the board, still leaving their
+        // cells (task 1.5). Usually empty; keyed once here, not per cell.
+        let departing = Dictionary(viewModel.departingItems.map { ($0.position, $0) },
+                                   uniquingKeysWith: { _, latest in latest })
         return VStack(spacing: cellSpacing) {
             ForEach(0..<viewModel.rows, id: \.self) { row in
                 // A cell's own .zIndex below only wins against its *same-row*
@@ -891,6 +896,9 @@ struct MergeBoardView: View {
                         let isAnimating = viewModel.animatingCell == pos
                         let isSpotlight = cell.item?.chainID == viewModel.spotlightChainID
                         let mergeHintOffset = mergeHintOffset(for: pos, cellSize: cellSize)
+                        let tileHighlight = cell.item.flatMap {
+                            taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
+                        }
                         // Producer affordance shimmer gate (Spec_BoardAnimation_Draft.md §5):
                         // `species` is non-nil only for family-spawner tiles, so this is
                         // naturally false for every other producer type.
@@ -914,11 +922,16 @@ struct MergeBoardView: View {
                                     && viewModel.spawnFlights.contains { $0.to == pos },
                                 isMergeImploding: !reduceMotion
                                     && viewModel.mergeImplosions.contains { $0.to == pos },
-                                dailyTaskHighlight: cell.item.flatMap {
-                                    taskHighlights[ChainTierKey(chainID: $0.chainID, tier: $0.tier)]
-                                } ?? .none
+                                dailyTaskHighlight: tileHighlight?.level ?? .none,
+                                heldItemFamily: tileHighlight?.family ?? .dailyTask
                             )
                             .animation(.easeInOut(duration: 0.55), value: viewModel.mergeHintPulsedIn)
+                            if let leaving = departing[pos] {
+                                DepartingItemView(item: leaving.item, cellSize: cellSize,
+                                                  reduceMotion: reduceMotion)
+                                    .id(leaving.id)
+                                    .allowsHitTesting(false)
+                            }
                             // Drag ghost — animal or producer icon follows the finger
                             if isDragging {
                                 Group {

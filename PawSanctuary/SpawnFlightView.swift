@@ -112,3 +112,28 @@ private struct SpawnArcEffect: GeometryEffect {
         return ProjectionTransform(CGAffineTransform(translationX: x, y: y))
     }
 }
+
+// ============================================================
+// MARK: - ORDER DELIVERY DEPARTURE (Spec_HeldItemOrders.md, task 1.5)
+// ============================================================
+
+/// A delivered item leaving its cell: a short fade and shrink, drawn over the
+/// now-empty cell for `orderDepartureDuration`. The item is already gone from
+/// board state. No blur, shadow or repeating animation (the shimmer OOM note in
+/// `TODO.md`). Under Reduce Motion it only fades, in place.
+struct DepartingItemView: View {
+    let item: BoardItem
+    let cellSize: CGFloat
+    let reduceMotion: Bool
+
+    @State private var isGone = false
+
+    var body: some View {
+        BoardItemSprite(item: item, cellSize: cellSize)
+            .scaleEffect(isGone && !reduceMotion ? orderDepartureEndScale : 1)
+            .opacity(isGone ? 0 : 1)
+            .onAppear {
+                withAnimation(.easeIn(duration: orderDepartureDuration)) { isGone = true }
+            }
+    }
+}

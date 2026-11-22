@@ -217,50 +217,19 @@ class AdoptionBoard {
         return false
     }
 
-    // MARK: Merge updates
+    // MARK: Delivery bookkeeping
+    //
+    // D14 (Spec_HeldItemOrders.md): an order is never credited by a merge or a
+    // spawn. It is filled by items held on the board, which this class cannot see
+    // (the board lives elsewhere), so readiness is derived from a census passed
+    // in (`AdoptionOrder.heldState(census:)`) and the delivery itself runs in
+    // `MergeBoardViewModel.deliverOrder(at:)` / `deliverUrgentOrder()`.
 
-    /// Advances order progress for a matching merge. Returns indices of orders that
-    /// just became complete so the caller can distribute rewards.
-    func updateAfterMerge(chainID: ChainID, tier: Int) -> [Int] {
-        var completedIndices: [Int] = []
-        for i in adoptionOrders.indices {
-            guard !adoptionOrders[i].isClaimed, !adoptionOrders[i].isComplete else { continue }
-            if creditLine(in: &adoptionOrders[i], chainID: chainID, tier: tier),
-               adoptionOrders[i].isComplete {
-                completedIndices.append(i)
-            }
-        }
-        return completedIndices
-    }
-
-    /// Advances the urgent order's progress for a matching merge. Returns `true`
-    /// if it just became complete.
-    func updateUrgentOrderAfterMerge(chainID: ChainID, tier: Int) -> Bool {
-        guard var order = urgentOrder,
-              !order.isComplete, urgentOrderTimeRemaining > 0,
-              creditLine(in: &order, chainID: chainID, tier: tier) else { return false }
-        urgentOrder = order
-        return order.isComplete
-    }
-
-    /// Credits one delivered item to the first unfilled line matching
-    /// `chainID`/`tier`, returning whether anything was credited.
-    ///
-    /// Only ever advances **one** line per delivered item: a basket that happens
-    /// to list the same item twice (two lines of one Pup rather than one line of
-    /// two) must still consume two Pups, not be filled by one.
-    private func creditLine(in order: inout AdoptionOrder, chainID: ChainID, tier: Int) -> Bool {
-        guard let lineIndex = order.lines.firstIndex(where: {
-            $0.chainID == chainID && $0.tier == tier && !$0.isComplete
-        }) else { return false }
-        order.lines[lineIndex].fulfilled += 1
-        return true
-    }
-
-    /// Marks an order as claimed. MergeBoardViewModel queues the replacement.
+    /// Marks an order as delivered (every line filled, claimed). MergeBoardViewModel
+    /// queues the replacement.
     func markClaimed(at index: Int) {
         guard adoptionOrders.indices.contains(index) else { return }
-        adoptionOrders[index].isClaimed = true
+        adoptionOrders[index].markDelivered()
     }
 
     /// Replaces the order at `index` with a fresh one (called after the claim delay).
@@ -325,9 +294,22 @@ class AdoptionBoard {
 
     // MARK: Persistence
 
+    /// D14 old-save handling (Spec_HeldItemOrders.md §5). A save from the D12
+    /// rule can hold an unclaimed order with `0 < fulfilled < count`, credit
+    /// earned by a merge. That credit means nothing now (an order is filled only
+    /// by what the board holds), so it is cleared. A claimed order keeps its
+    /// filled lines: they are what makes it read as delivered. A value
+    /// normalisation, not a shape change, so no schema bump.
+    static func normalisedForHeldItemRule(_ order: AdoptionOrder) -> AdoptionOrder {
+        guard !order.isClaimed else { return order }
+        var order = order
+        for i in order.lines.indices { order.lines[i].fulfilled = 0 }
+        return order
+    }
+
     func restore(from s: GameState) {
-        adoptionOrders = s.adoptionOrders
-        urgentOrder = s.urgentOrder
+        adoptionOrders = s.adoptionOrders.map(Self.normalisedForHeldItemRule)
+        urgentOrder = s.urgentOrder.map(Self.normalisedForHeldItemRule)
         urgentOrderTimeRemaining = s.urgentOrderTimeRemaining
         urgentOrderCooldownRemaining = s.urgentOrderCooldownRemaining
     }
