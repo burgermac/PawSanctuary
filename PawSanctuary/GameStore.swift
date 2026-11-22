@@ -134,6 +134,9 @@ struct GameState: Codable {
     /// Trophy page slots filled per family (v45, specs/Spec_GoldenBallTrophyPage.md).
     /// Key is AnimalSpecies.rawValue.
     var trophyCounts: [String: Int] = [:]
+    /// Collection-level prizes already paid (v46, specs/Spec_AlbumGrandPrize.md).
+    /// Holds collection IDs, e.g. "collection.1". Never cleared.
+    var claimedCollectionPrizeIDs: [String] = []
     var lastDailyChallengeReset: Date?
     var lastSpotlightWeek: Int
 
@@ -391,7 +394,11 @@ enum GameStore {
     /// v45: trophyCounts added (`specs/Spec_GoldenBallTrophyPage.md`). Non-Optional,
     ///      so it has an `additiveDefaultsSinceV8` entry; a migrating save starts
     ///      with every family's page empty.
-    static let currentVersion = 45
+    /// v46: claimedCollectionPrizeIDs added (`specs/Spec_AlbumGrandPrize.md`).
+    ///      Non-Optional, so it has an `additiveDefaultsSinceV8` entry; a
+    ///      migrating save starts with no collection prize claimed (owner Q4 a:
+    ///      a save that already finished every set may still claim once).
+    static let currentVersion = 46
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -715,6 +722,7 @@ enum GameStore {
         if version == 42 { return migrateByInjecting(from: 42, defaults: [:], into: data) }   // loginTotalDays covered by additiveDefaultsSinceV8
         if version == 44 { return migrateByInjecting(from: 44, defaults: [:], into: data) }   // trophyCounts covered by additiveDefaultsSinceV8
         if version == 43 { return migrateByInjecting(from: 43, defaults: [:], into: data) }   // boardTheme / boardThemePrompted covered by additiveDefaultsSinceV8
+        if version == 45 { return migrateByInjecting(from: 45, defaults: [:], into: data) }   // claimedCollectionPrizeIDs covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -818,6 +826,9 @@ enum GameStore {
         "boardTheme": "meadow", "boardThemePrompted": false,
         // v45 — Trophy pages. A migrating save starts with every page empty.
         "trophyCounts": [String: Int](),
+        // v46 — Album grand prize. A migrating save starts with no collection
+        // prize claimed, even if every set is already complete (owner Q4 a).
+        "claimedCollectionPrizeIDs": [String](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

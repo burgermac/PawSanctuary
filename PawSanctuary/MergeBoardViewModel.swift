@@ -341,6 +341,9 @@ class MergeBoardViewModel {
     var cardInventory: [String: Int] = [:]
     var starCount: Int = 0
     var completedAlbumIDs: [String] = []
+    /// Collection-level prizes already paid (v46, specs/Spec_AlbumGrandPrize.md),
+    /// e.g. "collection.1". Never cleared. Persisted only; no rule reads it yet.
+    var claimedCollectionPrizeIDs: [String] = []
     var pendingCardPacks: [CardPackType] = []
     var jokerCards: Int = 0
     var rareJokerCards: Int = 0
@@ -1365,6 +1368,7 @@ class MergeBoardViewModel {
         s.boardTheme                = boardTheme
         s.boardThemePrompted        = boardThemePrompted
         s.trophyCounts              = trophyCounts
+        s.claimedCollectionPrizeIDs = claimedCollectionPrizeIDs
         s.lagomorphMergeCount       = lagomorphMergeCount
         s.lastMergeTimestamp        = lastMergeTimestamp
         s.lastMergedSpeciesRaw      = lastMergedSpeciesRaw
@@ -1419,6 +1423,7 @@ class MergeBoardViewModel {
         cardInventory       = s.cardInventory
         starCount           = s.starCount
         completedAlbumIDs   = s.completedAlbumIDs
+        claimedCollectionPrizeIDs = s.claimedCollectionPrizeIDs
         pendingCardPacks    = s.pendingCardPacks
         jokerCards          = s.jokerCards
         rareJokerCards      = s.rareJokerCards
