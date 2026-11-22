@@ -2591,3 +2591,13 @@ let orderMaxTierLevel51Plus  = 10
 // `RewardBurst`, unchanged.
 let orderDepartureDuration: Double = 0.35
 let orderDepartureEndScale: CGFloat = 0.2
+
+// MARK: - Album grand prize (Spec_AlbumGrandPrize.md §5.2, owner Q19 / Q2 a)
+//
+// Paid once per save when every card set is complete and the player claims it.
+// Kibble goes through the Pass bonus like set kibble; coins through `earnCoins`.
+// 100 Dog Tags is exactly one wildcard. Design proposals sized in the spec, not
+// measured values.
+let albumCollectionPrizeKibble  = 800
+let albumCollectionPrizeDogTags = 100
+let albumCollectionPrizeCoins   = 5_000

@@ -286,6 +286,11 @@ enum CardRegistry {
         ),
     ]
 
+    /// The one collection-level prize so far (Spec_AlbumGrandPrize.md §4.1, owner
+    /// Q5 a): keyed by ID rather than a Bool so a later album could carry its own
+    /// prize without another schema bump. Stored in `claimedCollectionPrizeIDs`.
+    static let collectionPrizeID = "collection.1"
+
     static let albumsByID: [String: CardAlbumDefinition] =
         Dictionary(uniqueKeysWithValues: albums.map { ($0.id, $0) })
 

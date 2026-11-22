@@ -957,7 +957,9 @@ struct EconomySimulation {
         // A top-tier merge consumes a full top-tier item's worth of production.
         let topTierMergesPerDay = production / Double(spawnCost(forTier: animalChainTopTier))
         let ambassadors = topTierMergesPerDay * Double(coinsPerAmbassadorMerge)
-        let albums = Double(CardRegistry.albums.reduce(0) { $0 + $1.rewardCoins }) / amortisationDays
+        // Set coins plus the one-time grand prize (Spec_AlbumGrandPrize.md §5.2).
+        let albums = Double(CardRegistry.albums.reduce(0) { $0 + $1.rewardCoins }
+                            + albumCollectionPrizeCoins) / amortisationDays
         return dailies + quests + ambassadors + albums
     }
 
