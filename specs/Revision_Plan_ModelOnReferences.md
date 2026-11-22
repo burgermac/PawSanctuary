@@ -56,7 +56,7 @@ Status key: **ready** (can start now) · **spec first** · **blocked** (names wh
 
 | Id | Task | Status |
 |---|---|---|
-| 5.1 | Spec: restore tiers 9 to 11 of each family (45 names are in git history), art availability check, schema migration of saved tier indices, economy retune, mid-chain order targets. The owner reviews the migration plan | spec first, after 1.3 |
+| 5.1 | Spec: restore tiers 9 to 11 of each family (45 names are in git history), art availability check, schema migration of saved tier indices, economy retune, mid-chain order targets. The owner reviews the migration plan | 5.1 spec in review, PR #134 |
 | 5.2 | Art for restored tiers | owner / blocked on 5.1 |
 | 5.3 | Migration, content, retune, tests | blocked on 5.1, 5.2 |
 
