@@ -920,6 +920,18 @@ struct EconomySimulation {
     /// Horizon used only to amortise one-time album rewards.
     static let amortisationDays = 60.0
 
+    /// Kibble per day from the card-album set ramp (`albumSetRewardRamp`),
+    /// amortised over `amortisationDays`. Deliberately NOT part of
+    /// `dailySupply`, which is pinned to measured reference values
+    /// (`testSupplyMatchesTheMeasuredReference`). Before the Pass bonus.
+    ///
+    /// Ramp kibble only. The whole-collection grand prize
+    /// (Spec_AlbumGrandPrize.md §11 Task 2) is not built yet and is excluded;
+    /// Task 2 adds its kibble here.
+    static var albumKibblePerDay: Double {
+        Double(albumSetRewardRamp.reduce(0) { $0 + $1.kibble }) / amortisationDays
+    }
+
     @MainActor
     struct CoinRow {
         let level: Int
@@ -957,7 +969,7 @@ struct EconomySimulation {
         // A top-tier merge consumes a full top-tier item's worth of production.
         let topTierMergesPerDay = production / Double(spawnCost(forTier: animalChainTopTier))
         let ambassadors = topTierMergesPerDay * Double(coinsPerAmbassadorMerge)
-        let albums = Double(CardRegistry.albums.reduce(0) { $0 + $1.rewardCoins }) / amortisationDays
+        let albums = Double(albumSetRewardRamp.reduce(0) { $0 + $1.coins }) / amortisationDays
         return dailies + quests + ambassadors + albums
     }
 
