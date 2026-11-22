@@ -2962,6 +2962,23 @@ class MergeBoardViewModel {
         isCollectionComplete && !isCollectionPrizeClaimed
     }
 
+    /// What the album's collection banner shows (Spec_AlbumGrandPrize.md §4.1
+    /// point 4, task 3). Derived; nothing persisted.
+    enum CollectionBannerState: Equatable {
+        /// Still collecting: `done` of `total` sets complete.
+        case collecting(done: Int, total: Int)
+        /// Every set complete, prize not yet claimed: show the Claim button.
+        case claimable
+        /// Prize already paid.
+        case claimed
+    }
+
+    var collectionBannerState: CollectionBannerState {
+        if isCollectionPrizeClaimed { return .claimed }
+        if isCollectionComplete { return .claimable }
+        return .collecting(done: completedSetCount, total: CardRegistry.albums.count)
+    }
+
     /// Pays the album grand prize once (§9): the check, the record and the payout
     /// happen in this one synchronous call, then the whole state is saved, so a
     /// second tap, a reload or a migration can never pay it again. Returns false,
