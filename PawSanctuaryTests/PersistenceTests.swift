@@ -1406,6 +1406,69 @@ final class PersistenceTests: XCTestCase {
                        "the Drive's ladder must survive a weekly reset that zeroes carePointsThisWeek — straddling that boundary would otherwise destroy a purchase")
     }
 
+    // MARK: v45 → v46 (Album grand prize)
+
+    func testV45toV46StartsWithNoCollectionPrizeClaimed() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "claimedCollectionPrizeIDs")
+        obj["version"] = 45
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v45 save should migrate to v46")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertTrue(loaded.claimedCollectionPrizeIDs.isEmpty)
+    }
+
+    /// Owner Q4 (a): a save that already finished every set migrates unclaimed,
+    /// so it may claim the grand prize once. Migration never pays or marks it.
+    func testV45SaveWithEverySetCompleteKeepsItsSetsAndIsUnclaimed() throws {
+        var state = makeSampleState()
+        let allSetIDs = CardRegistry.albums.map(\.id)
+        var everyCard: [String: Int] = [:]
+        for album in CardRegistry.albums {
+            for cardID in album.cardIDs { everyCard[cardID] = 1 }
+        }
+        state.completedAlbumIDs = allSetIDs
+        state.cardInventory = everyCard
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "claimedCollectionPrizeIDs")
+        obj["version"] = 45
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v45 save should migrate to v46")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.completedAlbumIDs, allSetIDs)
+        XCTAssertEqual(loaded.cardInventory, everyCard)
+        XCTAssertEqual(loaded.claimedCollectionPrizeIDs, [])
+    }
+
+    func testClaimedCollectionPrizeIDsRoundTripOnAFreshSave() throws {
+        var state = makeSampleState()
+        state.claimedCollectionPrizeIDs = ["collection.1"]
+        let decoded = try decoder.decode(GameState.self, from: try encoder.encode(state))
+        XCTAssertEqual(decoded.claimedCollectionPrizeIDs, ["collection.1"])
+    }
+
+    /// Guards the flat dispatch table: a v9 save (before cards existed) jumps
+    /// straight to the current version and must pick up the v46 default too.
+    func testPreV10SaveMigratesWithNoCollectionPrizeClaimed() throws {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        for key in ["cardInventory", "starCount", "completedAlbumIDs", "pendingCardPacks",
+                    "jokerCards", "rareJokerCards", "claimedCollectionPrizeIDs"] {
+            obj.removeValue(forKey: key)
+        }
+        obj["version"] = 9
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v9 save should migrate successfully")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.completedAlbumIDs, [])
+        XCTAssertEqual(loaded.claimedCollectionPrizeIDs, [])
+    }
+
     // MARK: v44 → v45 (Trophy pages)
 
     func testV44toV45StartsEveryTrophyPageEmpty() throws {

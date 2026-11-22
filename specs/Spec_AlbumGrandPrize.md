@@ -1,6 +1,6 @@
 # PawSanctuary — Album Grand Prize and Set-Reward Ramp
 
-**Status: Draft, 18 Nov 2026, not reviewed, no code.** Written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Task 6.2 (build) is blocked on this spec and on the owner's answers in §12. Four implementation tasks, one per session, in §11.
+**Status: Task 1 (schema v46, persistence only) in review, PR #130 (22 Nov 2026); Tasks 2–4 not started.** Owner answers recorded in §12 (18 Nov 2026). Originally a draft written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Task 6.2 (build) is blocked on this spec and on the owner's answers in §12. Four implementation tasks, one per session, in §11.
 
 **Self-contained brief.** Assumes no prior conversation. Every code claim is cited `file:line` as read on 18 Nov 2026; line numbers drift, so search by name if a number no longer lands.
 
