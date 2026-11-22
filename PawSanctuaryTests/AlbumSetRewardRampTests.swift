@@ -154,9 +154,16 @@ final class AlbumSetRewardRampTests: XCTestCase {
 
     // MARK: Economy
 
-    func testAlbumKibbleStaysUnderFivePercentOfDailySupply() {
+    /// Album kibble (set ramp plus the one-time grand prize, amortised over 60
+    /// days) stays under 7% of a day's supply. The spec first set 5%, but its own
+    /// 800-kibble prize took the figure to 43/day (6.2%), so the two
+    /// contradicted each other. The owner chose 22 Nov 2026 to raise the guard to
+    /// 7% and keep the prize: it is paid once, at the very end of the collection,
+    /// and `testDemandSupplyRatioMatchesTheTargetCurve` does not read this figure
+    /// (Spec_AlbumGrandPrize.md §12).
+    func testAlbumKibbleStaysUnderSevenPercentOfDailySupply() {
         let perDay = EconomySimulation.albumKibblePerDay
         XCTAssertEqual(perDay, Double(1_800 + albumCollectionPrizeKibble) / EconomySimulation.amortisationDays, accuracy: 0.001)
-        XCTAssertLessThan(perDay, 0.05 * Double(EconomySimulation.dailySupply(level: 5)))
+        XCTAssertLessThan(perDay, albumKibbleGuardShareOfDailySupply * Double(EconomySimulation.dailySupply(level: 5)))
     }
 }

@@ -1217,3 +1217,8 @@ struct EconomySimulation {
         return out
     }
 }
+
+/// Album kibble (set ramp + grand prize, amortised) must stay below this share of
+/// `dailySupply(level: 5)`. 7% by the owner's choice of 22 Nov 2026 (the spec's
+/// original 5% contradicted its own 800-kibble prize).
+let albumKibbleGuardShareOfDailySupply = 0.07
