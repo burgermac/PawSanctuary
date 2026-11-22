@@ -342,7 +342,8 @@ class MergeBoardViewModel {
     var starCount: Int = 0
     var completedAlbumIDs: [String] = []
     /// Collection-level prizes already paid (v46, specs/Spec_AlbumGrandPrize.md),
-    /// e.g. "collection.1". Never cleared. Persisted only; no rule reads it yet.
+    /// e.g. "collection.1". Never cleared, not even by the debug reset, so a
+    /// reset cannot pay the grand prize twice. See `claimCollectionPrize()`.
     var claimedCollectionPrizeIDs: [String] = []
     var pendingCardPacks: [CardPackType] = []
     var jokerCards: Int = 0
@@ -2934,6 +2935,46 @@ class MergeBoardViewModel {
             albumCompleteQueue.append(album)
             if albumCompleteQueue.count == 1 { scheduleAlbumCompleteDismiss(id: album.id) }
         }
+    }
+
+    // MARK: Album grand prize (Spec_AlbumGrandPrize.md §4.1, §9)
+    //
+    // Kept apart from `checkAlbumCompletions()` on purpose: the prize is claimed,
+    // not paid on completion, so nothing here runs when a set completes.
+
+    /// Registered sets the player has completed. IDs in `completedAlbumIDs` that
+    /// no longer match a registered set are ignored: they neither count nor block.
+    var completedSetCount: Int {
+        let done = Set(completedAlbumIDs)
+        return CardRegistry.albums.filter { done.contains($0.id) }.count
+    }
+
+    /// Every registered set is complete.
+    var isCollectionComplete: Bool {
+        !CardRegistry.albums.isEmpty && completedSetCount == CardRegistry.albums.count
+    }
+
+    var isCollectionPrizeClaimed: Bool {
+        claimedCollectionPrizeIDs.contains(CardRegistry.collectionPrizeID)
+    }
+
+    var isCollectionPrizeClaimable: Bool {
+        isCollectionComplete && !isCollectionPrizeClaimed
+    }
+
+    /// Pays the album grand prize once (§9): the check, the record and the payout
+    /// happen in this one synchronous call, then the whole state is saved, so a
+    /// second tap, a reload or a migration can never pay it again. Returns false,
+    /// changing nothing, unless the prize is claimable right now.
+    @discardableResult
+    func claimCollectionPrize() -> Bool {
+        guard isCollectionPrizeClaimable else { return false }
+        claimedCollectionPrizeIDs.append(CardRegistry.collectionPrizeID)
+        kibbleEngine.kibble  += withPassBonus(albumCollectionPrizeKibble)
+        kibbleEngine.dogTags += albumCollectionPrizeDogTags
+        earnCoins(albumCollectionPrizeCoins)
+        persist()
+        return true
     }
 
     /// Auto-removes the front album-complete card and chains the dismiss timer for

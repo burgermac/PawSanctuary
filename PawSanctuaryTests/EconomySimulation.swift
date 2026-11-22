@@ -925,11 +925,11 @@ struct EconomySimulation {
     /// `dailySupply`, which is pinned to measured reference values
     /// (`testSupplyMatchesTheMeasuredReference`). Before the Pass bonus.
     ///
-    /// Ramp kibble only. The whole-collection grand prize
-    /// (Spec_AlbumGrandPrize.md §11 Task 2) is not built yet and is excluded;
-    /// Task 2 adds its kibble here.
+    /// Ramp kibble plus the one-time whole-collection grand prize
+    /// (`albumCollectionPrizeKibble`, Spec_AlbumGrandPrize.md §11 Task 2).
     static var albumKibblePerDay: Double {
-        Double(albumSetRewardRamp.reduce(0) { $0 + $1.kibble }) / amortisationDays
+        Double(albumSetRewardRamp.reduce(0) { $0 + $1.kibble }
+               + albumCollectionPrizeKibble) / amortisationDays
     }
 
     @MainActor
@@ -969,7 +969,9 @@ struct EconomySimulation {
         // A top-tier merge consumes a full top-tier item's worth of production.
         let topTierMergesPerDay = production / Double(spawnCost(forTier: animalChainTopTier))
         let ambassadors = topTierMergesPerDay * Double(coinsPerAmbassadorMerge)
-        let albums = Double(albumSetRewardRamp.reduce(0) { $0 + $1.coins }) / amortisationDays
+        // Ramp set coins plus the one-time grand prize (Spec_AlbumGrandPrize.md §5.2).
+        let albums = Double(albumSetRewardRamp.reduce(0) { $0 + $1.coins }
+                            + albumCollectionPrizeCoins) / amortisationDays
         return dailies + quests + ambassadors + albums
     }
 
@@ -1215,3 +1217,8 @@ struct EconomySimulation {
         return out
     }
 }
+
+/// Album kibble (set ramp + grand prize, amortised) must stay below this share of
+/// `dailySupply(level: 5)`. 7% by the owner's choice of 22 Nov 2026 (the spec's
+/// original 5% contradicted its own 800-kibble prize).
+let albumKibbleGuardShareOfDailySupply = 0.07
