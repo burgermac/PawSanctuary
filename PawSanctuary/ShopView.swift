@@ -83,7 +83,7 @@ struct ShopView: View {
                         Divider().padding(.horizontal)
 
                         // ── Energy Packs (IAP bundles) ───────────────────
-                        EnergyPackShopSection(storeManager: storeManager)
+                        EnergyPackShopSection(viewModel: viewModel, storeManager: storeManager)
 
                         Divider().padding(.horizontal)
 
@@ -881,6 +881,7 @@ struct ShopItemRow: View {
 
 /// IAP bundles that include kibble, dog tags, a spawner, and a card pack.
 struct EnergyPackShopSection: View {
+    let viewModel: MergeBoardViewModel
     var storeManager: StoreManager
 
     private let energyCases: [IAPProduct] = [.energySmall, .energyMedium, .energyLarge, .energyXL]
@@ -904,7 +905,8 @@ struct EnergyPackShopSection: View {
 
             ForEach(energyCases, id: \.rawValue) { iap in
                 if let contents = iap.energyPackContents {
-                    EnergyPackRow(iap: iap, contents: contents, storeManager: storeManager)
+                    EnergyPackRow(iap: iap, contents: contents, storeManager: storeManager,
+                                  hasRoom: viewModel.hasRoomForSpawners(of: iap))
                 }
             }
         }
@@ -915,6 +917,9 @@ struct EnergyPackRow: View {
     let iap: IAPProduct
     let contents: EnergyPackContents
     var storeManager: StoreManager
+    /// False when there is no room on the board or in producer storage for the
+    /// pack's spawner(s): the price button is replaced by "Make room first".
+    var hasRoom: Bool = true
 
     private var liveProduct: Product? {
         storeManager.products.first { $0.id == iap.rawValue }
@@ -963,7 +968,16 @@ struct EnergyPackRow: View {
 
             Spacer()
 
-            if let product = liveProduct {
+            if !hasRoom {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Make room first")
+                        .font(.caption.bold()).foregroundColor(.secondary)
+                    Text(contents.spawnerCount > 1 ? "Needs \(contents.spawnerCount) free spaces" : "Needs a free space")
+                        .font(.caption2).foregroundColor(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(energyPackMakeRoomMessage)
+            } else if let product = liveProduct {
                 Button(product.displayPrice) { Task { await storeManager.purchase(product) } }
                     .font(.subheadline.bold()).foregroundColor(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -981,3 +995,8 @@ struct EnergyPackRow: View {
             .shadow(color: .black.opacity(0.05), radius: 4))
     }
 }
+
+/// Shown instead of an energy pack's price when its spawner(s) would have
+/// nowhere to go (owner, 22 Nov 2026).
+let energyPackMakeRoomMessage =
+    "Make room first: free a space on the board or in Storage (Producers) for this pack's spawner."
