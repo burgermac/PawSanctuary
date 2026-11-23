@@ -271,6 +271,21 @@ Daily hand-in tasks already read the live board, so the game now has one rule fo
 
 **Applies to:** every spec that changes how orders count progress or how an item leaves the board. **Does not reopen** D2 (row 3 revisits D2b through its own spec), D3, D7, D9, D13.
 
+### D15 — Fifteen tiers per family *(decided 22 Nov 2026)*
+
+Decided on the owner's instruction, answering the seven questions in `Spec_FifteenTiers.md` §12 (D14 row 3, revision task 5.1). **Every animal family goes back to 15 tiers:** the 45 names cut in Phase 2b return at tiers 9 to 11, and today's top three move to 12 to 14. **D2b (the cut to 12 tiers, §5b) is superseded** by D14 row 3 and this entry; its record stays as the history.
+
+**The answers.**
+- **Q1 (a)** Order, daily-task and quest tier caps stay as today, so the three new top tiers are never asked for. New recording R10 (`Recording_Guide.md`) checks this against the references' order depth.
+- **Q2 (a)** Saved tiers 9 to 11 map to 12 to 14: every saved animal keeps its name and picture.
+- **Q3 held.** What counts as an "Ambassador" (celebration, Ambassador quest, trio exchange, Sanctuary Stars) is not decided until it is measured: recording R11. Until then nothing Ambassador-related changes, and the build cannot finish.
+- **Q4 (b)** The Dog Tag store never stocks above tier 10, today's ceiling, at today's prices.
+- **Q5 (a)** The legendary quest goals stay at tiers 9, 10, 11.
+- **Q6 (b)** Pre-v28 saves keep the July squeeze to 12 tiers, then expand like any other.
+- **Q7 (b)** The build that adds the tiers waits until all 45 new images exist (owner task 5.2). Only the two preparatory tasks, which change no behaviour, can run before then.
+
+**Applies to:** any spec touching chain length, top-tier rewards, the Dog Tag store's stock, or saved tier indices. **Does not reopen** D7, D9, D13 or D14.
+
 ---
 
 ## 4. Phase 1 — Foundations

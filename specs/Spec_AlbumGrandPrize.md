@@ -1,6 +1,6 @@
 # PawSanctuary — Album Grand Prize and Set-Reward Ramp
 
-**Status: Task 1 (schema v46, persistence only) in review, PR #130 (22 Nov 2026); Tasks 2–4 not started.** Owner answers recorded in §12 (18 Nov 2026). Originally a draft written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Task 6.2 (build) is blocked on this spec and on the owner's answers in §12. Four implementation tasks, one per session, in §11.
+**Status (22 Nov 2026): owner answers in §12. Task 1 (schema v46) is merged, PR #130. Task 2 (grand prize rule) is PR #132 and task 4 (set-reward ramp) is PR #131, both in review. Task 3 (banner) is not yet a PR.** Originally: Draft, 18 Nov 2026, not reviewed, no code. Written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Four implementation tasks, one per session, in §11.
 
 **Self-contained brief.** Assumes no prior conversation. Every code claim is cited `file:line` as read on 18 Nov 2026; line numbers drift, so search by name if a number no longer lands.
 
@@ -249,15 +249,23 @@ Add under a `// MARK: v45 → v46 (Album grand prize)` heading, mirroring `testV
 
 - Per Q1 and Q6: either the completion-order ramp (`albumSetRewardRamp` in `AnimalSpecies.swift`, `checkAlbumCompletions` pays rung `completedAlbumIDs.count` before appending; the set detail banner shows the next rung's reward) or new per-set numbers in `CardRegistry.albums`. Fix the coin order either way.
 - Already-paid sets are not back-paid.
-- `EconomySimulation`: add an `albumKibblePerDay` figure (ramp + prize kibble ÷ 60) **outside** `dailySupply`, which is pinned to measured values (`EconomyTests.swift:780-784`), and a test that it stays under 5% of `dailySupply(level: 5)`.
+- `EconomySimulation`: add an `albumKibblePerDay` figure (ramp + prize kibble ÷ 60) **outside** `dailySupply`, which is pinned to measured values (`EconomyTests.swift:780-784`), and a test that it stays under 7% of `dailySupply(level: 5)` (originally 5%; raised 22 Nov 2026, see §12).
 - Docs: `Feature_Parity_Audit.md` row to ✅ with the new citations; mark W6 done in `Revision_Plan_ModelOnReferences.md`.
 - **Tests:** ramp is monotonic in every currency; rung N pays rung N whichever set completes; total equals the table; `EconomyTests` green, including `testDemandSupplyRatioMatchesTheTargetCurve` (`:754-771`), which this does not touch because `dailySupply` is unchanged.
 
 Task 4 has no dependency on 1 to 3 and can go first if the owner prefers.
 
+**Task 4 as built (22 Nov 2026, in review).** Three choices the bullets above left open:
+- The per-set `rewardKibble`/`rewardDogTags`/`rewardCoins` fields were **removed** from `CardAlbumDefinition` and `CardRegistry.albums`, since nothing pays them any more and leaving them would show the wrong numbers. Not persisted; no save change.
+- The set detail banner reads `viewModel.nextAlbumSetReward` and says "Next set completed earns:", with kibble shown after the Pass bonus (what will actually land). A finished set shows "Reward claimed!" with no amounts, because saves completed before the ramp were paid the old per-set numbers and the rung cannot be recovered honestly.
+- `EconomySimulation.albumKibblePerDay` counted **ramp kibble only** when task 4 shipped (1,800 ÷ 60 = 30/day, 4.3% of L5 supply); task 2 added the grand prize kibble (43.3/day, 6.2%), under the 7% guard decided in §12. The album coin term now sums the ramp (same 6,250 total).
+- Not done here: W6 in `Revision_Plan_ModelOnReferences.md` stays open (Tasks 1–3).
+
 ---
 
 ## 12. Open questions for the owner
+
+**Decided 22 Nov 2026 (owner, option a, relayed by the coordinating session): the album kibble guard is 7%, not 5%, and the grand prize keeps its 800 kibble.** Found when task 2 was merged with task 4: counting the prize as §11 Task 4 asked, album kibble amortised over 60 days is (1,800 + 800) ÷ 60 = 43.3 a day, 6.2% of the level-5 supply of 695, so the spec's own 5% limit and its own Q2 (a) prize contradicted each other. Options were (a) raise the guard to 7% and keep the prize, (b) keep 5% and cut the prize kibble to about 280, (c) count the one-time prize outside the daily figure. Reasons for (a): the prize is paid once, at the end of the collection, and `testDemandSupplyRatioMatchesTheTargetCurve` does not read this figure. The guard is `albumKibbleGuardShareOfDailySupply` in `EconomySimulation.swift`.
 
 **Resolved 18 Nov 2026: the owner answered "the way the project manager recommends" (relayed by the coordinating session), so every recommendation below stands:** Q1 (a) the reference's 100 to 500 kibble; Q2 (a) 800 kibble + 100 Dog Tags + 5,000 coins; Q3 (a) a Claim button on a collection banner; Q4 (a) saves that already finished all six sets may claim once; Q5 (a) keyed by collection ID (`"collection.1"`); Q6 (a) the ramp follows completion order (a recorded difference from the reference under D14). Build task 6.2 is now unblocked by the spec but **not started**; it needs its own session and the schema number assigned at build time.
 

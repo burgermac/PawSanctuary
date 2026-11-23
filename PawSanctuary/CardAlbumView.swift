@@ -19,6 +19,8 @@ struct CardAlbumView: View {
     @State private var openedCards: [OpenedCard] = []
     @State private var showTradeSheet = false
     @State private var tradeTargetCardID: String? = nil
+    /// Shown for a few seconds after the grand prize is claimed (task 3).
+    @State private var showGrandPrizeCelebration = false
 
     enum AlbumTab: String, CaseIterable {
         case albums    = "Albums"
@@ -69,6 +71,14 @@ struct CardAlbumView: View {
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.70), value: viewModel.showAlbumCompleteCard?.id)
+        .overlay {
+            if showGrandPrizeCelebration {
+                GrandPrizeOverlay()
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .zIndex(101)
+            }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.70), value: showGrandPrizeCelebration)
         .task {
             viewModel.ensureGameCenterAuthenticated()
             await viewModel.refreshIncomingTrades()
@@ -127,6 +137,17 @@ struct CardAlbumView: View {
         VStack(spacing: 16) {
             headerRow
             packQueueBar
+            CollectionPrizeBanner(state: viewModel.collectionBannerState) {
+                if viewModel.claimCollectionPrize() {
+                    SoundManager.shared.playQuestClaim()
+                    HapticManager.shared.successPattern()
+                    showGrandPrizeCelebration = true
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(3))
+                        showGrandPrizeCelebration = false
+                    }
+                }
+            }
             albumsGrid
             starShopSection
         }
@@ -765,18 +786,26 @@ struct AlbumDetailView: View {
 
     private var rewardBanner: some View {
         let done = viewModel.completedAlbumIDs.contains(album.id)
+        // Sets pay by completion order (albumSetRewardRamp), so an open set shows
+        // the next rung, the one it would pay if finished next. A finished set's
+        // payout is not recomputed: saves from before the ramp were paid the old
+        // per-set amounts, so it shows only that it was paid.
+        let next = viewModel.nextAlbumSetReward
+        let kibble = viewModel.withPassBonus(next.kibble)
         return HStack(spacing: 8) {
             Image(systemName: done ? "checkmark.circle.fill" : "gift.fill")
                 .font(.system(size: 20))
                 .foregroundColor(done ? .green : Color(red: 0.55, green: 0.25, blue: 0.75))
             VStack(alignment: .leading, spacing: 2) {
-                Text(done ? "Reward claimed!" : "Complete to earn:")
+                Text(done ? "Reward claimed!" : "Next set completed earns:")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(done ? .green : .primary)
-                HStack(spacing: 10) {
-                    if album.rewardKibble  > 0 { rewardPill("\(album.rewardKibble) Kibble", "pawprint.fill", .green) }
-                    if album.rewardDogTags > 0 { rewardPill("\(album.rewardDogTags) Tags",  "tag.fill",       .blue)  }
-                    if album.rewardCoins   > 0 { rewardPill("\(album.rewardCoins) Coins",   "coin.fill",      Color(red: 0.78, green: 0.56, blue: 0.08)) }
+                if !done {
+                    HStack(spacing: 10) {
+                        if kibble       > 0 { rewardPill("\(kibble) Kibble",       "pawprint.fill", .green) }
+                        if next.dogTags > 0 { rewardPill("\(next.dogTags) Tags",   "tag.fill",      .blue)  }
+                        if next.coins   > 0 { rewardPill("\(next.coins) Coins",    "coin.fill",     Color(red: 0.78, green: 0.56, blue: 0.08)) }
+                    }
                 }
             }
             Spacer()
@@ -1112,6 +1141,150 @@ private struct AlbumCompleteOverlay: View {
                     startPoint: .leading, endPoint: .trailing))
                 .shadow(color: .black.opacity(0.2), radius: 10))
             .padding(.horizontal, 20).padding(.bottom, 100)
+        }
+    }
+}
+
+// ============================================================
+// MARK: - COLLECTION GRAND PRIZE (Spec_AlbumGrandPrize.md §4.1, task 3)
+// ============================================================
+
+/// The banner above the set list: progress toward every set, the grand prize's
+/// contents, a Claim button once every set is complete, and "Claimed" after.
+private struct CollectionPrizeBanner: View {
+    let state: MergeBoardViewModel.CollectionBannerState
+    let onClaim: () -> Void
+    @State private var claimTapped = false
+
+    private let gold = Color(red: 0.88, green: 0.68, blue: 0.15)
+    private let coinColour = Color(red: 0.78, green: 0.56, blue: 0.08)
+    private var total: Int { CardRegistry.albums.count }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(state == .claimed ? .green : gold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Color(red: 0.35, green: 0.25, blue: 0.55))
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(state == .claimed ? .green : .secondary)
+                }
+                Spacer()
+                if state == .claimable {
+                    Button {
+                        guard !claimTapped else { return }
+                        claimTapped = true
+                        onClaim()
+                    } label: {
+                        Text("Claim")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16).padding(.vertical, 7)
+                            .background(Capsule().fill(gold))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(claimTapped)
+                    .accessibilityLabel("Claim the grand prize: \(albumCollectionPrizeKibble) Kibble, \(albumCollectionPrizeDogTags) Dog Tags and \(albumCollectionPrizeCoins) Coins")
+                }
+            }
+            if case let .collecting(done, total) = state {
+                ProgressView(value: Double(done), total: Double(max(total, 1)))
+                    .tint(gold)
+                    .accessibilityLabel("\(done) of \(total) sets complete")
+            }
+            HStack(spacing: 8) {
+                prizePill("\(albumCollectionPrizeKibble) Kibble", "pawprint.fill", .green)
+                prizePill("\(albumCollectionPrizeDogTags) Tags", "tag.fill", .blue)
+                prizePill("\(albumCollectionPrizeCoins.formatted()) Coins", "coin.fill", coinColour)
+            }
+            .opacity(state == .claimed ? 0.5 : 1)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(background))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(state == .claimable ? gold : Color.clear, lineWidth: 2))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var icon: String {
+        switch state {
+        case .collecting: return "trophy"
+        case .claimable:  return "trophy.fill"
+        case .claimed:    return "checkmark.seal.fill"
+        }
+    }
+
+    private var title: String {
+        switch state {
+        case .collecting, .claimable: return "Grand Prize: collect all \(total) sets"
+        case .claimed:                return "Grand Prize"
+        }
+    }
+
+    private var subtitle: String {
+        switch state {
+        case let .collecting(done, total): return "\(done) of \(total) sets complete"
+        case .claimable:                   return "Every set complete! Claim your prize"
+        case .claimed:                     return "Claimed"
+        }
+    }
+
+    private var background: Color {
+        switch state {
+        case .collecting: return Color.purple.opacity(0.08)
+        case .claimable:  return gold.opacity(0.18)
+        case .claimed:    return Color.green.opacity(0.08)
+        }
+    }
+
+    private func prizePill(_ text: String, _ symbol: String, _ color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbol).font(.system(size: 9))
+            Text(text).font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
+}
+
+/// The short celebration after the grand prize is claimed. Same shape as
+/// `AlbumCompleteOverlay`, shown from `CardAlbumView` where the claim happens.
+private struct GrandPrizeOverlay: View {
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.88, green: 0.68, blue: 0.15).opacity(0.25))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(Color(red: 0.88, green: 0.68, blue: 0.15))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Grand Prize!")
+                        .font(.headline).foregroundColor(.white)
+                    Text("Every set complete: \(albumCollectionPrizeKibble) Kibble, \(albumCollectionPrizeDogTags) Dog Tags, \(albumCollectionPrizeCoins.formatted()) Coins")
+                        .font(.caption).foregroundColor(.white.opacity(0.85))
+                }
+                Spacer()
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 16)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.50, green: 0.32, blue: 0.08),
+                             Color(red: 0.70, green: 0.50, blue: 0.12)],
+                    startPoint: .leading, endPoint: .trailing))
+                .shadow(color: .black.opacity(0.2), radius: 10))
+            .padding(.horizontal, 20).padding(.bottom, 100)
+            .accessibilityElement(children: .combine)
         }
     }
 }

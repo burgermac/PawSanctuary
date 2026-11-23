@@ -2591,3 +2591,50 @@ let orderMaxTierLevel51Plus  = 10
 // `RewardBurst`, unchanged.
 let orderDepartureDuration: Double = 0.35
 let orderDepartureEndScale: CGFloat = 0.2
+
+// MARK: - Card album: set-reward ramp (specs/Spec_AlbumGrandPrize.md §5.1, Q1 a, Q6 a)
+//
+// What completing a card set pays, by COMPLETION ORDER, not by which set it is:
+// the first set a player finishes pays rung 1, the sixth pays rung 6. Every set
+// is equally hard (`drawCards` picks uniformly across all sets), so a ramp keyed
+// to the set itself would pay the top rung to whichever set luck finished first.
+// That is a recorded difference from the reference, which fixes the reward per
+// set (D14). Kibble follows the reference's 100 to 500 energy ramp 1:1; Dog Tag
+// and coin totals are unchanged from the old per-set rewards, with the coin
+// order fixed so every currency rises. Kibble goes through `withPassBonus`.
+//
+// The rung index is `completedAlbumIDs.count` before the new set is appended, so
+// no save field is needed. A count past the last rung pays the last rung.
+struct AlbumSetReward: Equatable {
+    let kibble: Int
+    let dogTags: Int
+    let coins: Int
+}
+
+let albumSetRewardRamp: [AlbumSetReward] = [
+    AlbumSetReward(kibble: 100, dogTags: 5,  coins: 0),
+    AlbumSetReward(kibble: 180, dogTags: 8,  coins: 500),
+    AlbumSetReward(kibble: 260, dogTags: 10, coins: 750),
+    AlbumSetReward(kibble: 340, dogTags: 12, coins: 1_000),
+    AlbumSetReward(kibble: 420, dogTags: 15, coins: 1_500),
+    AlbumSetReward(kibble: 500, dogTags: 25, coins: 2_500),
+]
+
+/// The reward for the set completed after `completedCount` others (0-based
+/// rung). Clamped to the ramp, so an unexpected extra set pays the last rung.
+func albumSetReward(forRung completedCount: Int) -> AlbumSetReward {
+    guard let last = albumSetRewardRamp.indices.last else {
+        return AlbumSetReward(kibble: 0, dogTags: 0, coins: 0)
+    }
+    return albumSetRewardRamp[min(max(0, completedCount), last)]
+}
+
+// MARK: - Album grand prize (Spec_AlbumGrandPrize.md §5.2, owner Q19 / Q2 a)
+//
+// Paid once per save when every card set is complete and the player claims it.
+// Kibble goes through the Pass bonus like set kibble; coins through `earnCoins`.
+// 100 Dog Tags is exactly one wildcard. Design proposals sized in the spec, not
+// measured values.
+let albumCollectionPrizeKibble  = 800
+let albumCollectionPrizeDogTags = 100
+let albumCollectionPrizeCoins   = 5_000
