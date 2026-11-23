@@ -1127,6 +1127,143 @@ enum GameStore {
         }
     }
 
+    // MARK: Fifteen tiers (Spec_FifteenTiers.md §5) — written and tested, NOT wired
+
+    /// Maps a stored animal tier from the 12-tier space into the 15-tier one
+    /// (owner Q2 a, 22 Nov 2026: keep the item the player sees).
+    ///
+    ///     saved 0–8  → 0–8    (unchanged)
+    ///     saved 9–11 → 12–14  (today's top era shifts up by three, keeping its
+    ///                           names and art; the restored 9–11 start empty)
+    ///
+    /// Out-of-range values clamp into 0…14 rather than inventing a tier.
+    ///
+    /// **Not called yet.** Fifteen-tier task 3 wires this into `finishMigration`
+    /// together with the schema bump, the new content and the art (held for the
+    /// art and for owner Q3). Until then no save is changed by it.
+    static func expandedAnimalTier(_ old: Int) -> Int {
+        old <= 8 ? max(0, old) : min(14, old + 3)
+    }
+
+    /// Rewrites every animal tier stored in a save from the 12-tier to the
+    /// 15-tier space, per the table in Spec_FifteenTiers.md §5.2. Chain-gated:
+    /// only `animal.` chains move; sub-object, supply, material, toolbox,
+    /// currency, superpower and Parallel Board chains keep their tiers.
+    ///
+    /// Expects the current save shapes (order `lines`, daily-task `lines`), so
+    /// task 3 must run it after `collapseOrdersIntoBaskets` and
+    /// `resetDailyChallengesForHandIn`. **Not called yet** (see above).
+    static func expandAnimalTiersForFifteenTierChains(_ json: inout [String: Any]) {
+
+        func isAnimal(_ chainID: Any?) -> Bool {
+            (chainID as? String)?.hasPrefix("animal.") ?? false
+        }
+
+        /// Any dict with `chainID` + `tier` (BoardItem, OrderLine, DailyTaskLine, store slot).
+        func expand(_ dict: inout [String: Any]) {
+            guard isAnimal(dict["chainID"]), let tier = dict["tier"] as? Int else { return }
+            dict["tier"] = expandedAnimalTier(tier)
+        }
+
+        func expandArray(_ key: String) {
+            guard var array = json[key] as? [Any] else { return }
+            for i in array.indices {
+                guard var dict = array[i] as? [String: Any] else { continue }
+                expand(&dict)
+                array[i] = dict
+            }
+            json[key] = array
+        }
+
+        /// An AdoptionOrder dict: its lines, and any animal `.boardItem` reward.
+        func expandOrder(_ order: inout [String: Any]) {
+            if var lines = order["lines"] as? [[String: Any]] {
+                for j in lines.indices { expand(&lines[j]) }
+                order["lines"] = lines
+            }
+            if var rewards = order["rewards"] as? [[String: Any]] {
+                for k in rewards.indices {
+                    guard isAnimal(rewards[k]["payloadID"]),
+                          let tier = rewards[k]["payloadTier"] as? Int else { continue }
+                    rewards[k]["payloadTier"] = expandedAnimalTier(tier)
+                }
+                order["rewards"] = rewards
+            }
+        }
+
+        // Board
+        if var board = json["board"] as? [[[String: Any]]] {
+            for r in board.indices {
+                for c in board[r].indices {
+                    guard var item = board[r][c]["item"] as? [String: Any] else { continue }
+                    expand(&item)
+                    board[r][c]["item"] = item
+                }
+            }
+            json["board"] = board
+        }
+
+        // Item arrays
+        expandArray("inventory")
+        expandArray("powerUpInventory")
+        expandArray("pouchItems")
+        expandArray("dogTagStoreSlots")   // price left as stored; the slot refreshes daily
+
+        // Pending material lots (chain-gated, so a no-op in practice)
+        if var lots = json["pendingMaterialLots"] as? [[[String: Any]]] {
+            for l in lots.indices { for i in lots[l].indices { expand(&lots[l][i]) } }
+            json["pendingMaterialLots"] = lots
+        }
+
+        // Orders, including the urgent order
+        if var orders = json["adoptionOrders"] as? [[String: Any]] {
+            for i in orders.indices { expandOrder(&orders[i]) }
+            json["adoptionOrders"] = orders
+        }
+        if var urgent = json["urgentOrder"] as? [String: Any] {
+            expandOrder(&urgent)
+            json["urgentOrder"] = urgent
+        }
+
+        // Quests: reachTier {"_0": "animal", "tier": N, "count": C}; supply goals stay
+        if var quests = json["activeQuests"] as? [Any] {
+            for i in quests.indices {
+                guard var quest = quests[i] as? [String: Any],
+                      var goal  = quest["goal"] as? [String: Any],
+                      var reach = goal["reachTier"] as? [String: Any],
+                      (reach["_0"] as? String) == "animal",
+                      let tier  = reach["tier"] as? Int else { continue }
+                reach["tier"] = expandedAnimalTier(tier)
+                goal["reachTier"] = reach
+                quest["goal"] = goal
+                quests[i] = quest
+            }
+            json["activeQuests"] = quests
+        }
+
+        // Daily hand-in tasks (v40 shape: lines)
+        if var tasks = json["dailyChallenges"] as? [[String: Any]] {
+            for i in tasks.indices {
+                guard var lines = tasks[i]["lines"] as? [[String: Any]] else { continue }
+                for j in lines.indices { expand(&lines[j]) }
+                tasks[i]["lines"] = lines
+            }
+            json["dailyChallenges"] = tasks
+        }
+
+        // Scalars
+        if let deepest = json["deepestUnlockedTier"] as? Int {
+            json["deepestUnlockedTier"] = expandedAnimalTier(deepest)
+        }
+        // Only when the wall was on an animal chain (the v28 remap did not check).
+        if var commerce = json["commerce"] as? [String: Any],
+           isAnimal(commerce["lastWallChainID"]),
+           let tier = commerce["lastWallTier"] as? Int {
+            commerce["lastWallTier"] = expandedAnimalTier(tier)
+            json["commerce"] = commerce
+        }
+    }
+
     /// v26 → v27: economy correction (Phase 2).
     ///
     /// `BoardItem` gains an optional `rarity` naming the effect a completed

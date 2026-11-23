@@ -2617,4 +2617,113 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(familySpawners.count, 1,
                        "a fresh install should place a starter family-spawner producer")
     }
+
+    // MARK: Fifteen tiers, task 2 (Spec_FifteenTiers.md §5, §8.2): migration written, NOT wired
+
+    func testExpandedAnimalTierMapsTwelveTierIndicesToFifteen() {
+        for t in 0...8 { XCTAssertEqual(GameStore.expandedAnimalTier(t), t, "tier \(t)") }
+        XCTAssertEqual(GameStore.expandedAnimalTier(9), 12)
+        XCTAssertEqual(GameStore.expandedAnimalTier(10), 13)
+        XCTAssertEqual(GameStore.expandedAnimalTier(11), 14)
+        XCTAssertEqual(GameStore.expandedAnimalTier(-3), 0, "out of range clamps")
+        XCTAssertEqual(GameStore.expandedAnimalTier(40), 14, "out of range clamps")
+        for t in -2...20 {
+            XCTAssertFalse((9...11).contains(GameStore.expandedAnimalTier(t)),
+                           "nothing may land on the restored tiers 9-11 (from \(t))")
+        }
+    }
+
+    /// A hand-built save dictionary with an animal at tier `t` in every §5.2 path.
+    private func fifteenTierFixture(animalTier t: Int) -> [String: Any] {
+        let dog = aid(.dog)
+        func item(_ chain: String, _ tier: Int) -> [String: Any] { ["chainID": chain, "tier": tier] }
+        let order: [String: Any] = [
+            "lines": [item(dog, t)],
+            "rewards": [["kind": "boardItem", "amount": 1, "payloadID": dog, "payloadTier": t],
+                        ["kind": "material", "amount": 1, "payloadID": "material.wood", "payloadTier": t]],
+        ]
+        return [
+            "board": [[["item": item(dog, t), "isUnlocked": true],
+                       ["item": item("subobject.dog", t), "isUnlocked": true]]],
+            "inventory": [item(dog, t), NSNull()],
+            "powerUpInventory": [item(dog, t)],
+            "pouchItems": [item(dog, t)],
+            "pendingMaterialLots": [[item("material.wood", t)]],
+            "adoptionOrders": [order],
+            "urgentOrder": order,
+            "activeQuests": [["goal": ["reachTier": ["_0": "animal", "tier": t, "count": 1]]],
+                             ["goal": ["reachTier": ["_0": "supply", "tier": t, "count": 1]]]],
+            "dailyChallenges": [["lines": [item(dog, t)]]],
+            "dogTagStoreSlots": [item(dog, t)],
+            "deepestUnlockedTier": t,
+            "commerce": ["lastWallChainID": dog, "lastWallTier": t],
+            "parallelBoardState": ["board": [[["item": item("parallelboard.secondchances", 4)]]]],
+        ]
+    }
+
+    func testTheExpandWalkerMovesEveryAnimalTierPath() throws {
+        for (old, new) in [(8, 8), (9, 12), (10, 13), (11, 14)] {
+            var json = fifteenTierFixture(animalTier: old)
+            GameStore.expandAnimalTiersForFifteenTierChains(&json)
+
+            func tier(_ any: Any?) -> Int? { (any as? [String: Any])?["tier"] as? Int }
+            let board = try XCTUnwrap(json["board"] as? [[[String: Any]]])
+            XCTAssertEqual(tier(board[0][0]["item"]), new, "board")
+            XCTAssertEqual(tier((json["inventory"] as? [Any])?.first), new, "inventory")
+            XCTAssertEqual(tier((json["powerUpInventory"] as? [Any])?.first), new, "power-up inventory")
+            XCTAssertEqual(tier((json["pouchItems"] as? [Any])?.first), new, "pouch")
+            for key in ["adoptionOrders", "urgentOrder"] {
+                let order = key == "urgentOrder"
+                    ? try XCTUnwrap(json[key] as? [String: Any])
+                    : try XCTUnwrap((json[key] as? [[String: Any]])?.first)
+                XCTAssertEqual(tier((order["lines"] as? [Any])?.first), new, "\(key) line")
+                let rewards = try XCTUnwrap(order["rewards"] as? [[String: Any]])
+                XCTAssertEqual(rewards[0]["payloadTier"] as? Int, new, "\(key) board-item reward")
+            }
+            let quest = try XCTUnwrap((json["activeQuests"] as? [[String: Any]])?.first)
+            let reach = (quest["goal"] as? [String: Any])?["reachTier"] as? [String: Any]
+            XCTAssertEqual(reach?["tier"] as? Int, new, "reachTier quest")
+            let task = try XCTUnwrap((json["dailyChallenges"] as? [[String: Any]])?.first)
+            XCTAssertEqual(tier((task["lines"] as? [Any])?.first), new, "daily task line")
+            XCTAssertEqual(tier((json["dogTagStoreSlots"] as? [Any])?.first), new, "store slot")
+            XCTAssertEqual(json["deepestUnlockedTier"] as? Int, new, "deepestUnlockedTier")
+            XCTAssertEqual((json["commerce"] as? [String: Any])?["lastWallTier"] as? Int, new, "lastWallTier")
+        }
+    }
+
+    func testTheExpandWalkerLeavesNonAnimalTiersAlone() throws {
+        var json = fifteenTierFixture(animalTier: 10)
+        json["commerce"] = ["lastWallTier": 10]   // no chain recorded: must not move
+        GameStore.expandAnimalTiersForFifteenTierChains(&json)
+
+        let board = try XCTUnwrap(json["board"] as? [[[String: Any]]])
+        XCTAssertEqual((board[0][1]["item"] as? [String: Any])?["tier"] as? Int, 10, "sub-object")
+        let lots = try XCTUnwrap(json["pendingMaterialLots"] as? [[[String: Any]]])
+        XCTAssertEqual(lots[0][0]["tier"] as? Int, 10, "material lot")
+        let order = try XCTUnwrap((json["adoptionOrders"] as? [[String: Any]])?.first)
+        let rewards = try XCTUnwrap(order["rewards"] as? [[String: Any]])
+        XCTAssertEqual(rewards[1]["payloadTier"] as? Int, 10, ".material reward")
+        let quests = try XCTUnwrap(json["activeQuests"] as? [[String: Any]])
+        let supply = (quests[1]["goal"] as? [String: Any])?["reachTier"] as? [String: Any]
+        XCTAssertEqual(supply?["tier"] as? Int, 10, "supply reachTier quest")
+        XCTAssertEqual((json["commerce"] as? [String: Any])?["lastWallTier"] as? Int, 10,
+                       "lastWallTier with no chain")
+        let pb = try XCTUnwrap(json["parallelBoardState"] as? [String: Any])
+        let pbBoard = try XCTUnwrap(pb["board"] as? [[[String: Any]]])
+        XCTAssertEqual((pbBoard[0][0]["item"] as? [String: Any])?["tier"] as? Int, 4, "Parallel Board")
+    }
+
+    func testTheExpandIsNotWiredYetSoACurrentSaveLoadsUnchanged() throws {
+        // Task 2 only writes the function. Until task 3 wires it (with the bump),
+        // a current save holding top-era animals must load exactly as saved.
+        var state = makeSampleState()
+        state.board[0][0].item = BoardItem(chainID: aid(.dog), tier: 11)
+        state.deepestUnlockedTier = 11
+        GameStore.saveNow(state, sequence: 1)
+
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.board[0][0].item?.tier, 11)
+        XCTAssertEqual(loaded.deepestUnlockedTier, 11)
+    }
 }
