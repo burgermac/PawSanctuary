@@ -1,6 +1,6 @@
 # Spec — Context-triggered tutorial (revision task 4.2)
 
-**Status: Draft, 22 Nov 2026, written cold, not reviewed, no code.** Task 4.2 of `Revision_Plan_ModelOnReferences.md` (W4, triage row 7). Task 4.3 (the build) stays blocked until the owner answers §9. All code citations are to `origin/main` at `a03ef58` (schema v46). Line numbers drift; search by name if one no longer lands.
+**Status: Draft, 22 Nov 2026; owner answered Q1–Q7 on 23 Nov 2026 (all as recommended, §9); no code.** Task 4.2 of `Revision_Plan_ModelOnReferences.md` (W4, triage row 7). Task 4.3 (the build) is unblocked by the §9 answers. All code citations are to `origin/main` at `a03ef58` (schema v46). Line numbers drift; search by name if one no longer lands.
 
 **Read first:** `PawSanctuary_Alignment_Plan.md` D7, D9, D11, D14; `Triage_ModelOnReferences.md` row 7; `Spec_HeldItemOrders.md` §1 and §4 (the order rule this tutorial must teach).
 
@@ -323,33 +323,42 @@ Each stage's PR body lists the moments it adds, so the owner can turn one off by
 
 ## 9. Owner decisions
 
+**All seven answered 23 Nov 2026: (a) on every question, as recommended.** Task 4.3 is no longer blocked by this section.
+
 **Q1 — Can the player skip the tips?**
 (a) Each tip has "×", and the first one also has "Skip tips", which marks group A seen. (b) Only "×" per tip, no skip-all. (c) No dismiss; tips close only when the action is done.
 **Recommend (a).** Today's tutorial is "always skippable" (`OnboardingView.swift:6`), and a returning player on a new device should not have to tap through seven bubbles.
+**Answered 23 Nov 2026: (a), as recommended.**
 
 **Q2 — Blocking or not?**
 (a) Never blocking: the player can tap anything while a tip shows. (b) Block only M1 and M2 (the first spawn and merge), like Gossip Harbor's guided first merge appears to [inferred]. (c) Block every group A step.
 **Recommend (a).** The 17 Nov run had to skip the current tutorial because it hid the board; a blocked step also traps a player whose board has no target (for example no mergeable pair).
+**Answered 23 Nov 2026: (a), as recommended.**
 
 **Q3 — How many tips in session one?**
 (a) Group A only (up to seven; M1, M2, M4 certain), with groups B and C firing whenever their trigger first happens, spaced by the gap in §4.1. (b) Group A cut to M1, M2, M4 and M6; M3, M5, M7 move to group C. (c) Everything as it triggers, no grouping.
 **Recommend (a).** It matches Gossip Harbor's one-system-at-a-time pace [measured] and puts the D14 order rule, the newest and least familiar rule, in session one.
+**Answered 23 Nov 2026: (a), as recommended.**
 
 **Q4 — What do existing saves see?**
 (a) Infer from the save: skip anything the player has evidently done (§6.3). (b) Mark everything seen: existing players get no tips at all. (c) Show every tip once to everyone.
 **Recommend (a).** It is the only option that teaches an existing player the new order rule (M3 to M5 are inferred only from level 2 or a delivered order) without re-teaching merging. The game has not launched, so in practice this mostly affects the owner's own test saves; (b) is an acceptable simpler fallback.
+**Answered 23 Nov 2026: (a), as recommended.**
 
 **Q5 — Wording tone.**
 (a) Plain and short, second person, as the current tutorial and toasts are. (b) Voiced by the order family ("The Murphys need a Pup!"), building on "Almost there!". (c) A named guide character.
 **Recommend (a).** (c) is a character (row 8, out of scope). (b) is cheap but would make some tips family-specific and others not.
+**Answered 23 Nov 2026: (a), as recommended.**
 
 **Q6 — Point at the shop once monetization opens (M23)?**
 (a) No. (b) Yes, one tip on the cart button the first time the gate opens. (c) Not a coach mark, but a one-line "The shop is open" toast.
 **Recommend (a).** Gossip Harbor never pushed its shop [measured]; under D9 a store push needs a retention argument, and there is none.
+**Answered 23 Nov 2026: (a), as recommended.**
 
 **Q7 — Where do tips live in the code?**
 (a) A small `TutorialCoordinator` (`@Observable @MainActor`, like the other coordinators) owned by `MergeBoardViewModel`. (b) Inline in `MergeBoardViewModel`. 
 **Recommend (a).** `MergeBoardViewModel.swift` is already over 4,800 lines and is the W1 lane's file (revision plan rule 7); a separate type keeps the trigger tests independent of it. This is new code, not a refactor of existing code.
+**Answered 23 Nov 2026: (a), as recommended.**
 
 ---
 
