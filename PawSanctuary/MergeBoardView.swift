@@ -41,7 +41,8 @@ struct MergeBoardView: View {
     /// Offered once, after the tutorial is done, when nothing else is on top:
     /// not over the Good Morning popup or any sheet.
     private var shouldOfferThemeChoice: Bool {
-        viewModel.isLoaded && !viewModel.boardThemePrompted && tutorialStep == .done
+        viewModel.isLoaded && !viewModel.boardThemePrompted && viewModel.isOpeningTutorialDone
+            && coachMoment == nil
             && !viewModel.showLoginReward && activeRoute == nil && !showThemeChoice
     }
     /// Measured on-screen frames the reward flights run between
@@ -71,11 +72,9 @@ struct MergeBoardView: View {
     /// True while a board item is being dragged and the finger is currently over the basket.
     @State private var isDraggingOverBasket: Bool = false
 
-    // Tutorial / onboarding
-    @State private var tutorialStep: TutorialStep = {
-        UserDefaults.standard.bool(forKey: "tutorialCompleted") ? .done : .rescue
-    }()
-    @State private var tutorialBoardFrame: CGRect    = .zero
+    // Coach marks (specs/Spec_ContextTutorial.md): where the tip's targets are
+    // on screen, reported by the views that draw them.
+    @State private var tutorialFrames: [TutorialFrameID: CGRect] = [:]
     @State private var tutorialTaskFrame: CGRect     = .zero
 
     let cellSpacing: CGFloat = 4
@@ -97,21 +96,36 @@ struct MergeBoardView: View {
     var body: some View {
         gameBody
             .task { viewModel.loadGame() }
-            .onChange(of: viewModel.rescueCount) { _, count in
-                if tutorialStep == .rescue && count > 0 {
-                    withAnimation(.easeInOut(duration: 0.35)) { tutorialStep = .merge }
-                }
-            }
-            .onChange(of: viewModel.mergeCount) { _, count in
-                if tutorialStep == .merge && count > 0 {
-                    withAnimation(.easeInOut(duration: 0.35)) { tutorialStep = .quest }
-                }
-            }
-            .onChange(of: activeRoute) { _, route in
-                if tutorialStep == .quest, let r = route, case .task(.quests) = r {
-                    completeTutorial()
-                }
-            }
+    }
+
+    // MARK: Coach marks
+
+    /// Something else owns the screen, so a tip waits (§4.1 "Never over anything else").
+    private var isCoveredByOtherUI: Bool {
+        activeRoute != nil || showParallelBoard || showThemeChoice
+            || viewModel.showLoginReward || viewModel.showMap || viewModel.showInventory
+            || viewModel.showAmbassadorBanner || viewModel.showLevelUpBanner
+            || viewModel.showAreaBuiltBanner || viewModel.showSuperpowerUnlockBanner
+            || viewModel.pendingMilestone != nil || MilestoneManager.shared.pendingMilestone != nil
+            || viewModel.pendingSpawnerSkip != nil || viewModel.showIncompatibleSaveAlert
+    }
+
+    /// The tip to show now, if any. Read from the view model's live state, so it
+    /// updates the moment the board, a quest or a screen changes.
+    private var coachMoment: TutorialMoment? {
+        guard viewModel.isLoaded else { return nil }
+        return viewModel.nextCoachMark(isCoveredByOtherUI: isCoveredByOtherUI)
+    }
+
+    /// Global frames the current tip points at: its board cells, or the quest
+    /// Claim button (falling back to the whole task band when that is off screen).
+    private func coachTargets(for moment: TutorialMoment) -> [CGRect] {
+        switch moment {
+        case .firstQuestClaim:
+            return [tutorialFrames[.questClaim] ?? tutorialTaskFrame]
+        default:
+            return viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
+        }
     }
 
     @ViewBuilder private var gameBody: some View {
@@ -298,15 +312,18 @@ struct MergeBoardView: View {
                 .zIndex(100)
             }
 
-            // Tutorial overlay — shown above all game elements; hidden while the
-            // login-reward modal is active so both don't compete for attention.
-            if tutorialStep.isActive && !viewModel.showLoginReward {
-                OnboardingOverlay(
-                    step: tutorialStep,
-                    boardCenter: CGPoint(x: tutorialBoardFrame.midX, y: tutorialBoardFrame.midY),
-                    taskStripCenter: CGPoint(x: tutorialTaskFrame.midX, y: tutorialTaskFrame.midY),
-                    onSkip: completeTutorial
+            // Coach mark — a bubble and a pointing hand on the real target, no
+            // scrim, and play is never blocked (Spec_ContextTutorial.md §4.1).
+            if let moment = coachMoment, let text = moment.coachMarkText {
+                CoachMarkOverlay(
+                    moment: moment,
+                    text: text,
+                    targets: coachTargets(for: moment),
+                    showsSkipAll: moment == .firstSpawn,
+                    onClose: { viewModel.closeCoachMark(moment) },
+                    onSkipAll: { viewModel.skipTutorialTips() }
                 )
+                .id(moment)
                 .transition(.opacity)
                 .zIndex(150)
             }
@@ -321,9 +338,10 @@ struct MergeBoardView: View {
         .animation(.easeInOut(duration: 0.25), value: viewModel.pendingMilestone)
         .animation(.spring(response: 0.4, dampingFraction: 0.65), value: viewModel.showSuperpowerUnlockBanner)
         .animation(.easeInOut(duration: 0.25), value: viewModel.leapMode)
-        .animation(.easeInOut(duration: 0.35), value: tutorialStep)
+        .animation(.easeInOut(duration: 0.3), value: coachMoment)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .onPreferenceChange(HUDFrameKey.self) { hudFrames = $0 }
+        .onPreferenceChange(TutorialFrameKey.self) { tutorialFrames = $0 }
         .environment(\.boardTheme, viewModel.boardTheme)
         .onChange(of: shouldOfferThemeChoice) { _, offer in
             guard offer else { return }
@@ -397,16 +415,6 @@ struct MergeBoardView: View {
                 viewModel.hasRoomForSpawners(of: iap) ? nil : energyPackMakeRoomMessage
             }
             viewModel.isPassActive = storeManager.isPassActive
-            // The tutorial step above only initialized from the completion flag, never
-            // from actual progress — onChange only fires on a later *change* in
-            // rescueCount/mergeCount, not on the initial load. A force-quit between
-            // tutorial steps (completion flag not yet set) would otherwise replay
-            // "rescue your first animal" for a player who already has animals and
-            // has merged. Sync it once here against the real, persisted counts.
-            if !UserDefaults.standard.bool(forKey: "tutorialCompleted") {
-                if viewModel.mergeCount > 0 { tutorialStep = .quest }
-                else if viewModel.rescueCount > 0 { tutorialStep = .merge }
-            }
             // On days the streak already registered, the streak reminder moves to tomorrow 20:00.
             NotificationManager.shared.lastLoginDate = { [viewModel] in viewModel.lastLoginDate }
             // Cancel stale notifications whenever the app becomes visible
@@ -456,13 +464,6 @@ struct MergeBoardView: View {
                 break
             }
         }
-    }
-
-    // MARK: Tutorial
-
-    private func completeTutorial() {
-        withAnimation(.easeOut(duration: 0.4)) { tutorialStep = .done }
-        UserDefaults.standard.set(true, forKey: "tutorialCompleted")
     }
 
     // MARK: Notification scheduling
@@ -749,9 +750,6 @@ struct MergeBoardView: View {
                 // Game board — pinned to its exact computed width and centred.
                 boardGridView(cellSize: cs)
                     .frame(width: boardWidth)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
-                        tutorialBoardFrame = $0
-                    }
 
                 // Level-based unlock progress bar — only shown while rows are still locked.
                 if !viewModel.lockedCells.isEmpty {
@@ -892,6 +890,8 @@ struct MergeBoardView: View {
         // order for itself. One highlight language for every held-item card
         // (D14): muted where a card wants the item, vivid where a card is ready.
         let taskHighlights = viewModel.heldItemHighlights
+        // The cells the current coach mark points at: only these report a frame.
+        let coachCells = Set(coachMoment.map { viewModel.coachMarkCells(for: $0) } ?? [])
         // Items an order delivery just took off the board, still leaving their
         // cells (task 1.5). Usually empty; keyed once here, not per cell.
         let departing = Dictionary(viewModel.departingItems.map { ($0.position, $0) },
@@ -973,6 +973,7 @@ struct MergeBoardView: View {
                             }
                         }
                         .frame(width: cellSize, height: cellSize)
+                        .reportTutorialFrame(.cell(pos), enabled: coachCells.contains(pos))
                         // Raised while merging so the Tier A overshoot and its
                         // sparkle burst (CellView) draw over neighbouring
                         // cells instead of being occluded by them.

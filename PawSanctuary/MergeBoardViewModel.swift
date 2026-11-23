@@ -1861,6 +1861,7 @@ class MergeBoardViewModel {
                 }
             }
             finishSpawn(item: spawnedItem, at: target, cost: cost, from: pos)
+            closeCoachMark(.firstSpawn)   // the player's first real spawn tap
             maybeGrantBonusSpawn(species: species, chainID: chainID, spawnTier: spawnTier, from: pos)
             // Re-read the tile: the Scout preview above rewrote it, and a stale
             // local copy would overwrite that. The bonus spawn is free, so only
@@ -1894,6 +1895,7 @@ class MergeBoardViewModel {
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
             let spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             finishSpawn(item: BoardItem(chainID: chainID, tier: spawnTier), at: target, cost: cost)
+            closeCoachMark(.firstSpawn)
             producer.startCooldown()
             producer.chargesRemaining -= 1
             boardState.setProducer(producer.chargesRemaining > 0 ? producer : nil, at: pos)
@@ -2154,6 +2156,65 @@ class MergeBoardViewModel {
     func markTutorialMomentSeen(_ moment: TutorialMoment) {
         guard !hasSeenTutorialMoment(moment) else { return }
         seenTutorialMoments.append(moment.rawValue)
+    }
+
+    // MARK: Coach marks (Spec_ContextTutorial.md §4.1, task 4.3 stage 2)
+
+    /// When the last coach mark closed, for the gap before the next later-group
+    /// tip. Session-only: the gap is about this sitting, so it is not saved.
+    private var lastCoachMarkClosedAt: Date?
+
+    /// Where the family spawner is, for the first-spawn tip.
+    private var familySpawnerPosition: GridPosition? {
+        for row in board { for cell in row where cell.producer?.level == .familySpawner { return cell.position } }
+        return nil
+    }
+
+    /// The snapshot the rule reads. Stage 2 fills in the flags for the spawn,
+    /// merge and quest-claim tips; the later groups' flags stay false until their stages.
+    func tutorialSnapshot(isCoveredByOtherUI: Bool, now: Date = Date()) -> TutorialSnapshot {
+        var s = TutorialSnapshot()
+        s.isMonetizationUnlocked = isMonetizationUnlocked
+        s.isCoveredByOtherUI = isCoveredByOtherUI
+        s.secondsSinceLastMoment = lastCoachMarkClosedAt.map { now.timeIntervalSince($0) } ?? .infinity
+        s.hasFamilySpawnerOnBoard = familySpawnerPosition != nil
+        s.hasMergeablePair = findMergeableHintPair() != nil
+        s.hasMergedOnce = mergeCount > 0
+        s.hasClaimableQuest = quests.activeQuests.contains { $0.isComplete }
+        return s
+    }
+
+    /// The one tip to show now, or nil.
+    func nextCoachMark(isCoveredByOtherUI: Bool, now: Date = Date()) -> TutorialMoment? {
+        nextTutorialMoment(snapshot: tutorialSnapshot(isCoveredByOtherUI: isCoveredByOtherUI, now: now),
+                           seen: TutorialMoment.seenSet(from: seenTutorialMoments))
+    }
+
+    /// The board cells a tip points at, in order (the merge tip's hand slides from the first to the second).
+    func coachMarkCells(for moment: TutorialMoment) -> [GridPosition] {
+        switch moment {
+        case .firstSpawn:
+            return familySpawnerPosition.map { [$0] } ?? []
+        case .firstMerge:
+            return findMergeableHintPair().map { [$0.0, $0.1] } ?? []
+        default:
+            return []
+        }
+    }
+
+    /// Closes a tip (the "×", or the action it teaches): marks it seen and starts the gap.
+    func closeCoachMark(_ moment: TutorialMoment, now: Date = Date()) {
+        // Only a tip that was still unseen starts the gap: the game calls this on
+        // every spawn, merge and claim, and most of those are not a tip closing.
+        guard !hasSeenTutorialMoment(moment) else { return }
+        markTutorialMomentSeen(moment)
+        lastCoachMarkClosedAt = now
+    }
+
+    /// The opening lessons are behind the player: spawn and merge are both seen.
+    /// The "Make it yours" sheet waits for this instead of the old tutorial step.
+    var isOpeningTutorialDone: Bool {
+        hasSeenTutorialMoment(.firstSpawn) && hasSeenTutorialMoment(.firstMerge)
     }
 
     /// "Skip tips" (owner Q1): marks the whole core group seen.
@@ -2522,6 +2583,7 @@ class MergeBoardViewModel {
         }
 
         mergeCount += 1
+        closeCoachMark(.firstMerge)
         lastMergeTimestamp = Date().timeIntervalSince1970
         if let sp = outcome.mergedSpecies { lastMergedSpeciesRaw = sp.rawValue }
         recalcBoardIsFull()
@@ -3656,6 +3718,7 @@ class MergeBoardViewModel {
         earnCoins(coinEarned)
         awardCarePoints(carePoints(forQuest: quest.difficulty))
         playtestMetrics.recordQuestClaim(quest.difficulty)
+        closeCoachMark(.firstQuestClaim)
 
         // Rescue-tier producers replaced by family spawners (earned via map).
         // Award bonus Dog Tags instead for hard/legendary quests.

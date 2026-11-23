@@ -86,6 +86,22 @@ enum TutorialMoment: String, CaseIterable, Codable {
         }
     }
 
+    /// The bubble's words (the spec's "Message" column), plain and short. Nil
+    /// until the stage that builds that tip adds its text. No text names or
+    /// points toward a purchase (D7, D9).
+    var coachMarkText: String? {
+        switch self {
+        case .firstSpawn:
+            return "Tap the spawner to rescue an animal. Each rescue costs kibble; kibble refills by itself."
+        case .firstMerge:
+            return "Drag an animal onto a matching one to merge it into the next level."
+        case .firstQuestClaim:
+            return "Quest complete! Tap Claim for your reward. Quests count what you do; orders and daily tasks want animals you hold."
+        default:
+            return nil
+        }
+    }
+
     /// The seen moments this build knows, from the raw strings in a save. An id a
     /// later build wrote is skipped here; it stays in the stored array untouched.
     static func seenSet(from ids: [String]) -> Set<TutorialMoment> {
@@ -162,10 +178,15 @@ struct TutorialSnapshot: Equatable {
 /// set and changes neither, so a trigger that ended before its bubble showed is
 /// simply not returned and is not marked (it can fire next time). At most one
 /// moment at a time, in declaration order, and never while something else covers
-/// the board or inside the gap after the last bubble.
+/// the board. Moments after the opening lessons also wait out the gap after the
+/// last bubble; the opening lessons (group A) do not, because spawn, merge and
+/// claim are one sequence the player is already in the middle of.
 func nextTutorialMoment(snapshot s: TutorialSnapshot, seen: Set<TutorialMoment>) -> TutorialMoment? {
-    guard !s.isCoveredByOtherUI, s.secondsSinceLastMoment >= tutorialMomentGapSeconds else { return nil }
-    return TutorialMoment.allCases.first { !seen.contains($0) && isTriggered($0, in: s) }
+    guard !s.isCoveredByOtherUI else { return nil }
+    let gapElapsed = s.secondsSinceLastMoment >= tutorialMomentGapSeconds
+    return TutorialMoment.allCases.first {
+        !seen.contains($0) && ($0.group == .core || gapElapsed) && isTriggered($0, in: s)
+    }
 }
 
 private func isTriggered(_ moment: TutorialMoment, in s: TutorialSnapshot) -> Bool {
