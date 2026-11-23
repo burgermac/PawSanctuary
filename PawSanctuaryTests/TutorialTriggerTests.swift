@@ -105,12 +105,22 @@ final class TutorialTriggerTests: XCTestCase {
                      "a sheet, popup, banner, takeover or the parallel board waits the tip out")
     }
 
-    func testTheNextMomentWaitsForTheGapAfterTheLastOne() {
-        var s = snapshot(firing: .firstMerge)
+    func testALaterMomentWaitsForTheGapAfterTheLastOne() {
+        var s = snapshot(firing: .boardFull)
         s.secondsSinceLastMoment = tutorialMomentGapSeconds - 1
         XCTAssertNil(nextTutorialMoment(snapshot: s, seen: []))
         s.secondsSinceLastMoment = tutorialMomentGapSeconds
-        XCTAssertEqual(nextTutorialMoment(snapshot: s, seen: []), .firstMerge)
+        XCTAssertEqual(nextTutorialMoment(snapshot: s, seen: []), .boardFull)
+    }
+
+    func testTheOpeningLessonsFollowEachOtherWithoutWaitingOutTheGap() {
+        // Spawn, then merge, then claim are one lesson sequence the player is
+        // already in the middle of; only the tips after them are spaced out.
+        for moment in TutorialMoment.coreGroup {
+            var s = snapshot(firing: moment)
+            s.secondsSinceLastMoment = 0
+            XCTAssertEqual(nextTutorialMoment(snapshot: s, seen: []), moment, "\(moment)")
+        }
     }
 
     func testTheGapIsATuningConstantWithTheSpecsStartingValue() {

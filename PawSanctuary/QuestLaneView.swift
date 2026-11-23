@@ -95,6 +95,7 @@ struct QuestLaneCard: View {
                         .background(RoundedRectangle(cornerRadius: 7).fill(blue))
                 }
                 .buttonStyle(.plain)
+                .reportTutorialFrame(.questClaim)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     GeometryReader { geo in
