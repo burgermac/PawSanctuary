@@ -1,6 +1,6 @@
 # Spec — Cards bought with kibble; a bought chest becomes a spawner
 
-**Status: Draft, 22 Nov 2026, written cold, not reviewed, no code.** This is task **8.1** of `Revision_Plan_ModelOnReferences.md` (W8, triage rows 15 and 16). Every code citation is `file:line` on `origin/main` at **`de3e8b2`** ("Merge pull request #133", 22 Nov 2026). Line numbers drift; search by name if one no longer lands. Nothing here is decided until the owner answers §10.
+**Status: Draft, 22 Nov 2026; owner answered Q1–Q12 on 23 Nov 2026 (§10), two of them against the recommendation (Q3, Q7), which opens Q13–Q14; no code.** This is task **8.1** of `Revision_Plan_ModelOnReferences.md` (W8, triage rows 15 and 16). Every code citation is `file:line` on `origin/main` at **`de3e8b2`** ("Merge pull request #133", 22 Nov 2026). Line numbers drift; search by name if one no longer lands. §4 and §7 below still describe the original proposal; where an answer changes it, a note marked **Answered 23 Nov** says so. §10 is the record.
 
 **Read first:** `PawSanctuary_Alignment_Plan.md` D3, D7, D9, D13, D14; `Triage_ModelOnReferences.md` §1 rows 15 and 16; `Spec_AlbumGrandPrize.md` (the album's kibble faucet, just built); `Spec_HeldItemOrders.md` §6 (the D14 ratio table).
 
@@ -127,6 +127,7 @@ None is required to build the first stages; every proposal below is labelled so 
    - Amortised over the model's 60-day horizon (`EconomySimulation.swift:920`), 600 kibble is **10 kibble a day, 1.4%** of the level-5 supply of 695 (`EconomyTests.swift:780-784`).
    (Owner Q2.)
 3. **Offer.** Every missing rare shows its price at once (proposal). The reference offers "only a subset at any moment"; copying that needs rotation state and a schema bump and is unmeasured in how it rotates. (Owner Q3.)
+   **Answered 23 Nov: a rotating subset, 3 missing rares at a time, rotating daily.** See §10 Q3 and the new Q13 (how the 3 are chosen).
 4. **Flow.** A new `purchaseCardWithKibble(_ cardID:) -> Bool` on the view-model, modelled on `purchaseDogTagStoreSlot` (`MergeBoardViewModel.swift:1956-1970`): guard the card is rare, unowned and affordable; deduct kibble; report `updateAllAfterSpend(kind: .kibble, …)` (Owner Q6); set `cardInventory[id] = 1`; `checkAlbumCompletions()`; `persist()`. A bought card counts for its set exactly as a drawn one does.
 5. **UI.** On each missing rare slot in `AlbumDetailView`, a kibble price button beside (or instead of, per Q4) "Use Joker" (`CardAlbumView.swift:929-931`), with a one-tap confirmation, disabled when unaffordable. Behind the D7 gate per Q5.
 6. **Stars and jokers.** Stars stay: duplicates still pay them and the Star Shop still sells packs. Jokers are an owner choice (Q4): keep both, retire both from sale, or retire the common joker only. Any retirement **stops selling** them; balances already held stay usable through `useJoker`, so no save changes.
@@ -157,7 +158,7 @@ None is required to build the first stages; every proposal below is labelled so 
 | Source | Proposal | Why |
 |---|---|---|
 | **Dog Tag kibble ladder** | **Becomes a crate on two rungs** (below) | The one measured case: the reference's wall ladder with chests interleaved |
-| IAP energy packs | **Unchanged contents**; fix the full-board fallback so the paid producer goes to storage rather than becoming 10 kibble (Owner Q7, Q9) | Already place a spawner; the real-money bundle case is unmeasured [I] |
+| IAP energy packs | **Unchanged contents**; fix the full-board fallback so the paid producer goes to storage rather than becoming 10 kibble (Owner Q7, Q9). **Answered 23 Nov: Q7 also includes paid chests, read as option (b): the kibble in an energy pack is delivered as a Kibble Crate instead of credited.** Sizes are open (Q14) | Already place a spawner; the real-money bundle case is unmeasured [I] |
 | Kibble IAPs, Dog Tag IAPs, Starter Bundle | unchanged (credited) | Real-money bundles credit energy in the reference's listing [M]; changing a live paid SKU needs a D9 argument (D9's first consequence, Kibble Drive step 5) |
 | Free chest | unchanged | Already places a toolbox item; the reference's timed free chest is not a spawner in any capture |
 | Weekly, monthly chests; Smile bundle | unchanged | Already place items (recirculation, modelled) |
@@ -214,6 +215,7 @@ Stated plainly, as D9 requires:
 - **Kibble card purchase: revenue-leaning, small retention cost.** It adds a kibble sink, so a player who wants a rare card now meets the energy wall a little sooner, which is the indirect monetization path. Mitigations in this spec: optional; rares only; the album still returns about four times what buying every rare costs; nothing is taken away unless the owner retires jokers.
 - **Retiring jokers (Q4 a or c) is the clearest revenue-at-retention-cost change here.** Today the last rare can be closed with stars a player already earned from duplicates; under full retirement it costs kibble. Q4's recommendation (c) keeps the Rare Joker for that reason.
 - **Kibble Crate rungs: retention-positive, slightly revenue-negative.** The third purchase of the day drops from 60 tags for 100 kibble to 36 for 120, so the discounted allowance rises from 200 to 340. The friction it adds (board space, eight taps) is the reference's design; the merge bonus and the zero cooldown keep it from being a pure cost.
+- **Energy-pack kibble as a crate (Q7, answered 23 Nov): revenue-neutral on paper if each crate is never worth less than today's credit (Q14), but it changes a live paid SKU, which D9's first consequence says needs this argument.** It adds friction for a paying player (a cell and eight taps for kibble that used to arrive at once). The retention argument for it is the reference's ladder, and it rests on one title with the paid case unmeasured. The owner chose it; this note is here so the choice is on the record as a D9 trade-off, not an oversight.
 - **Energy-pack full-board fix: retention-positive.** A paying player no longer loses a producer for 10 kibble.
 - **Not done, because of D9:** no live paid SKU changes contents or price; nothing is tuned to make a card or crate convert better.
 
@@ -243,7 +245,7 @@ Stated plainly, as D9 requires:
 | Kibble card purchase (4.1) | none: writes `cardInventory`, which exists | no |
 | Joker sale retired (Q4 a or c) | none: balances stay, `useJoker` still spends them | no |
 | Joker balances **converted** (not recommended) | `jokerCards`/`rareJokerCards` rewritten at load | yes |
-| Rotating offer subset (Q3 b, not recommended) | new rotation state | yes |
+| Rotating offer subset (Q3 b, **chosen 23 Nov**) | none if the 3 are derived from the date (Q13 a); a new saved field if stored (Q13 b) | no under Q13 (a); yes under (b) |
 | **`ProducerLevel.kibbleCrate = 30`** | a save may now contain level 30 on the board or in storage | **yes** (rule 4: an older build cannot decode it) |
 | Crate rungs on the ladder | none: same `dogTagExchangesToday` counter | no |
 | Energy-pack fallback | none: storage already persists | no |
@@ -302,17 +304,32 @@ Stages 1–2 and 3–5 are independent chains; either can go first. Stage 4 need
 Each has a recommendation; the first option listed is not always it.
 
 - **Q1. Which cards can be bought with kibble?** (a) Rares only. (b) Rares and commons, commons cheaper. (c) None; keep star-only. **Recommend (a)**, the measured reference rule.
+  **Answered 23 Nov 2026: (a) Rares only, as recommended.**
 - **Q2. The price basis.** (a) 50 kibble flat. (b) 35 kibble flat. (c) Rising with the set ramp's completion order. **Recommend (a)**: the reference's top-rarity price, and 23% of the album's kibble return.
+  **Answered 23 Nov 2026: (a) 50 kibble flat, as recommended.**
 - **Q3. Which missing rares are offered.** (a) All of them. (b) A rotating subset, as the reference does (rotation unmeasured; schema bump). **Recommend (a)**: simpler, more generous (D9), no save change; revisit after an album recording.
+  **Answered 23 Nov 2026: (b) a rotating subset, **against the recommendation**: 3 missing rares at a time, rotating daily (same day boundary as the Dog Tag ladder's daily reset). How the 3 are chosen, and whether a bought card's slot refills at once, is the new Q13. §4.1 item 3 and the §7 table are updated. Also answered 23 Nov in a follow-up: offer size 3, rotation daily.**
 - **Q4. Stars and jokers.** (a) Stop selling both jokers. (b) Keep both. (c) Stop selling the common Joker; keep the Rare Joker for stars. Held balances stay usable in every case. **Recommend (c)**: converges on "commons come from packs" while keeping a non-energy route to the last rare, a D9 reason that survives re-reading (D14 rule 1).
+  **Answered 23 Nov 2026: (c) Stop selling the common Joker, keep the Rare Joker for stars, as recommended. Held balances stay usable.**
 - **Q5. Gate the kibble price behind D7?** (a) Yes, `isMonetizationUnlocked`. (b) No, show it whenever the album is open. **Recommend (a)**.
+  **Answered 23 Nov 2026: (a) Yes, behind `isMonetizationUnlocked`, as recommended.**
 - **Q6. Does a card purchase count as kibble spent for spend-goal quests?** (a) Yes. (b) No. **Recommend (a)**: it is real kibble spent, and the references count energy spent anywhere (Prize Rise, `Findings_26July.md` §5b).
+  **Answered 23 Nov 2026: (a) Yes, as recommended.**
 - **Q7. Which purchases become crates?** (a) The Dog Tag ladder only (the measured case). (b) (a), plus the energy packs' kibble paid as a crate instead of credited. (c) Every kibble-paying purchase. **Recommend (a)**; (b) and (c) change live paid SKUs and need the real-money bundle measured (R8) and a D9 argument.
+  **Answered 23 Nov 2026: the Dog Tag ladder **and paid chests**, **against the recommendation**. Read as option (b): the Dog Tag ladder plus the energy packs' kibble delivered as a crate instead of credited. Kibble IAPs, Dog Tag IAPs and the Starter Bundle are not covered by (b); if the owner meant option (c), every kibble-paying purchase, say so. Because this changes live paid SKUs, §6.1 needs a D9 argument and the real-money bundle behaviour is still unmeasured (R8). Crate sizes per pack are open: Q14.**
 - **Q8. What a crate emits.** (a) Kibble pieces (currency chain, tier 3). (b) Animals, like the legacy rescue producers. **Recommend (a)**, the reference's "mergeable energy items".
+  **Answered 23 Nov 2026: (a) Kibble pieces, as recommended.**
 - **Q9. The energy packs' legacy rescue producers.** (a) Keep them; fix the full-board fallback to storage. (b) Replace them with Kibble Crates. **Recommend (a)**: no content change to a paid SKU; the fix only stops a loss.
+  **Answered 23 Nov 2026: (a) Keep the legacy rescue producers; fix the full-board fallback to producer storage, as recommended.**
 - **Q10. Where a bought crate lands.** (a) The board, else producer storage, else refused before charging (Dog Tags) or credited as kibble (money). (b) Always into storage first, as the reference's holding slot. **Recommend (a)**: matches every other placement in the game.
+  **Answered 23 Nov 2026: (a) The board, else producer storage, else refused before charging (Dog Tags) or credited as kibble (money), as recommended. The owner added: a bought crate disappears once its contents have fully spawned. That is what the design already does (the free, charged branch removes the tile at zero charges, §4.2).**
 - **Q11. Crate cooldown between taps.** (a) None. (b) 25 s, like supply producers. **Recommend (a)** until a recording shows the reference's.
+  **Answered 23 Nov 2026: (a) No cooldown, as recommended, until a recording shows the reference's.**
 - **Q12. Report the Dog Tag ladder's spend to quests.** (a) Yes, in stage 4. (b) No, leave as is. **Recommend (a)**: every other Dog Tag spend reports, and the crate rung would otherwise inherit the gap.
+  **Answered 23 Nov 2026: (a) Yes, report the Dog Tag ladder's spend to quests in stage 4, as recommended.**
+- **Q13. How the 3 offered rares are chosen (new, from the Q3 answer).** (a) Derived from the date: shuffle the 12 rare IDs with a seed from today's date, offer the first 3 the player does not own. Stable all day, no saved field, no schema bump; a bought card is replaced by the next unowned one in the shuffle at once. (b) Stored: a saved list of today's 3 and the day it was picked, so a bought card stays "sold" until the next rotation; needs a schema bump, migration and `PersistenceTests` cases. **Recommend (a)**: no save change, and refilling at once is the more generous reading (D9). The owner should confirm the day boundary is the Dog Tag ladder's reset.
+- **Q14. Sizes of the paid Kibble Crates (new, from the Q7 answer).** The four energy packs credit 25, 60, 120 and 250 kibble today (`energyPackContents`, `AnimalSpecies.swift:1360-1381`). As crates they need a charge count and tier each, with raw value never below today's credit (the §5.2 rule). Options: (a) one Kibble Crate per pack with charges and tier chosen per pack, to be proposed in the stage-5 task for the owner to approve; (b) the same 8-charge tier-3 crate (120) repeated, which would over-pay the $0.99 pack and under-pay the $9.99 one, so not viable without a count change. **Recommend (a)** and that stage 5 starts by writing the table, not code. The real-money behaviour in the reference is unmeasured (R8), so this is a proposal, labelled as such.
+
 
 ---
 
