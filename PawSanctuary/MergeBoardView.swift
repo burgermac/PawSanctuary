@@ -369,6 +369,20 @@ struct MergeBoardView: View {
                 Text("This spawner is catching its breath. Skipping costs \(familySpawnerCooldownSkipDogTags) Dog Tags.")
             }
         }
+        .alert("Open the chest early?", isPresented: $viewModel.pendingFreeChestSkip) {
+            if viewModel.kibbleEngine.dogTags >= freeChestSkipCostDogTags {
+                Button("Open for \(freeChestSkipCostDogTags) Dog Tags") { viewModel.claimOrSkipFreeChest() }
+                Button("Wait", role: .cancel) { }
+            } else {
+                Button("OK", role: .cancel) { }
+            }
+        } message: {
+            if viewModel.kibbleEngine.dogTags >= freeChestSkipCostDogTags {
+                Text("Your free chest isn't ready yet. Spend \(freeChestSkipCostDogTags) Dog Tags to open it now.")
+            } else {
+                Text("Your free chest isn't ready yet. Opening it early costs \(freeChestSkipCostDogTags) Dog Tags.")
+            }
+        }
         .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
             Button("OK", role: .cancel) { }
         } message: {

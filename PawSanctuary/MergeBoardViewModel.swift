@@ -4363,15 +4363,39 @@ class MergeBoardViewModel {
         }
     }
 
+    /// True while the "Open the chest early?" confirmation is showing.
+    var pendingFreeChestSkip = false
+
+    /// What a tap on the free-chest tray tile does. A ready chest is free and
+    /// opens at once. Opening it early is a Dog Tag spend, so, like the spawner
+    /// cooldown skip (`requestSpawnerSkip`), it is a monetization surface: it
+    /// stays silent until D7's gate opens, and after that it asks first instead
+    /// of charging on a single tap. Before the gate the tap only says when the
+    /// chest will be ready.
+    func tapFreeChest() {
+        if isFreeChestReady {
+            claimOrSkipFreeChest()
+        } else if isMonetizationUnlocked {
+            pendingFreeChestSkip = true
+        } else {
+            let minutes = Int((freeChestTimeRemaining / 60).rounded(.up))
+            let text = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+            enqueueToast(Toast(kind: .info("Free chest ready in \(text)")))
+        }
+    }
+
     /// Claims the chest for free if ready, or pays `freeChestSkipCostDogTags`
     /// to claim it early. Either way, delivers a toolbox item (Gap_Analysis_
     /// Round2 3.3) and restarts the cooldown. Returns false if not ready and
-    /// unaffordable, or there's nowhere to put the chest.
+    /// unaffordable, not ready and monetization is still locked (D7), or
+    /// there's nowhere to put the chest. The tray tile reaches the paid path
+    /// only through `tapFreeChest()`'s confirmation.
     @discardableResult
     func claimOrSkipFreeChest() -> Bool {
         let isSkip = !isFreeChestReady
         if isSkip {
-            guard kibbleEngine.dogTags >= freeChestSkipCostDogTags else { return false }
+            guard isMonetizationUnlocked,
+                  kibbleEngine.dogTags >= freeChestSkipCostDogTags else { return false }
         }
         let item = BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
         guard placeOrBankItem(item) else { return false }

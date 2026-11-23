@@ -657,7 +657,7 @@ struct TaskTrayView: View {
                         // than only after it has been sitting there.
                         urgency: remaining <= trayEndingSoonFraction ? .endingSoon : .idle,
                         accessibilityText: "Free chest",
-                        action: { viewModel.claimOrSkipFreeChest() })
+                        action: { viewModel.tapFreeChest() })
     }
 
     private var spotlightTile: TrayTile {
