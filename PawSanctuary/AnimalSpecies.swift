@@ -2233,8 +2233,13 @@ func isBubbleEligibleForQuestOrOrder(chainID: ChainID, tier: Int,
 /// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
 func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
 
-/// Top 0-based tier of every animal chain (12 tiers as of Phase 2b).
-let animalChainTopTier = 11
+/// Top 0-based tier of every animal chain, derived from the chain length
+/// (12 tiers as of Phase 2b, so 11) rather than written as a literal, so the
+/// fifteen-tier change has one place to move (Spec_FifteenTiers.md §9 Task 1).
+/// Every family has the same length; `AnimalChainTopTierTests` pins that.
+/// Deliberately no Ambassador constant here: what counts as the Ambassador is
+/// on hold (owner Q3).
+let animalChainTopTier = AnimalSpecies.dog.tierNames.count - 1
 
 /// Phase 2c §5: the "mid-tier" band for the sell-vs-order contextual nudge —
 /// low enough to exclude the starter tiers (trivially cheap either way), high
@@ -2638,3 +2643,54 @@ func albumSetReward(forRung completedCount: Int) -> AlbumSetReward {
 let albumCollectionPrizeKibble  = 800
 let albumCollectionPrizeDogTags = 100
 let albumCollectionPrizeCoins   = 5_000
+
+// MARK: - Remote event file limits (Spec_RemoteEventData.md §5.1, task 7.2.2)
+//
+// Bounds a downloaded event file must stay inside (RemoteEventFile.swift). A
+// file that breaks any of them is rejected whole (Q6). Kept here, not in the
+// file, so a bad or hostile file cannot loosen them.
+
+/// V1: largest accepted file, in bytes (256 KB).
+let remoteEventFileMaxBytes = 262_144
+
+/// V4: most milestones one track may have.
+let remoteEventMaxMilestones = 20
+
+/// V3: allowed duration of each event kind, in whole days (inclusive).
+/// Kibble Drive is exactly 3 days (`KibbleDriveLifecycleTests`).
+let remoteEventMilestoneTrackDays: ClosedRange<Int> = 1...7
+let remoteEventPassDays: ClosedRange<Int> = 7...35
+let remoteEventParallelBoardDays: ClosedRange<Int> = 1...7
+let remoteEventKibbleDriveDays: ClosedRange<Int> = 3...3
+
+/// V6: largest `amount` a single reward of each kind may carry, set at 2x the
+/// largest single reward of that kind in the compiled event tracks (the
+/// `ProgressTrackRegistry` tables of the calendar's events, not the Reward
+/// Ladder or the Kibble Drive ladder, which stay code). Compiled maxima when
+/// set: kibble 350, dogTags 20, cardPack 1.
+///
+/// coins, xp and boardItem appear in no compiled event track, so 2x the
+/// compiled maximum is 0: V5 allows those kinds, but no file can use them
+/// until a ceiling is chosen here on purpose. A kind missing from this table
+/// has a ceiling of 0.
+let remoteEventRewardAmountCeiling: [RewardKind: Int] = [
+    .kibble: 700,
+    .dogTags: 40,
+    .cardPack: 2,
+    .coins: 0,
+    .xp: 0,
+    .boardItem: 0,
+]
+
+/// V6: largest total `amount` of each reward kind across one track's free and
+/// paid lanes together, set at 2x the largest compiled event track's total of
+/// that kind (a Sanctuary Circle season: kibble 2,740, dogTags 136,
+/// cardPack 1). Same zero rule as `remoteEventRewardAmountCeiling`.
+let remoteEventTrackTotalCeiling: [RewardKind: Int] = [
+    .kibble: 5_480,
+    .dogTags: 272,
+    .cardPack: 2,
+    .coins: 0,
+    .xp: 0,
+    .boardItem: 0,
+]

@@ -47,6 +47,11 @@ enum KibbleDriveRegistry {
         return f.date(from: iso) ?? .distantPast
     }
 
+    /// Every Kibble Drive effective this launch. Reads through `EventCatalog`
+    /// (specs/Spec_RemoteEventData.md §3); today it is exactly
+    /// `compiledEvents`, the fallback compiled into this build.
+    static var allEvents: [KibbleDriveEventDefinition] { EventCatalog.effective.kibbleDriveEvents }
+
     /// **The schedule only — the ladder content is §6 step 4.** A Drive needs
     /// a window before its lifecycle can be written or watched, so the dates
     /// land here in 3a and the rung table joins them in step 4.
@@ -106,7 +111,7 @@ enum KibbleDriveRegistry {
     /// `eventID`: a shared ID would let a finished Drive's points open the
     /// next one part-filled, the same reasoning `Spec_Phase6c_Calendar.md`
     /// §2.1 gives for `sanctuary_circle_s1/s2/s3`.
-    static let allEvents: [KibbleDriveEventDefinition] = [
+    static let compiledEvents: [KibbleDriveEventDefinition] = [
         KibbleDriveEventDefinition(
             id: "kibble_drive_20260911",
             name: "Kibble Drive",

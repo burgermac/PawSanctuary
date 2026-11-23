@@ -24,7 +24,7 @@ Not decided here: telemetry, analytics or A/B tests (triage row 12, the owner's 
 - **D7** (session-one monetization silence) and **D9** (retention outranks monetization) still bind. A remote file must not be able to create a new paid surface (§4.3, rule V9).
 - **D14** §5: direction accepted for row 11. Row 12 stays the owner's pick.
 - **Triage §2.6**: data only; event ids key saved state, so this needs a migration review (§7).
-- **`CLAUDE.md` rule 4**: any persisted-shape change needs a version bump, a migration, and a `PersistenceTests.swift` case. Current schema is **v45** (`GameStore.swift:394`).
+- **`CLAUDE.md` rule 4**: any persisted-shape change needs a version bump, a migration, and a `PersistenceTests.swift` case. Current schema was **v45** (`GameStore.swift:394`) when this spec was written; `main` reached **v46** (`claimedCollectionPrizeIDs`, `specs/Spec_AlbumGrandPrize.md`) before 7.2 started, so §7.3 and task 7.2.3 no longer name a fixed number.
 - **`CLAUDE.md` rule 5**: own sprint, owner approves first.
 - **Launch-only lifecycle** (pre-existing): `checkEventLifecycle(at:)` runs once per launch from `loadGame` (`MergeBoardViewModel.swift:991-1015`, call at `:1015`; doc comment at `:4207-4226`). This spec keeps that, and it is why a downloaded file takes effect at the **next** launch (§5.4).
 
@@ -245,7 +245,7 @@ Not persisted but id-keyed: `activeEventRiderProviders`, `pendingEventPassEventI
 
 ### 7.3 Is a schema bump needed?
 
-**Only for pins, and only if they live in the save (Q3, recommended).** Proposal: **v45 → v46**, adding
+**Only for pins, and only if they live in the save (Q3, recommended).** The version is **not fixed here**: task 7.2.3 takes `currentVersion + 1` from `main` at the moment its branch is cut, call it **vN**, and migrates from v(N−1). `main` is already at v46 (`claimedCollectionPrizeIDs`), so vN is **v47 or later**; other open work (for example the tutorial spec) may claim a number first, and whichever lands second rebases onto the next free one. Proposal: **v(N−1) → vN**, adding
 
 ```swift
 /// Event definitions pinned when first seen active (Spec_RemoteEventData.md §5.5).
@@ -255,10 +255,10 @@ var eventPins: [String: EventPin] = [:]
 where `EventPin` is `Codable` with `id`, `kind` (`String` raw value), `start`, `end`, `track: [TrackMilestone]?`.
 
 Following the code's current pattern, not a named helper (see discrepancy 4):
-- `static let currentVersion = 46` with a `/// v46:` history line (`GameStore.swift:285-394`).
+- `static let currentVersion = N` with a `/// vN:` history line (the version history block above `currentVersion` in `GameStore.swift`).
 - `"eventPins": [String: Any]()` in `additiveDefaultsSinceV8` (`GameStore.swift:754-822`), because the field is non-Optional.
-- A dispatch line `if version == 45 { return migrateByInjecting(from: 45, defaults: [:], into: data) }` beside `GameStore.swift:702-717`. If the owner wants the `CLAUDE.md` naming kept, wrap it as `migrateV45toV46(_ data: Data) -> GameState?` that calls `migrateByInjecting`; behaviour is identical.
-- `PersistenceTests.swift` cases, in the style of `testV44toV45StartsEveryTrophyPageEmpty` (`:1411`): `testV45toV46StartsWithNoEventPins`, `testEventPinsRoundTripOnAFreshSave`, and `testAPreV46SaveWithARunningKibbleDriveStillLoadsItsDrive`.
+- A dispatch line `if version == N-1 { return migrateByInjecting(from: N-1, defaults: [:], into: data) }` beside the existing dispatch lines in `GameStore.swift`. If the owner wants the `CLAUDE.md` naming kept, wrap it as `migrateV(N-1)toVN(_ data: Data) -> GameState?` that calls `migrateByInjecting`; behaviour is identical.
+- `PersistenceTests.swift` cases, in the style of `testV44toV45StartsEveryTrophyPageEmpty` (`:1411`): `testV(N-1)toVNStartsWithNoEventPins`, `testEventPinsRoundTripOnAFreshSave`, and `testAPreVNSaveWithARunningKibbleDriveStillLoadsItsDrive` (with the real numbers substituted, e.g. `testV46toV47StartsWithNoEventPins` if vN is v47).
 
 The cached file itself is never part of `GameState` and needs no migration.
 
@@ -287,7 +287,7 @@ The cached file itself is never part of `GameState` and needs no migration.
 
 1. **7.2.1 — Catalog seam, no behaviour change.** Add `EventCatalog` (compiled-only for now). Rename literals to `compiledEvents` / `compiledTracks` and make `allEvents` / `tracks` read through the catalog. Tests: every existing calendar test green unchanged; new `EventCatalogTests.testEffectiveCatalogEqualsCompiledWhenNoFileIsPresent`.
 2. **7.2.2 — File model, decoder and validator (pure, no network, no I/O).** `RemoteEventFile` Codable types, V1–V9, hex colours, conversion to the existing definition types. Tests: one fixture per rule that must fail; a valid fixture; unknown keys ignored; unknown kind skipped; `schemaVersion: 2` rejected; a fixture generated from the compiled calendar passes.
-3. **7.2.3 — Schema v46: `eventPins` (if Q3 = save).** Field, default, dispatch line, history comment; nothing writes it yet (the KibbleDrive step-1 pattern). Tests: the three `PersistenceTests` cases in §7.3; full migration suite green.
+3. **7.2.3 — Schema bump: `eventPins` (if Q3 = save).** The new version is `currentVersion + 1` on `main` at branch time (v47 or later: `main` is already at v46, and other open work such as the tutorial spec may also claim a number; see §7.3). Field, default, dispatch line, history comment; nothing writes it yet (the KibbleDrive step-1 pattern). Tests: the three `PersistenceTests` cases in §7.3; full migration suite green.
 4. **7.2.4 — Merge, pins, tombstones, and the "unknown id never destroys state" rule.** Changes to `checkEventLifecycle` (`MergeBoardViewModel.swift:4246-4291`). Tests: a purchased running Drive whose id vanishes keeps its state; a running pass whose thresholds change keeps the pinned table; a tombstone removes an unstarted event and is ignored for a started one; the Parallel Board board survives an unknown id; pins prune 7 days after end.
 5. **7.2.5 — Cache loader at launch.** Read `eventCatalog.json` before the view model is built; `revision` and `minAppBuild` rules; corrupt or truncated file falls back to compiled. Tests: corrupt cache, lower revision, higher schema version, missing file — each yields the compiled catalog; tests never touch a real network or a developer's real cache (inject the loader).
 6. **7.2.6 — Downloader.** Ephemeral `URLSession`, 6-hour throttle, ETag, size cap, timeout, signature check (if Q2), atomic write; never applies mid-session. Tests with a `URLProtocol` stub: 200 valid, 304, 404, timeout, oversize, bad signature, valid-but-invalid-data. Assert the request has no query string and no cookies.
@@ -318,7 +318,7 @@ Running-total test pins (`EventSystemTests.swift:858`, `ParallelBoardEventsTests
 
 1. **Q1 — Where is the file hosted?** (a) GitHub Pages, (b) Cloudflare Pages or R2, (c) CloudKit public database. **Recommend (a).**
 2. **Q2 — How is the file protected?** (a) HTTPS only, (b) HTTPS plus an Ed25519 signature with the key on the owner's Mac, (c) HTTPS plus certificate pinning. **Recommend (b).**
-3. **Q3 — Where do started-event pins live?** (a) in the save, schema v46, so they follow iCloud sync, (b) in a side file next to the save with no schema bump, (c) no pins, rely on validation only. **Recommend (a).**
+3. **Q3 — Where do started-event pins live?** (a) in the save, with a schema bump (the next free version, §7.3), so they follow iCloud sync, (b) in a side file next to the save with no schema bump, (c) no pins, rely on validation only. **Recommend (a).**
 4. **Q4 — May a running event be changed?** (a) frozen except text and colours, (b) end-date extensions also allowed, (c) anything may change. **Recommend (a)** for v1.
 5. **Q5 — What does the file control in v1?** (a) event windows and track reward tables only, (b) also the Kibble Drive ladder, (c) also rider numbers. **Recommend (a).**
 6. **Q6 — What happens to a partly bad file?** (a) reject the whole file and keep the last good one, (b) drop only the bad events. **Recommend (a).**

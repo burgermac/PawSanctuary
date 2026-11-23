@@ -9,7 +9,13 @@ import StoreKit
 struct ShopView: View {
     var storeManager: StoreManager
     var viewModel: MergeBoardViewModel
+    /// Item Store slot to scroll to and highlight, set only by the chain
+    /// viewer's "See in store" (Spec_ChainViewerUpgrades_Draft.md §3.3 step 7).
+    /// nil (the cart button, the Reward Ladder tile) opens at the top.
+    var focusSlotID: UUID? = nil
     @Environment(\.dismiss) var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var highlightedSlotID: UUID?
 
     var body: some View {
         NavigationView {
@@ -17,118 +23,123 @@ struct ShopView: View {
                 LinearGradient(colors: [Color(red: 0.85, green: 0.95, blue: 0.85),
                                         Color(red: 0.95, green: 0.88, blue: 0.75)],
                                startPoint: .top, endPoint: .bottom).ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        (Text(Image(systemName: "pawprint")) + Text(" \(viewModel.kibble)  ")
-                         + Text(Image(systemName: "tag.fill")) + Text(" \(viewModel.dogTags)"))
-                            .font(.subheadline.bold()).padding().frame(maxWidth: .infinity)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            (Text(Image(systemName: "pawprint")) + Text(" \(viewModel.kibble)  ")
+                             + Text(Image(systemName: "tag.fill")) + Text(" \(viewModel.dogTags)"))
+                                .font(.subheadline.bold()).padding().frame(maxWidth: .infinity)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.7)))
+
+                            Text("Kibble regenerates \(KibbleEngine.regenRateDescription) up to \(viewModel.effectiveRegenCap). Purchases and quest rewards can exceed the cap.")
+                                .font(.caption).multilineTextAlignment(.center).foregroundColor(.secondary).padding(.horizontal)
+
+                            // Sound toggle
+                            HStack {
+                                Label("Sound", systemImage: SoundManager.shared.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                    .font(.subheadline)
+                                    .foregroundColor(SoundManager.shared.isMuted ? .secondary : .primary)
+                                Spacer()
+                                Toggle("", isOn: Binding(
+                                    get: { !SoundManager.shared.isMuted },
+                                    set: { SoundManager.shared.isMuted = !$0 }
+                                ))
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
                             .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.7)))
 
-                        Text("Kibble regenerates \(KibbleEngine.regenRateDescription) up to \(viewModel.effectiveRegenCap). Purchases and quest rewards can exceed the cap.")
-                            .font(.caption).multilineTextAlignment(.center).foregroundColor(.secondary).padding(.horizontal)
+                            // ── Generators (Dog Tag purchases) ──────────────
+                            GeneratorShopSection(viewModel: viewModel)
 
-                        // Sound toggle
-                        HStack {
-                            Label("Sound", systemImage: SoundManager.shared.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                                .font(.subheadline)
-                                .foregroundColor(SoundManager.shared.isMuted ? .secondary : .primary)
-                            Spacer()
-                            Toggle("", isOn: Binding(
-                                get: { !SoundManager.shared.isMuted },
-                                set: { SoundManager.shared.isMuted = !$0 }
-                            ))
-                            .labelsHidden()
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.7)))
-
-                        // ── Generators (Dog Tag purchases) ──────────────
-                        GeneratorShopSection(viewModel: viewModel)
-
-                        Divider().padding(.horizontal)
-
-                        // ── Board items for Dog Tags (recirculation) ──────
-                        DogTagStoreSection(viewModel: viewModel)
-
-                        Divider().padding(.horizontal)
-
-                        // ── Wildcard (Gap_Analysis_Round2 3.5) ────────────
-                        WildcardSection(viewModel: viewModel)
-
-                        Divider().padding(.horizontal)
-
-                        // ── Piggy bank (Gap_Analysis_Round2 3.4) ──────────
-                        PiggyBankSection(viewModel: viewModel)
-
-                        Divider().padding(.horizontal)
-
-                        // ── Dog Tag → Kibble exchange ─────────────────────
-                        DogTagKibbleSection(viewModel: viewModel)
-
-                        Divider().padding(.horizontal)
-
-                        // ── VIP ladder (Gap_Analysis_Round2 3.7) ──────────
-                        VIPSection(viewModel: viewModel)
-
-                        // ── Reward Ladder (Phase 6b, Task 3.4) ────────────
-                        // Gated on isRewardLadderAvailable, per spec §3.4 — hidden
-                        // entirely (including its own divider) rather than shown
-                        // empty/locked, same posture VIPSection's neighbors take
-                        // for content that isn't relevant yet.
-                        if viewModel.isRewardLadderAvailable {
                             Divider().padding(.horizontal)
-                            RewardLadderSection(viewModel: viewModel, storeManager: storeManager)
-                        }
 
-                        Divider().padding(.horizontal)
+                            // ── Board items for Dog Tags (recirculation) ──────
+                            DogTagStoreSection(viewModel: viewModel, highlightedSlotID: highlightedSlotID)
 
-                        // ── Energy Packs (IAP bundles) ───────────────────
-                        EnergyPackShopSection(storeManager: storeManager)
+                            Divider().padding(.horizontal)
 
-                        Divider().padding(.horizontal)
+                            // ── Wildcard (Gap_Analysis_Round2 3.5) ────────────
+                            WildcardSection(viewModel: viewModel)
 
-                        // ── Other real-money IAP ─────────────────────────
-                        if storeManager.isLoading {
-                            ProgressView("Loading shop...").padding()
-                        } else if storeManager.products.isEmpty {
-                            VStack(spacing: 12) {
-                                Label("Shop Preview", systemImage: "cart.fill").font(.headline)
-                                ForEach(IAPProduct.allCases, id: \.rawValue) { ShopItemPreviewRow(product: $0) }
-                                Text("Pricing set in App Store Connect. Purchases not yet active.")
-                                    .font(.caption).foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center).padding(.top)
+                            Divider().padding(.horizontal)
+
+                            // ── Piggy bank (Gap_Analysis_Round2 3.4) ──────────
+                            PiggyBankSection(viewModel: viewModel)
+
+                            Divider().padding(.horizontal)
+
+                            // ── Dog Tag → Kibble exchange ─────────────────────
+                            DogTagKibbleSection(viewModel: viewModel)
+
+                            Divider().padding(.horizontal)
+
+                            // ── VIP ladder (Gap_Analysis_Round2 3.7) ──────────
+                            VIPSection(viewModel: viewModel)
+
+                            // ── Reward Ladder (Phase 6b, Task 3.4) ────────────
+                            // Gated on isRewardLadderAvailable, per spec §3.4 — hidden
+                            // entirely (including its own divider) rather than shown
+                            // empty/locked, same posture VIPSection's neighbors take
+                            // for content that isn't relevant yet.
+                            if viewModel.isRewardLadderAvailable {
+                                Divider().padding(.horizontal)
+                                RewardLadderSection(viewModel: viewModel, storeManager: storeManager)
                             }
-                        } else {
-                            ForEach(storeManager.products, id: \.id) { product in
-                                if let iap = IAPProduct(rawValue: product.id) {
-                                    ShopItemRow(product: product, iap: iap, storeManager: storeManager)
+
+                            Divider().padding(.horizontal)
+
+                            // ── Energy Packs (IAP bundles) ───────────────────
+                            EnergyPackShopSection(viewModel: viewModel, storeManager: storeManager)
+
+                            Divider().padding(.horizontal)
+
+                            // ── Other real-money IAP ─────────────────────────
+                            if storeManager.isLoading {
+                                ProgressView("Loading shop...").padding()
+                            } else if storeManager.products.isEmpty {
+                                VStack(spacing: 12) {
+                                    Label("Shop Preview", systemImage: "cart.fill").font(.headline)
+                                    ForEach(IAPProduct.allCases, id: \.rawValue) { ShopItemPreviewRow(product: $0) }
+                                    Text("Pricing set in App Store Connect. Purchases not yet active.")
+                                        .font(.caption).foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center).padding(.top)
+                                }
+                            } else {
+                                ForEach(storeManager.products, id: \.id) { product in
+                                    if let iap = IAPProduct(rawValue: product.id) {
+                                        ShopItemRow(product: product, iap: iap, storeManager: storeManager)
+                                    }
                                 }
                             }
-                        }
 
-                        Button("Restore Purchases") { Task { await storeManager.restorePurchases() } }
-                            .font(.footnote).foregroundColor(.secondary).padding(.bottom, 20)
+                            Button("Restore Purchases") { Task { await storeManager.restorePurchases() } }
+                                .font(.footnote).foregroundColor(.secondary).padding(.bottom, 20)
 
-                        #if DEBUG
-                        // No "Unlock Monetization" button here — ShopView is
-                        // itself only reachable once isMonetizationUnlocked is
-                        // already true (MergeBoardView's Shop button is gated
-                        // on the same condition), so a toggle placed here
-                        // could only ever fire as a no-op. The real debug
-                        // affordance lives in MergeBoardView's HUD, in the
-                        // same slot the Shop button occupies once unlocked —
-                        // see MergeBoardViewModel.unlockMonetizationForTesting().
-                        Button(role: .destructive) {
-                            viewModel.resetToFreshGame()
-                            dismiss()
-                        } label: {
-                            Label("Reset Save (Debug)", systemImage: "trash")
-                                .font(.footnote)
+                            #if DEBUG
+                            // No "Unlock Monetization" button here — ShopView is
+                            // itself only reachable once isMonetizationUnlocked is
+                            // already true (MergeBoardView's Shop button is gated
+                            // on the same condition), so a toggle placed here
+                            // could only ever fire as a no-op. The real debug
+                            // affordance lives in MergeBoardView's HUD, in the
+                            // same slot the Shop button occupies once unlocked —
+                            // see MergeBoardViewModel.unlockMonetizationForTesting().
+                            Button(role: .destructive) {
+                                viewModel.resetToFreshGame()
+                                dismiss()
+                            } label: {
+                                Label("Reset Save (Debug)", systemImage: "trash")
+                                    .font(.footnote)
+                            }
+                            .padding(.bottom, 20)
+                            #endif
                         }
-                        .padding(.bottom, 20)
-                        #endif
+                        .padding()
                     }
-                    .padding()
+                    // Focus from the chain viewer's "See in store"
+                    // (Spec_ChainViewerUpgrades_Draft.md §3.3 step 7).
+                    .task { await scrollToFocusedSlot(proxy) }
                 }
             }
             .navigationTitle("Sanctuary Shop")
@@ -139,6 +150,25 @@ struct ShopView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             #endif
         }
+    }
+
+    /// Refreshes first so a day rollover is applied, then scrolls only if the
+    /// focused slot is still in stock and unsold. A stale id (sold, rerolled,
+    /// new day) leaves the shop at the top, unscrolled and unhighlighted.
+    private func scrollToFocusedSlot(_ proxy: ScrollViewProxy) async {
+        viewModel.refreshDogTagStore()
+        guard let id = focusSlotID, viewModel.liveDogTagStoreSlot(id: id) != nil else { return }
+        // Let the sheet finish presenting before scrolling. Stop if the shop
+        // closed in the meantime (the task is cancelled).
+        do { try await Task.sleep(for: .seconds(0.35)) } catch { return }
+        if reduceMotion {
+            proxy.scrollTo(id, anchor: .center)
+        } else {
+            withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(id, anchor: .center) }
+        }
+        highlightedSlotID = id
+        do { try await Task.sleep(for: .seconds(2)) } catch { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.4)) { highlightedSlotID = nil }
     }
 }
 
@@ -257,6 +287,9 @@ struct GeneratorShopRow: View {
 /// player blocked on one specific item.
 struct DogTagStoreSection: View {
     var viewModel: MergeBoardViewModel
+    /// The row the chain viewer's "See in store" sent the player to, outlined
+    /// briefly by ShopView.
+    var highlightedSlotID: UUID? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -277,7 +310,9 @@ struct DogTagStoreSection: View {
                     .font(.caption).foregroundColor(.secondary)
             } else {
                 ForEach(viewModel.dogTagStore.slots) { slot in
-                    DogTagStoreRow(slot: slot, viewModel: viewModel)
+                    DogTagStoreRow(slot: slot, viewModel: viewModel,
+                                   isHighlighted: slot.id == highlightedSlotID)
+                        .id(slot.id)
                 }
                 Text("Rotates daily, one of each. Sold items return tomorrow.")
                     .font(.caption).foregroundColor(.secondary)
@@ -318,6 +353,7 @@ struct DogTagStoreRefreshButton: View {
 struct DogTagStoreRow: View {
     let slot: DogTagStoreSlot
     var viewModel: MergeBoardViewModel
+    var isHighlighted: Bool = false
 
     private var def: ChainTier? { ContentRegistry.shared.tier(slot.chainID, slot.tier) }
     private var canAfford: Bool { viewModel.dogTags >= slot.priceDogTags }
@@ -365,6 +401,9 @@ struct DogTagStoreRow: View {
         .background(RoundedRectangle(cornerRadius: 14)
             .fill(Color.white.opacity(0.75))
             .shadow(color: .black.opacity(0.05), radius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(Color(red: 0.95, green: 0.70, blue: 0.10), lineWidth: 3)
+            .opacity(isHighlighted ? 1 : 0))
     }
 }
 
@@ -881,6 +920,7 @@ struct ShopItemRow: View {
 
 /// IAP bundles that include kibble, dog tags, a spawner, and a card pack.
 struct EnergyPackShopSection: View {
+    let viewModel: MergeBoardViewModel
     var storeManager: StoreManager
 
     private let energyCases: [IAPProduct] = [.energySmall, .energyMedium, .energyLarge, .energyXL]
@@ -904,7 +944,8 @@ struct EnergyPackShopSection: View {
 
             ForEach(energyCases, id: \.rawValue) { iap in
                 if let contents = iap.energyPackContents {
-                    EnergyPackRow(iap: iap, contents: contents, storeManager: storeManager)
+                    EnergyPackRow(iap: iap, contents: contents, storeManager: storeManager,
+                                  hasRoom: viewModel.hasRoomForSpawners(of: iap))
                 }
             }
         }
@@ -915,6 +956,9 @@ struct EnergyPackRow: View {
     let iap: IAPProduct
     let contents: EnergyPackContents
     var storeManager: StoreManager
+    /// False when there is no room on the board or in producer storage for the
+    /// pack's spawner(s): the price button is replaced by "Make room first".
+    var hasRoom: Bool = true
 
     private var liveProduct: Product? {
         storeManager.products.first { $0.id == iap.rawValue }
@@ -963,7 +1007,16 @@ struct EnergyPackRow: View {
 
             Spacer()
 
-            if let product = liveProduct {
+            if !hasRoom {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Make room first")
+                        .font(.caption.bold()).foregroundColor(.secondary)
+                    Text(contents.spawnerCount > 1 ? "Needs \(contents.spawnerCount) free spaces" : "Needs a free space")
+                        .font(.caption2).foregroundColor(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(energyPackMakeRoomMessage)
+            } else if let product = liveProduct {
                 Button(product.displayPrice) { Task { await storeManager.purchase(product) } }
                     .font(.subheadline.bold()).foregroundColor(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -981,3 +1034,8 @@ struct EnergyPackRow: View {
             .shadow(color: .black.opacity(0.05), radius: 4))
     }
 }
+
+/// Shown instead of an energy pack's price when its spawner(s) would have
+/// nowhere to go (owner, 22 Nov 2026).
+let energyPackMakeRoomMessage =
+    "Make room first: free a space on the board or in Storage (Producers) for this pack's spawner."

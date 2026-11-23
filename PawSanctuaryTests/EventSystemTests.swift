@@ -852,10 +852,11 @@ final class FullCalendarRegressionTests: XCTestCase {
     /// events = 43; §3.3: +5 April weekly events = 48; §3.4: +4 May weekly
     /// events = 52, the batch's final EventRegistry total). Fourth calendar
     /// (Spec_Phase7_Calendar4.md §4.1: +3 seasons = 55; §4.2: +4 June weekly
-    /// events = 59). Bump this in the same commit that adds entries.
+    /// events = 59; §4.3: +5 July weekly events = 64). Bump this in the same
+    /// commit that adds entries.
     func testRegistryHasExpectedRunningTotalOfUniqueEventIDsNoDuplicates() {
         let allIDs = EventRegistry.allEvents.map(\.id)
-        XCTAssertEqual(allIDs.count, 59)
+        XCTAssertEqual(allIDs.count, 64)
         XCTAssertEqual(Set(allIDs).count, allIDs.count, "duplicate event ID(s) found in EventRegistry.allEvents")
     }
 }
@@ -2113,6 +2114,180 @@ final class WeeklyEvents4Month1Tests: XCTestCase {
                 day = try XCTUnwrap(utcCalendar.date(byAdding: .day, value: 1, to: day))
             }
             XCTAssertEqual(sampled, 4, "\(id) sampled days")
+        }
+    }
+
+    func testEachMilestoneTableIsAVerbatimCopyOfAdoptionDrives() throws {
+        let reference = try XCTUnwrap(ProgressTrackRegistry.tracks["adoption_drive_aug2026"])
+        XCTAssertEqual(reference.count, 3)
+        for id in weeklyIDs {
+            let table = try XCTUnwrap(ProgressTrackRegistry.tracks[id], "\(id) is missing its table")
+            XCTAssertEqual(table, reference, "\(id)'s table must exactly match Adoption Drive's")
+        }
+    }
+}
+
+/// Spec_Phase7_Calendar4.md §3 task 4.3 — the fourth calendar's weekly
+/// track, month 2 (July, instances 5-9). No boundary start this batch: the
+/// S10 -> S11 handoff at 2027-07-01 falls in a weekly off-period (06-29,
+/// 06-30, 07-01 dark). Instance 9 straddles S11 -> S12 at 2027-07-31.
+/// Injected dates only, UTC-pinned.
+@MainActor
+final class WeeklyEvents4Month2Tests: XCTestCase {
+
+    /// In calendar order; batch 4's odd instances are Playtime Rush (spec §2.4).
+    private let weeklyIDs = [
+        "playtime_rush_20270702",
+        "rescue_relay_20270709",
+        "playtime_rush_20270716",
+        "rescue_relay_20270723",
+        "playtime_rush_20270730",
+    ]
+    private let s10 = "sanctuary_circle_s10_20270601"
+    private let s11 = "sanctuary_circle_s11_20270701"
+    private let s12 = "sanctuary_circle_s12_20270731"
+    private var allSeasonIDs: Set<String> {
+        ["sanctuary_circle_s9_20270502", s10, s11, s12]
+    }
+
+    /// No force-unwrap (project convention): a malformed literal yields
+    /// `.distantPast`, which matches no window and fails the assertion.
+    private func date(_ iso: String) -> Date {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.date(from: iso) ?? .distantPast
+    }
+
+    private var utcCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = .gmt
+        return c
+    }
+
+    private func event(_ id: String) throws -> EventDefinition {
+        try XCTUnwrap(EventRegistry.allEvents.first(where: { $0.id == id }), "missing event \(id)")
+    }
+
+    private func days(from a: Date, to b: Date) -> Int? {
+        utcCalendar.dateComponents([.day], from: a, to: b).day
+    }
+
+    private func active(at d: Date) -> Set<String> {
+        Set(EventScheduler(events: EventRegistry.allEvents).activeEvents(at: d))
+    }
+
+    func testAllFiveExistWithTheSpecifiedDatesAndNames() throws {
+        let expected: [(String, String, String, String)] = [
+            ("playtime_rush_20270702", "Playtime Rush", "2027-07-02", "2027-07-06"),
+            ("rescue_relay_20270709",  "Rescue Relay",  "2027-07-09", "2027-07-13"),
+            ("playtime_rush_20270716", "Playtime Rush", "2027-07-16", "2027-07-20"),
+            ("rescue_relay_20270723",  "Rescue Relay",  "2027-07-23", "2027-07-27"),
+            ("playtime_rush_20270730", "Playtime Rush", "2027-07-30", "2027-08-03"),
+        ]
+        for (id, name, start, end) in expected {
+            let e = try event(id)
+            XCTAssertEqual(e.name, name, "\(id) name")
+            XCTAssertEqual(e.startDate, date(start), "\(id) start")
+            XCTAssertEqual(e.endDate, date(end), "\(id) end")
+        }
+    }
+
+    func testEachIsFourDaysLong() throws {
+        for id in weeklyIDs {
+            let e = try event(id)
+            XCTAssertEqual(days(from: e.startDate, to: e.endDate), 4, "\(id) must be 4 days")
+        }
+    }
+
+    func testEachIsFollowedByAThreeDayGapToTheNext() throws {
+        for (a, b) in zip(weeklyIDs, weeklyIDs.dropFirst()) {
+            XCTAssertEqual(days(from: try event(a).endDate, to: try event(b).startDate), 3, "\(a) -> \(b)")
+        }
+    }
+
+    /// Month 1 -> month 2 seam: rescue_relay_20270625 ends 06-29, instance 5
+    /// starts 07-02 (3 days), and the flavor alternates.
+    func testMonthOneToMonthTwoSeamIsThreeDaysAndAlternates() throws {
+        let last = try event("rescue_relay_20270625")
+        let first = try event(weeklyIDs[0])
+        XCTAssertEqual(last.endDate, date("2027-06-29"))
+        XCTAssertEqual(days(from: last.endDate, to: first.startDate), 3)
+        var names = [last.name]
+        for id in weeklyIDs { names.append(try event(id).name) }
+        XCTAssertEqual(names, ["Rescue Relay", "Playtime Rush", "Rescue Relay",
+                               "Playtime Rush", "Rescue Relay", "Playtime Rush"])
+        for (a, b) in zip(names, names.dropFirst()) { XCTAssertNotEqual(a, b) }
+    }
+
+    func testNoTwoOfTheFiveOverlap() throws {
+        let events = try weeklyIDs.map { try event($0) }
+        for i in events.indices {
+            for j in events.indices where j > i {
+                let a = events[i], b = events[j]
+                XCTAssertFalse(a.startDate < b.endDate && b.startDate < a.endDate, "\(a.id) overlaps \(b.id)")
+            }
+        }
+    }
+
+    /// The S10 -> S11 handoff falls in a weekly off-period: 06-29, 06-30
+    /// and 07-01 have no weekly event. At the instant 2027-07-01 exactly one
+    /// EventRegistry event (S11) is active, with S10 gone. Instance 5
+    /// (07-02 -> 07-06) then has only S11 underneath. Replaces Calendar 3's
+    /// instance-5 boundary-start check (spec §2.4).
+    func testSeasonTenToElevenHandoffHasNoWeeklyEvent() throws {
+        for d in ["2027-06-29", "2027-06-30"] {
+            XCTAssertEqual(active(at: date(d)), [s10], d)
+        }
+        let instant = date("2027-07-01")
+        let atHandoff = active(at: instant)
+        XCTAssertEqual(atHandoff, [s11])
+        XCTAssertEqual(atHandoff.count, 1)
+        XCTAssertFalse(atHandoff.contains(s10))
+        XCTAssertEqual(active(at: instant.addingTimeInterval(-1)), [s10])
+        let instanceFive = weeklyIDs[0]
+        for d in ["2027-07-02", "2027-07-03", "2027-07-04", "2027-07-05"] {
+            let a = active(at: date(d))
+            XCTAssertEqual(a, [s11, instanceFive], d)
+            XCTAssertEqual(a.intersection(allSeasonIDs), [s11], d)
+        }
+    }
+
+    /// Instance 9 straddles S11 -> S12 at 2027-07-31.
+    func testInstanceNineStraddlesTheSeasonElevenToTwelveHandoff() throws {
+        let straddler = "playtime_rush_20270730"
+        let a30 = active(at: date("2027-07-30"))
+        XCTAssertTrue(a30.contains(straddler))
+        XCTAssertEqual(a30.intersection(allSeasonIDs), [s11])
+        for d in ["2027-07-31", "2027-08-01", "2027-08-02"] {
+            let a = active(at: date(d))
+            XCTAssertTrue(a.contains(straddler), d)
+            XCTAssertEqual(a.intersection(allSeasonIDs), [s12], d)
+        }
+        let instant = date("2027-07-31")
+        for t in [instant.addingTimeInterval(-1), instant, instant.addingTimeInterval(1)] {
+            let a = active(at: t)
+            XCTAssertEqual(a.count, 2, "at \(t)")
+            XCTAssertTrue(a.contains(straddler), "at \(t)")
+            XCTAssertEqual(a.intersection(allSeasonIDs).count, 1, "at \(t)")
+        }
+        XCTAssertEqual(active(at: instant.addingTimeInterval(-1)), [s11, straddler])
+        XCTAssertEqual(active(at: instant), [s12, straddler])
+        XCTAssertEqual(active(at: instant.addingTimeInterval(1)), [s12, straddler])
+    }
+
+    func testInstancesSixToEightHaveOnlySeasonElevenUnderneath() throws {
+        for id in ["rescue_relay_20270709", "playtime_rush_20270716", "rescue_relay_20270723"] {
+            let e = try event(id)
+            var day = e.startDate
+            var sampled = 0
+            while day < e.endDate {
+                let a = active(at: day)
+                XCTAssertTrue(a.contains(id), "\(id) at \(day)")
+                XCTAssertEqual(a.intersection(allSeasonIDs), [s11], "\(id) at \(day)")
+                sampled += 1
+                day = try XCTUnwrap(utcCalendar.date(byAdding: .day, value: 1, to: day))
+            }
+            XCTAssertEqual(sampled, 4, id)
         }
     }
 

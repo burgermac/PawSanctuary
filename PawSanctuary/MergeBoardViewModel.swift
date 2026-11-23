@@ -1969,6 +1969,26 @@ class MergeBoardViewModel {
         return true
     }
 
+    /// The Item Store slot the chain viewer's "See in store" shortcut points at
+    /// for this chain and tier (Spec_ChainViewerUpgrades_Draft.md §3.3 step 1).
+    /// nil before the D7 gate, so the viewer shows nothing monetized. Otherwise
+    /// the first unsold slot matching chain and tier; the store can stock the
+    /// same chain and tier twice, and a sold slot is skipped rather than shown.
+    func chainViewerStoreSlot(chainID: ChainID, tier: Int) -> DogTagStoreSlot? {
+        guard isMonetizationUnlocked else { return nil }
+        return dogTagStore.slots.first {
+            !$0.purchased && $0.chainID == chainID && $0.tier == tier
+        }
+    }
+
+    /// The slot with this id if it is still in stock and unsold, else nil.
+    /// The shop re-resolves the viewer's focus id with this after its own stock
+    /// refresh, so it never scrolls to a slot that was sold or replaced (§3.3
+    /// step 2). Every rebuild makes new ids, so an old id matches nothing.
+    func liveDogTagStoreSlot(id: UUID) -> DogTagStoreSlot? {
+        dogTagStore.slots.first { $0.id == id && !$0.purchased }
+    }
+
     // MARK: Wildcard (Gap_Analysis_Round2 3.5)
 
     /// Always available, unlike the daily-limited Item Store — a considered
@@ -1994,6 +2014,29 @@ class MergeBoardViewModel {
     @discardableResult
     func exchangeTagsForKibble() -> Bool {
         kibbleEngine.exchangeTagsForKibble()
+    }
+
+    /// How many producers of `level` could be kept right now without the
+    /// 10-kibble fallback: free board cells, plus producer storage (that level's
+    /// own slot if unlocked and empty, and the free overflow slots). Mirrors the
+    /// order `placeProducerReward` tries them in.
+    func producerRoom(for level: ProducerLevel) -> Int {
+        let store = inventoryStore
+        let designated = (progression.playerLevel >= level.storageUnlockLevel
+                          && store.producerStorage[level.rawValue] == nil) ? 1 : 0
+        let overflow = store.overflowProducerStorage.filter { $0 == nil }.count
+        return emptyUnlockedCells.count + designated + overflow
+    }
+
+    /// True when a product grants no spawner, or there is room to keep every
+    /// spawner it grants (an XL pack grants 2). The shop shows "make room first"
+    /// instead of the price when this is false, and `StoreManager.purchase`
+    /// refuses before StoreKit is asked to charge (owner, 22 Nov 2026: a paid
+    /// item is never downgraded). Level-up supply producers are free and keep
+    /// the storage, then 10-kibble, fallback instead of blocking the level-up.
+    func hasRoomForSpawners(of product: IAPProduct) -> Bool {
+        guard let pack = product.energyPackContents, pack.spawnerCount > 0 else { return true }
+        return producerRoom(for: pack.spawnerLevel) >= pack.spawnerCount
     }
 
     /// Where a granted producer (an energy pack's spawner, a level-up supply

@@ -96,6 +96,26 @@ struct MergeChain: Identifiable {
         }
     }
 
+    /// Display name of the producer that makes this chain, for the chain
+    /// viewer's "Made by" line (`Spec_ChainViewerUpgrades_Draft.md` §5.2).
+    /// Animal and sub-object chains come from their family's spawner; supply
+    /// chains from the one box whose `targetChainID` is this chain. `nil` when
+    /// no single producer makes it (currency, materials, rewards, bought items).
+    /// Second Chances is registered as `.animal` but its id is not a species,
+    /// so it falls out as `nil` without a special case. Derived, never saved.
+    var producerDisplayName: String? {
+        switch category {
+        case .animal:
+            return AnimalSpecies(rawValue: id.replacingOccurrences(of: "animal.", with: ""))?.spawnerName
+        case .subObject:
+            return AnimalSpecies(rawValue: id.replacingOccurrences(of: "subobject.", with: ""))?.spawnerName
+        case .supply:
+            return ProducerLevel.allCases.first { $0.targetChainID == id }?.displayName
+        default:
+            return nil
+        }
+    }
+
     /// Asset name for a Supply/Material/Currency/Toolbox tier — these chains
     /// aren't tied to an `AnimalSpecies`, so (unlike animal/sub-object/superpower)
     /// the name is derived straight from the chain's own id and category, not a
