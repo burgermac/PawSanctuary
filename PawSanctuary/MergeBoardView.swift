@@ -659,7 +659,7 @@ struct MergeBoardView: View {
                     // Shop button — hidden until the D7 monetization gate flips
                     // (Task 3.4): a fresh account sees no store push at all.
                     if viewModel.isMonetizationUnlocked {
-                        Button(action: { activeRoute = .shop }) {
+                        Button(action: { activeRoute = .shop(focusSlot: nil) }) {
                             Image(systemName: "cart.fill")
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
@@ -709,7 +709,7 @@ struct MergeBoardView: View {
                 TaskTrayView(viewModel: viewModel,
                              activeSheet: taskSheetBinding,
                              showParallelBoard: $showParallelBoard,
-                             onOpenShop: { activeRoute = .shop },
+                             onOpenShop: { activeRoute = .shop(focusSlot: nil) },
                              isExpanded: $trayExpanded)
                 OrderLaneView(viewModel: viewModel, activeSheet: taskSheetBinding)
             }
@@ -782,8 +782,8 @@ struct MergeBoardView: View {
     @ViewBuilder
     private func routeContent(_ route: SheetRoute) -> some View {
         switch route {
-        case .shop:
-            ShopView(storeManager: storeManager, viewModel: viewModel)
+        case .shop(let focus):
+            ShopView(storeManager: storeManager, viewModel: viewModel, focusSlotID: focus)
         case .profile:
             NavigationStack {
                 ScrollView { ProfileView(viewModel: viewModel) }
@@ -823,7 +823,11 @@ struct MergeBoardView: View {
         case .kibbleRefill:
             KibbleRefillSheet(viewModel: viewModel, storeManager: storeManager)
         case .mergeProgression(let chainID):
-            MergeProgressionView(chainID: chainID, viewModel: viewModel)
+            // "See in store" swaps the sheet: the new route's id differs, so
+            // .sheet(item:) dismisses the viewer and presents the shop
+            // (Spec_ChainViewerUpgrades_Draft.md §3.3 step 6).
+            MergeProgressionView(chainID: chainID, viewModel: viewModel,
+                                 onSeeInStore: { id in activeRoute = .shop(focusSlot: id) })
         case .bubblePop(let pos):
             BubblePopSheet(viewModel: viewModel, position: pos)
         }
@@ -1746,7 +1750,10 @@ private struct SellAnimalButton: View {
 // ============================================================
 
 private enum SheetRoute: Identifiable, Equatable {
-    case shop
+    /// `focusSlot`: an Item Store slot to scroll to and highlight, set only by
+    /// the chain viewer's "See in store". View state, never persisted. The id
+    /// stays "shop" whatever the payload.
+    case shop(focusSlot: UUID?)
     case profile
     case task(TaskSheet)
     case kibbleRefill
@@ -1772,6 +1779,10 @@ private enum SheetRoute: Identifiable, Equatable {
 private struct MergeProgressionView: View {
     let chainID: String
     var viewModel: MergeBoardViewModel
+    /// "See in store" (Spec_ChainViewerUpgrades_Draft.md §3.3 step 4, CV-1 B).
+    /// Takes only a slot id: the viewer navigates, it never buys. The shop
+    /// re-checks the id after its own refresh.
+    var onSeeInStore: (UUID) -> Void
 
     var body: some View {
         let chain = ContentRegistry.shared.chain(chainID)
@@ -1783,56 +1794,88 @@ private struct MergeProgressionView: View {
                 VStack(spacing: 0) {
                     ForEach(Array((chain?.tiers ?? []).enumerated()), id: \.offset) { index, tier in
                         let ownedCount = owned[ChainTierKey(chainID: chainID, tier: index)] ?? 0
+                        // nil before the D7 gate and on tiers the store isn't selling.
+                        let storeSlot = viewModel.chainViewerStoreSlot(chainID: chainID, tier: index)
+                        let tierCount = chain?.tiers.count ?? 0
                         // Tier row
                         HStack(spacing: 14) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill((tier.tint ?? tier.color).opacity(0.12))
-                                    .frame(width: 52, height: 52)
-                                if let art = chain?.artImage(forTier: index) {
-                                    art.resizable().scaledToFit().frame(width: 44, height: 44)
-                                } else {
-                                    Image(systemName: tier.symbol)
-                                        .font(.system(size: 26))
-                                        .foregroundColor(tier.tint ?? tier.color)
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill((tier.tint ?? tier.color).opacity(0.12))
+                                        .frame(width: 52, height: 52)
+                                    if let art = chain?.artImage(forTier: index) {
+                                        art.resizable().scaledToFit().frame(width: 44, height: 44)
+                                    } else {
+                                        Image(systemName: tier.symbol)
+                                            .font(.system(size: 26))
+                                            .foregroundColor(tier.tint ?? tier.color)
+                                    }
+                                }
+                                .overlay(alignment: .topTrailing) {
+                                    // Nothing at zero: no "×0".
+                                    if ownedCount > 0 {
+                                        Text("×\(ownedCount)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(Capsule().fill(Color(red: 0.28, green: 0.50, blue: 0.72)))
+                                            .offset(x: 6, y: -6)
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(tier.name)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color(red: 0.18, green: 0.18, blue: 0.18))
+                                    Text("Tier \(index + 1) of \(tierCount)")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    if let storeSlot {
+                                        // A plain label, not a button: buying
+                                        // happens in the shop (CV-1 B). No order
+                                        // wording (§3.3 copy rule).
+                                        HStack(spacing: 4) {
+                                            Text("In today's Item Store")
+                                            Image(systemName: "tag.fill").font(.system(size: 9))
+                                            Text("\(storeSlot.priceDogTags)")
+                                        }
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(Color(red: 0.18, green: 0.36, blue: 0.66))
+                                    }
+                                }
+
+                                Spacer()
+
+                                if index == (chain?.maxTier ?? 0) {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(Color(red: 0.95, green: 0.75, blue: 0.10))
                                 }
                             }
-                            .overlay(alignment: .topTrailing) {
-                                // Nothing at zero: no "×0".
-                                if ownedCount > 0 {
-                                    Text("×\(ownedCount)")
-                                        .font(.system(size: 11, weight: .bold))
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(tierAccessibilityLabel(
+                                name: tier.name, index: index, count: tierCount,
+                                owned: ownedCount, price: storeSlot?.priceDogTags))
+
+                            if let storeSlot {
+                                Button {
+                                    SoundManager.shared.playButtonTap()
+                                    onSeeInStore(storeSlot.id)
+                                } label: {
+                                    Text("See in store")
+                                        .font(.system(size: 12, weight: .bold))
                                         .foregroundColor(.white)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(Capsule().fill(Color(red: 0.28, green: 0.50, blue: 0.72)))
-                                        .offset(x: 6, y: -6)
+                                        .padding(.horizontal, 10).padding(.vertical, 6)
+                                        .background(Capsule().fill(Color(red: 0.25, green: 0.50, blue: 0.88)))
                                 }
-                            }
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(tier.name)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.18, green: 0.18, blue: 0.18))
-                                Text("Tier \(index + 1) of \(chain?.tiers.count ?? 0)")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            Spacer()
-
-                            if index == (chain?.maxTier ?? 0) {
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(red: 0.95, green: 0.75, blue: 0.10))
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("See in store")
                             }
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel(ownedCount > 0
-                            ? "\(tier.name), tier \(index + 1) of \(chain?.tiers.count ?? 0), you have \(ownedCount)"
-                            : "\(tier.name), tier \(index + 1) of \(chain?.tiers.count ?? 0)")
 
                         // Arrow connector between tiers
                         if index < (chain?.maxTier ?? 0) {
@@ -1855,5 +1898,17 @@ private struct MergeProgressionView: View {
                 .ignoresSafeArea()
             )
         }
+        .onAppear {
+            // Fresh shelf, but no stock is built before the D7 gate (§3.3 step 3).
+            if viewModel.isMonetizationUnlocked { viewModel.refreshDogTagStore() }
+        }
+    }
+
+    private func tierAccessibilityLabel(name: String, index: Int, count: Int,
+                                        owned: Int, price: Int?) -> String {
+        var label = "\(name), tier \(index + 1) of \(count)"
+        if owned > 0 { label += ", you have \(owned)" }
+        if let price { label += ", in today's Item Store for \(price) Dog Tags" }
+        return label
     }
 }

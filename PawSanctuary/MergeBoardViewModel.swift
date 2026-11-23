@@ -1969,6 +1969,26 @@ class MergeBoardViewModel {
         return true
     }
 
+    /// The Item Store slot the chain viewer's "See in store" shortcut points at
+    /// for this chain and tier (Spec_ChainViewerUpgrades_Draft.md §3.3 step 1).
+    /// nil before the D7 gate, so the viewer shows nothing monetized. Otherwise
+    /// the first unsold slot matching chain and tier; the store can stock the
+    /// same chain and tier twice, and a sold slot is skipped rather than shown.
+    func chainViewerStoreSlot(chainID: ChainID, tier: Int) -> DogTagStoreSlot? {
+        guard isMonetizationUnlocked else { return nil }
+        return dogTagStore.slots.first {
+            !$0.purchased && $0.chainID == chainID && $0.tier == tier
+        }
+    }
+
+    /// The slot with this id if it is still in stock and unsold, else nil.
+    /// The shop re-resolves the viewer's focus id with this after its own stock
+    /// refresh, so it never scrolls to a slot that was sold or replaced (§3.3
+    /// step 2). Every rebuild makes new ids, so an old id matches nothing.
+    func liveDogTagStoreSlot(id: UUID) -> DogTagStoreSlot? {
+        dogTagStore.slots.first { $0.id == id && !$0.purchased }
+    }
+
     // MARK: Wildcard (Gap_Analysis_Round2 3.5)
 
     /// Always available, unlike the daily-limited Item Store — a considered
