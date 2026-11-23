@@ -29,6 +29,21 @@ class StoreManager {
     /// conversion, an accepted simplification for this phase's plumbing).
     @ObservationIgnored var onPurchaseComplete: ((IAPProduct, Decimal) -> Void)?
 
+    /// Asked before every purchase this app starts; returns a message to show
+    /// instead of buying, or nil to go ahead. Set by the ViewModel so a paid
+    /// energy pack is never bought when its spawners have nowhere to go
+    /// (`MergeBoardViewModel.hasRoomForSpawners`). It cannot stop a transaction
+    /// that arrives later through `listenForTransactions()` (for example an
+    /// "Ask to Buy" approval); those still use the storage, then 10-kibble,
+    /// fallback in `placeProducerReward`.
+    @ObservationIgnored var purchaseBlockReason: ((IAPProduct) -> String?)?
+
+    /// The message that stops a purchase before StoreKit is asked to charge, or nil.
+    func blockReason(forProductID id: String) -> String? {
+        guard let iap = IAPProduct(rawValue: id) else { return nil }
+        return purchaseBlockReason?(iap)
+    }
+
     /// Guards against granting the same transaction twice. StoreKit 2 delivers every
     /// transaction on `Transaction.updates` — including ones this session just made
     /// via `purchase()` directly — so without this, a single paid purchase could be
@@ -80,6 +95,10 @@ class StoreManager {
     }
 
     func purchase(_ product: Product) async {
+        if let reason = blockReason(forProductID: product.id) {
+            purchaseError = reason
+            return
+        }
         do {
             let result = try await product.purchase()
             switch result {

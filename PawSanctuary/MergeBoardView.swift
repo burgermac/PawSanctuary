@@ -393,6 +393,9 @@ struct MergeBoardView: View {
         }
         .onAppear {
             storeManager.onPurchaseComplete = { viewModel.applyPurchase($0, priceUSD: $1) }
+            storeManager.purchaseBlockReason = { iap in
+                viewModel.hasRoomForSpawners(of: iap) ? nil : energyPackMakeRoomMessage
+            }
             viewModel.isPassActive = storeManager.isPassActive
             // The tutorial step above only initialized from the completion flag, never
             // from actual progress — onChange only fires on a later *change* in
@@ -1489,7 +1492,8 @@ private struct KibbleRefillBundleRow: View {
                 Text("Or Refill With a Bundle").font(.subheadline.bold())
                     .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
                 if let contents = IAPProduct.energySmall.energyPackContents {
-                    EnergyPackRow(iap: .energySmall, contents: contents, storeManager: storeManager)
+                    EnergyPackRow(iap: .energySmall, contents: contents, storeManager: storeManager,
+                                  hasRoom: viewModel.hasRoomForSpawners(of: .energySmall))
                 }
             } else {
                 Label("Welcome Offer", systemImage: "gift.fill")
