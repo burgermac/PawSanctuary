@@ -4788,6 +4788,21 @@ class MergeBoardViewModel {
         return isMonetizationUnlocked
     }
 
+    /// Whether the Event Pass offer may be shown on an event's sheet: the
+    /// pass for that event is not already bought, and monetization is
+    /// unlocked.
+    ///
+    /// The event tile and its free lane stay visible before monetization
+    /// unlocks (they are not offers), so this is the one place D7's "no
+    /// monetization in session one" is kept for the Event Pass, the same way
+    /// `isKibbleDriveBuyAvailable` keeps it for the Drive. On the view model
+    /// so it can be unit-tested: a Debug build has no StoreKit configuration,
+    /// so the price button never renders and cannot be checked by eye.
+    func isEventPassOfferAvailable(eventID: String) -> Bool {
+        guard !passUnlockedEventIDs.contains(eventID) else { return false }
+        return isMonetizationUnlocked
+    }
+
     /// Rungs of the running Drive the player could claim right now: purchased,
     /// enough points, not already claimed. Empty when no Drive is running or it
     /// has not been bought — points accrue regardless (§2), but nothing is
