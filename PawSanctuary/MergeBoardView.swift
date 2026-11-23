@@ -1539,7 +1539,9 @@ private struct BubblePopSheet: View {
                         }
                         Text("🫧 Bubbled: \(def.name)")
                             .font(.headline)
-                        Text("Pop it now for the full reward, or leave it — it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes.")
+                        Text(viewModel.isBubblePopOfferAvailable
+                             ? "Pop it now for the full reward, or leave it — it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes."
+                             : "Leave it and it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes.")
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .foregroundColor(.secondary)
@@ -1551,6 +1553,9 @@ private struct BubblePopSheet: View {
                             .padding(.horizontal)
                     }
 
+                    // D7: the paid pops (an ad, a Dog Tag spend) stay hidden
+                    // until monetization unlocks, like the kibble sheet's ad row.
+                    if viewModel.isBubblePopOfferAvailable {
                     VStack(spacing: 10) {
                         if viewModel.remainingAdWatches > 0 {
                             Button(action: {
@@ -1592,6 +1597,7 @@ private struct BubblePopSheet: View {
                         .disabled(!canAfford)
                     }
                     .padding(.horizontal)
+                    }
                 } else {
                     Text("This bubble is gone.").foregroundColor(.secondary)
                 }

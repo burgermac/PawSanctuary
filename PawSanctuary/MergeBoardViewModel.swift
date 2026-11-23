@@ -2635,9 +2635,18 @@ class MergeBoardViewModel {
         return true
     }
 
-    /// Pops the bubble at `pos` for full value, spending Dog Tags.
+    /// Whether the bubble sheet may offer its paid pops (a rewarded ad or a Dog
+    /// Tag spend). Both are monetization surfaces, so D7 keeps them hidden until
+    /// `isMonetizationUnlocked`, the same rule the spawner-cooldown skip follows
+    /// (`requestSpawnerSkip`). Before then a bubble can still be merged free or
+    /// left to decay into coins.
+    var isBubblePopOfferAvailable: Bool { isMonetizationUnlocked }
+
+    /// Pops the bubble at `pos` for full value, spending Dog Tags. Does nothing
+    /// before D7's gate opens (`isBubblePopOfferAvailable`).
     func popBubbleWithDogTags(at pos: GridPosition) {
-        guard let item = boardState.item(at: pos), item.bubbledAt != nil else { return }
+        guard isBubblePopOfferAvailable,
+              let item = boardState.item(at: pos), item.bubbledAt != nil else { return }
         let cost = bubblePopDogTagCost(tier: item.tier)
         guard kibbleEngine.dogTags >= cost else { return }
         kibbleEngine.dogTags -= cost
@@ -2653,8 +2662,9 @@ class MergeBoardViewModel {
     /// kibble-refill sheet's daily ad-watch cap rather than a separate one
     /// (Merge2_Reference_Blueprint.md measures bubble pops at ~3/day against
     /// kibble's 4/day; sharing one pool is a deliberate simplification).
+    /// Does nothing before D7's gate opens (`isBubblePopOfferAvailable`).
     func popBubbleWithAd(at pos: GridPosition, provider: RewardedAdProvider = StubAdProvider()) {
-        guard boardState.item(at: pos)?.bubbledAt != nil else { return }
+        guard isBubblePopOfferAvailable, boardState.item(at: pos)?.bubbledAt != nil else { return }
         kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
             guard let self else { return }
             self.boardState.setBubbledAt(nil, at: pos)

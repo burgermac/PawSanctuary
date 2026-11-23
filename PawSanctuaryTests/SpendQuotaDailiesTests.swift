@@ -158,6 +158,9 @@ final class SpendQuotaDailiesWiringTests: XCTestCase {
         let item = BoardItem(chainID: ContentRegistry.animalChainID(.dog), tier: 2,
                              bubbledAt: Date().timeIntervalSince1970)
         vm.boardState.setItem(item, at: pos)
+        // Paid pops are a D7 surface: open the gate, as a session-two player has.
+        vm.commerce.hasReachedFirstWall = true
+        vm.progression.playerLevel = monetizationUnlockLevel
         let expectedCost = bubblePopDogTagCost(tier: 2)
 
         vm.popBubbleWithDogTags(at: pos)
