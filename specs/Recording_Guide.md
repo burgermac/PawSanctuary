@@ -102,6 +102,17 @@ Pick a chain where you can make the **very last item** soon (one merge away is i
 
 If you cannot get to a chain's top item in a game, do steps 2 to 5 with the highest item you have, and say so. Name the files `R11_TravelTown_topmerge.mov`, `R11_GossipHarbor_store_day1.png` and so on.
 
+## R12 — Gossip Harbor: what "SEE IN STORE" does (optional)
+
+*Added 23 Nov 2026.* **Optional.** **Unblocks:** nothing; it only **confirms CV-1** (`Spec_ChainViewerUpgrades_Draft.md` §3.1). You already chose B: PawSanctuary's "See in store" opens the shop scrolled to the item, and the player buys there. If this recording shows that Gossip Harbor **buys on the first tap**, you may switch to A (buy straight from the chain viewer), which is a one-line change to the design. **Gossip Harbor only, under one minute.**
+
+1. Start recording. Tap an item, then the "i" or info button, and find a chain viewer that shows a **SEE IN STORE** button (it sits beside a gem price on one of the chain's levels). Try a few chains if the first has none. Hold it still for two seconds so the price is readable.
+2. Tap **SEE IN STORE once**, slowly.
+3. Hold whatever screen appears for **three seconds** without touching anything.
+4. **Stop there.** If a price or confirmation screen appears, do not pay; capture it and back out. If your gems went down after the single tap, say so in your message: that is the answer.
+
+Name the file `R12_GossipHarbor_see_in_store.mp4` (or `.mov`, whatever the phone saves).
+
 ## When something goes wrong
 
 If a recording will not save, or the game behaves differently from what a request assumes, **do not force it.** Tell me what you saw instead. A different behaviour is information, not a failed recording.
