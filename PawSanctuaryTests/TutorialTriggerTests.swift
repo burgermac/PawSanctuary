@@ -258,23 +258,27 @@ final class TutorialSeenStoreTests: XCTestCase {
 
     private let completedKey = "tutorialCompleted"
     private let nudgeKey = "hasShownSellVsOrderNudge"
-    private var savedCompleted: Any?
-    private var savedNudge: Any?
 
     override func setUp() {
         super.setUp()
         GameStore.clear()
+        // Put the two old flags back as they were once the test is over. Plain
+        // local values (not stored properties) so the teardown block stays
+        // Sendable under the main-actor test class.
+        let completedKey = self.completedKey, nudgeKey = self.nudgeKey
         let d = UserDefaults.standard
-        savedCompleted = d.object(forKey: completedKey)
-        savedNudge = d.object(forKey: nudgeKey)
+        let savedCompleted = d.object(forKey: completedKey) as? Bool
+        let savedNudge = d.object(forKey: nudgeKey) as? Bool
+        addTeardownBlock {
+            let d = UserDefaults.standard
+            if let v = savedCompleted { d.set(v, forKey: completedKey) } else { d.removeObject(forKey: completedKey) }
+            if let v = savedNudge { d.set(v, forKey: nudgeKey) } else { d.removeObject(forKey: nudgeKey) }
+        }
         d.removeObject(forKey: completedKey)
         d.removeObject(forKey: nudgeKey)
     }
 
     override func tearDown() {
-        let d = UserDefaults.standard
-        if let v = savedCompleted { d.set(v, forKey: completedKey) } else { d.removeObject(forKey: completedKey) }
-        if let v = savedNudge { d.set(v, forKey: nudgeKey) } else { d.removeObject(forKey: nudgeKey) }
         GameStore.clear()
         super.tearDown()
     }
