@@ -137,6 +137,10 @@ struct GameState: Codable {
     /// Collection-level prizes already paid (v46, specs/Spec_AlbumGrandPrize.md).
     /// Holds collection IDs, e.g. "collection.1". Never cleared.
     var claimedCollectionPrizeIDs: [String] = []
+    /// Tutorial moments already shown or done, as `TutorialMoment` raw values
+    /// (v47, specs/Spec_ContextTutorial.md §6). Kept as strings so a moment a
+    /// later build adds survives a load and save in this one.
+    var seenTutorialMoments: [String] = []
     var lastDailyChallengeReset: Date?
     var lastSpotlightWeek: Int
 
@@ -395,10 +399,12 @@ enum GameStore {
     ///      so it has an `additiveDefaultsSinceV8` entry; a migrating save starts
     ///      with every family's page empty.
     /// v46: claimedCollectionPrizeIDs added (`specs/Spec_AlbumGrandPrize.md`).
+    /// v47: seenTutorialMoments added; older saves get the moments they have
+    /// evidently done marked seen (`specs/Spec_ContextTutorial.md` §6.3).
     ///      Non-Optional, so it has an `additiveDefaultsSinceV8` entry; a
     ///      migrating save starts with no collection prize claimed (owner Q4 a:
     ///      a save that already finished every set may still claim once).
-    static let currentVersion = 46
+    static let currentVersion = 47
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -723,6 +729,7 @@ enum GameStore {
         if version == 44 { return migrateByInjecting(from: 44, defaults: [:], into: data) }   // trophyCounts covered by additiveDefaultsSinceV8
         if version == 43 { return migrateByInjecting(from: 43, defaults: [:], into: data) }   // boardTheme / boardThemePrompted covered by additiveDefaultsSinceV8
         if version == 45 { return migrateByInjecting(from: 45, defaults: [:], into: data) }   // claimedCollectionPrizeIDs covered by additiveDefaultsSinceV8
+        if version == 46 { return migrateByInjecting(from: 46, defaults: [:], into: data) }   // seenTutorialMoments: inference runs in finishMigration for every sourceVersion < 47
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -829,6 +836,9 @@ enum GameStore {
         // v46 — Album grand prize. A migrating save starts with no collection
         // prize claimed, even if every set is already complete (owner Q4 a).
         "claimedCollectionPrizeIDs": [String](),
+        // v47 — Context tutorial. Empty here; `finishMigration` then fills it
+        // from what the save shows the player has already done.
+        "seenTutorialMoments": [String](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space
@@ -850,10 +860,54 @@ enum GameStore {
         // key it looks for and strand pre-v28 saves on 15-tier indices.
         if sourceVersion < 37 { collapseOrdersIntoBaskets(&json) }
         if sourceVersion < 40 { resetDailyChallengesForHandIn(&json) }
+        if sourceVersion < 47 { inferSeenTutorialMoments(&json) }
         json["version"] = currentVersion
         guard let patched = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         do { return try JSONDecoder().decode(GameState.self, from: patched) }
         catch { assertionFailure("GameStore: migration decode failed — \(error)"); return nil }
+    }
+
+    // MARK: v47 — tutorial moments inferred from the save
+
+    /// Marks each tutorial moment seen when the save shows the player has already
+    /// done what it teaches (`Spec_ContextTutorial.md` §6.3, owner Q4 a), so an
+    /// existing player is not re-taught merging. Evidence is read from the raw
+    /// JSON, as the other migration steps do. Moments the save cannot show
+    /// (M10, M12, M19) stay unseen. M20's flag is in `UserDefaults` and is read
+    /// by the view model, not here (`GameStore` stays free of `UserDefaults`).
+    private static func inferSeenTutorialMoments(_ json: inout [String: Any]) {
+        func int(_ value: Any?) -> Int { (value as? NSNumber)?.intValue ?? 0 }
+        let metrics = json["playtestMetrics"] as? [String: Any]
+        let commerce = json["commerce"] as? [String: Any]
+        let merged = int(json["mergeCount"]) > 0
+        let level2 = int(json["playerLevel"]) >= 2
+        let deliveredAnOrder = (json["adoptionOrders"] as? [[String: Any]])?
+            .contains { ($0["isClaimed"] as? Bool) == true } ?? false
+        let hasBasketItem = (json["inventory"] as? [Any])?.contains { !($0 is NSNull) } ?? false
+        let builtAnArea = !((json["completedAreaIDs"] as? [Any])?.isEmpty ?? true)
+        let ownsACard = !((json["cardInventory"] as? [String: Any])?.isEmpty ?? true)
+        // Dates encode as seconds since 2001-01-01; the migration default is 0,
+        // so anything later means a chest was claimed (a fresh game is distantPast).
+        let claimedAChest = ((json["freeChestReadyAt"] as? NSNumber)?.doubleValue ?? 0) > 0
+
+        var seen: [TutorialMoment] = []
+        func mark(_ condition: Bool, _ moments: TutorialMoment...) { if condition { seen += moments } }
+        mark(merged, .firstSpawn, .firstMerge, .firstQuestClaim)
+        mark(level2 || deliveredAnOrder, .orderOnHold, .firstDeliver, .afterDeliver, .splitWarning)
+        mark(hasBasketItem, .boardFull, .firstItemStored)
+        mark(commerce?["hasReachedFirstWall"] as? Bool == true, .outOfKibble)
+        mark(level2, .chainViewer)
+        mark(int(metrics?["dailyTaskClaims"]) > 0, .firstDailyHandIn)
+        mark(int(metrics?["toolboxesPlaced"]) > 0 || builtAnArea, .toolbox)
+        mark(builtAnArea, .mapAreaAffordable)
+        mark(ownsACard, .firstCardPack)
+        mark(claimedAChest, .freeChest)
+
+        // Stored in the list's own order, without repeats.
+        let wanted = Set(seen)
+        let existing = json["seenTutorialMoments"] as? [String] ?? []
+        let added = TutorialMoment.allCases.filter { wanted.contains($0) && !existing.contains($0.rawValue) }
+        json["seenTutorialMoments"] = existing + added.map(\.rawValue)
     }
 
     // MARK: v40 — daily challenges become hand-in tasks

@@ -2694,3 +2694,9 @@ let remoteEventTrackTotalCeiling: [RewardKind: Int] = [
     .xp: 0,
     .boardItem: 0,
 ]
+
+// MARK: - Context tutorial (Spec_ContextTutorial.md §4.1, task 4.3)
+
+/// Seconds a tutorial bubble waits after the previous one closes before the next
+/// can show. Suggested start value; not from a reference, there to be tuned.
+let tutorialMomentGapSeconds: Double = 20
