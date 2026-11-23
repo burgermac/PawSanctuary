@@ -1996,14 +1996,38 @@ class MergeBoardViewModel {
         kibbleEngine.exchangeTagsForKibble()
     }
 
-    private func placeProducerReward(_ level: ProducerLevel) {
-        let empty = emptyUnlockedCells
-        if let target = empty.randomElement() {
-            boardState.setProducer(ProducerTile(level: level), at: target.position)
+    /// Where a granted producer (an energy pack's spawner, a level-up supply
+    /// producer) ended up.
+    enum ProducerRewardPlacement: Equatable {
+        case board
+        /// The board was full, so it went to producer storage (the Producers
+        /// tab), where it waits to be placed like any retired producer.
+        case storage
+        /// Board and producer storage were both full: the old 10-kibble
+        /// fallback. See the owner decision in the PR before changing it.
+        case kibbleFallback
+    }
+
+    /// Places a granted producer on a free board cell; on a full board, sends
+    /// it to producer storage instead of converting it, so a paid spawner is
+    /// never turned into a smaller reward while there is anywhere to keep it.
+    /// Only when the board AND producer storage are full does the old 10-kibble
+    /// fallback remain. The player is told whenever it does not land on the board.
+    @discardableResult
+    func placeProducerReward(_ level: ProducerLevel) -> ProducerRewardPlacement {
+        let tile = ProducerTile(level: level)
+        if let target = emptyUnlockedCells.randomElement() {
+            boardState.setProducer(tile, at: target.position)
             recalcBoardIsFull()
-        } else {
-            kibbleEngine.kibble += 10
+            return .board
         }
+        if inventoryStore.retireProducer(tile, playerLevel: progression.playerLevel) {
+            enqueueToast(Toast(kind: .info("Board full: \(level.displayName) sent to Storage")))
+            return .storage
+        }
+        kibbleEngine.kibble += 10
+        enqueueToast(Toast(kind: .info("No room for \(level.displayName): +10 Kibble instead")))
+        return .kibbleFallback
     }
 
     @discardableResult
