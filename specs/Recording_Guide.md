@@ -74,6 +74,34 @@ Open the store or any special-offer popup **three times on different days** and 
 
 Play from a story scene's start to its end. I want to know how often dialogue appears and whether it blocks play.
 
+## R10 — Both games: how deep orders reach into a chain, at three player levels
+
+*Added 22 Nov 2026.* **Unblocks:** confirms the order tier caps you kept on 22 Nov (Q1 of `Spec_FifteenTiers.md`), or shows how far they sit from the reference games' mid-chain order depth. **Screenshots, both games, about 5 minutes per level.**
+
+The question: when an order asks for an item, how far up its chain is that item, and does that change as the player levels up? Do it at **three player levels** in each game: an early one (below about 10), around level 20, and around level 50. Use whatever saves or accounts you have; if you cannot reach a level in a game, skip it and say so.
+
+At each level:
+
+1. Screenshot the order area with **five orders** visible (scroll or wait for new ones if fewer show). The player level must be readable on screen, or write it down.
+2. For each item an order asks for, open that item's **chain viewer** (tap the item, then the "i" or info button). Screenshot it so the wanted item and the whole chain are visible, with the item's level and the chain's last level readable. Hold each for two seconds if recording instead.
+3. Write down, per order item: the item's level, and how many levels its chain has (for example "level 8 of 15").
+
+Name the files `R10_TravelTown_L20_order1.png`, `R10_GossipHarbor_L50_chain3.png` and so on. If you prefer one clip per level, `R10_TravelTown_L20.mov`.
+
+## R11 — Both games: what reaching the top of a chain gives you
+
+*Added 22 Nov 2026.* **Unblocks:** Q3 of `Spec_FifteenTiers.md` (what counts as an "Ambassador" in PawSanctuary), which you held until this is measured, and with it fifteen-tier task 3. **About 3 minutes per game, plus screenshots.**
+
+Pick a chain where you can make the **very last item** soon (one merge away is ideal). Then:
+
+1. **Record the merge that makes the top item** and the 10 seconds after. I want to know whether any reward, coins, gems, popup, celebration or counter appears, and how big it is. Hold any reward screen still for three seconds.
+2. **Tap the top item** and screenshot what the info panel offers: can it be **sold**, and for how much? Is there anything else to do with it (exchange, trade in, place somewhere)?
+3. **Orders:** look through the current orders and, if you can, the chain viewer. Have you ever seen an order ask for a chain's **top** item? Write down yes or no, and screenshot one if it shows.
+4. **Counters:** if the game keeps a tally anywhere of top items made (a collection book, a profile page, an achievement list), screenshot it.
+5. **Store:** open the in-game store (the one that sells board items, not the gem or cash store). Screenshot what it stocks, and note whether **any top-of-chain item** is for sale and at what price. Do this on two different days if you can.
+
+If you cannot get to a chain's top item in a game, do steps 2 to 5 with the highest item you have, and say so. Name the files `R11_TravelTown_topmerge.mov`, `R11_GossipHarbor_store_day1.png` and so on.
+
 ## When something goes wrong
 
 If a recording will not save, or the game behaves differently from what a request assumes, **do not force it.** Tell me what you saw instead. A different behaviour is information, not a failed recording.

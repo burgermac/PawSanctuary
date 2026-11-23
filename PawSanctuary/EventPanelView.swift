@@ -39,9 +39,6 @@ struct EventSheetView: View {
     private var hasPaidLane: Bool {
         milestones.contains { !$0.paidRewards.isEmpty }
     }
-    private var isPaidLaneUnlocked: Bool {
-        viewModel.passUnlockedEventIDs.contains(event.id)
-    }
     private var eventPassProduct: Product? {
         storeManager.products.first { $0.id == IAPProduct.eventPass.rawValue }
     }
@@ -52,7 +49,10 @@ struct EventSheetView: View {
                 VStack(spacing: 20) {
                     header
                     progressSection
-                    if hasPaidLane && !isPaidLaneUnlocked {
+                    // D7: no offer before monetization unlocks; the locked
+                    // paid lane below still shows, like the Kibble Drive's
+                    // filling-but-locked ladder.
+                    if hasPaidLane && viewModel.isEventPassOfferAvailable(eventID: event.id) {
                         passUnlockSection
                     }
                     milestonesSection

@@ -1996,14 +1996,61 @@ class MergeBoardViewModel {
         kibbleEngine.exchangeTagsForKibble()
     }
 
-    private func placeProducerReward(_ level: ProducerLevel) {
-        let empty = emptyUnlockedCells
-        if let target = empty.randomElement() {
-            boardState.setProducer(ProducerTile(level: level), at: target.position)
+    /// How many producers of `level` could be kept right now without the
+    /// 10-kibble fallback: free board cells, plus producer storage (that level's
+    /// own slot if unlocked and empty, and the free overflow slots). Mirrors the
+    /// order `placeProducerReward` tries them in.
+    func producerRoom(for level: ProducerLevel) -> Int {
+        let store = inventoryStore
+        let designated = (progression.playerLevel >= level.storageUnlockLevel
+                          && store.producerStorage[level.rawValue] == nil) ? 1 : 0
+        let overflow = store.overflowProducerStorage.filter { $0 == nil }.count
+        return emptyUnlockedCells.count + designated + overflow
+    }
+
+    /// True when a product grants no spawner, or there is room to keep every
+    /// spawner it grants (an XL pack grants 2). The shop shows "make room first"
+    /// instead of the price when this is false, and `StoreManager.purchase`
+    /// refuses before StoreKit is asked to charge (owner, 22 Nov 2026: a paid
+    /// item is never downgraded). Level-up supply producers are free and keep
+    /// the storage, then 10-kibble, fallback instead of blocking the level-up.
+    func hasRoomForSpawners(of product: IAPProduct) -> Bool {
+        guard let pack = product.energyPackContents, pack.spawnerCount > 0 else { return true }
+        return producerRoom(for: pack.spawnerLevel) >= pack.spawnerCount
+    }
+
+    /// Where a granted producer (an energy pack's spawner, a level-up supply
+    /// producer) ended up.
+    enum ProducerRewardPlacement: Equatable {
+        case board
+        /// The board was full, so it went to producer storage (the Producers
+        /// tab), where it waits to be placed like any retired producer.
+        case storage
+        /// Board and producer storage were both full: the old 10-kibble
+        /// fallback. See the owner decision in the PR before changing it.
+        case kibbleFallback
+    }
+
+    /// Places a granted producer on a free board cell; on a full board, sends
+    /// it to producer storage instead of converting it, so a paid spawner is
+    /// never turned into a smaller reward while there is anywhere to keep it.
+    /// Only when the board AND producer storage are full does the old 10-kibble
+    /// fallback remain. The player is told whenever it does not land on the board.
+    @discardableResult
+    func placeProducerReward(_ level: ProducerLevel) -> ProducerRewardPlacement {
+        let tile = ProducerTile(level: level)
+        if let target = emptyUnlockedCells.randomElement() {
+            boardState.setProducer(tile, at: target.position)
             recalcBoardIsFull()
-        } else {
-            kibbleEngine.kibble += 10
+            return .board
         }
+        if inventoryStore.retireProducer(tile, playerLevel: progression.playerLevel) {
+            enqueueToast(Toast(kind: .info("Board full: \(level.displayName) sent to Storage")))
+            return .storage
+        }
+        kibbleEngine.kibble += 10
+        enqueueToast(Toast(kind: .info("No room for \(level.displayName): +10 Kibble instead")))
+        return .kibbleFallback
     }
 
     @discardableResult
@@ -2635,9 +2682,18 @@ class MergeBoardViewModel {
         return true
     }
 
-    /// Pops the bubble at `pos` for full value, spending Dog Tags.
+    /// Whether the bubble sheet may offer its paid pops (a rewarded ad or a Dog
+    /// Tag spend). Both are monetization surfaces, so D7 keeps them hidden until
+    /// `isMonetizationUnlocked`, the same rule the spawner-cooldown skip follows
+    /// (`requestSpawnerSkip`). Before then a bubble can still be merged free or
+    /// left to decay into coins.
+    var isBubblePopOfferAvailable: Bool { isMonetizationUnlocked }
+
+    /// Pops the bubble at `pos` for full value, spending Dog Tags. Does nothing
+    /// before D7's gate opens (`isBubblePopOfferAvailable`).
     func popBubbleWithDogTags(at pos: GridPosition) {
-        guard let item = boardState.item(at: pos), item.bubbledAt != nil else { return }
+        guard isBubblePopOfferAvailable,
+              let item = boardState.item(at: pos), item.bubbledAt != nil else { return }
         let cost = bubblePopDogTagCost(tier: item.tier)
         guard kibbleEngine.dogTags >= cost else { return }
         kibbleEngine.dogTags -= cost
@@ -2653,8 +2709,9 @@ class MergeBoardViewModel {
     /// kibble-refill sheet's daily ad-watch cap rather than a separate one
     /// (Merge2_Reference_Blueprint.md measures bubble pops at ~3/day against
     /// kibble's 4/day; sharing one pool is a deliberate simplification).
+    /// Does nothing before D7's gate opens (`isBubblePopOfferAvailable`).
     func popBubbleWithAd(at pos: GridPosition, provider: RewardedAdProvider = StubAdProvider()) {
-        guard boardState.item(at: pos)?.bubbledAt != nil else { return }
+        guard isBubblePopOfferAvailable, boardState.item(at: pos)?.bubbledAt != nil else { return }
         kibbleEngine.watchRewardedAd(provider: provider) { [weak self] in
             guard let self else { return }
             self.boardState.setBubbledAt(nil, at: pos)
@@ -4363,15 +4420,39 @@ class MergeBoardViewModel {
         }
     }
 
+    /// True while the "Open the chest early?" confirmation is showing.
+    var pendingFreeChestSkip = false
+
+    /// What a tap on the free-chest tray tile does. A ready chest is free and
+    /// opens at once. Opening it early is a Dog Tag spend, so, like the spawner
+    /// cooldown skip (`requestSpawnerSkip`), it is a monetization surface: it
+    /// stays silent until D7's gate opens, and after that it asks first instead
+    /// of charging on a single tap. Before the gate the tap only says when the
+    /// chest will be ready.
+    func tapFreeChest() {
+        if isFreeChestReady {
+            claimOrSkipFreeChest()
+        } else if isMonetizationUnlocked {
+            pendingFreeChestSkip = true
+        } else {
+            let minutes = Int((freeChestTimeRemaining / 60).rounded(.up))
+            let text = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+            enqueueToast(Toast(kind: .info("Free chest ready in \(text)")))
+        }
+    }
+
     /// Claims the chest for free if ready, or pays `freeChestSkipCostDogTags`
     /// to claim it early. Either way, delivers a toolbox item (Gap_Analysis_
     /// Round2 3.3) and restarts the cooldown. Returns false if not ready and
-    /// unaffordable, or there's nowhere to put the chest.
+    /// unaffordable, not ready and monetization is still locked (D7), or
+    /// there's nowhere to put the chest. The tray tile reaches the paid path
+    /// only through `tapFreeChest()`'s confirmation.
     @discardableResult
     func claimOrSkipFreeChest() -> Bool {
         let isSkip = !isFreeChestReady
         if isSkip {
-            guard kibbleEngine.dogTags >= freeChestSkipCostDogTags else { return false }
+            guard isMonetizationUnlocked,
+                  kibbleEngine.dogTags >= freeChestSkipCostDogTags else { return false }
         }
         let item = BoardItem(chainID: ContentRegistry.toolboxChainID, tier: 0)
         guard placeOrBankItem(item) else { return false }
@@ -4751,6 +4832,21 @@ class MergeBoardViewModel {
     /// cannot be checked by eye (`Spec_KibbleDrive_Draft.md` §6h).
     var isKibbleDriveBuyAvailable: Bool {
         guard let drive = kibbleDrive, !drive.purchased else { return false }
+        return isMonetizationUnlocked
+    }
+
+    /// Whether the Event Pass offer may be shown on an event's sheet: the
+    /// pass for that event is not already bought, and monetization is
+    /// unlocked.
+    ///
+    /// The event tile and its free lane stay visible before monetization
+    /// unlocks (they are not offers), so this is the one place D7's "no
+    /// monetization in session one" is kept for the Event Pass, the same way
+    /// `isKibbleDriveBuyAvailable` keeps it for the Drive. On the view model
+    /// so it can be unit-tested: a Debug build has no StoreKit configuration,
+    /// so the price button never renders and cannot be checked by eye.
+    func isEventPassOfferAvailable(eventID: String) -> Bool {
+        guard !passUnlockedEventIDs.contains(eventID) else { return false }
         return isMonetizationUnlocked
     }
 

@@ -369,6 +369,20 @@ struct MergeBoardView: View {
                 Text("This spawner is catching its breath. Skipping costs \(familySpawnerCooldownSkipDogTags) Dog Tags.")
             }
         }
+        .alert("Open the chest early?", isPresented: $viewModel.pendingFreeChestSkip) {
+            if viewModel.kibbleEngine.dogTags >= freeChestSkipCostDogTags {
+                Button("Open for \(freeChestSkipCostDogTags) Dog Tags") { viewModel.claimOrSkipFreeChest() }
+                Button("Wait", role: .cancel) { }
+            } else {
+                Button("OK", role: .cancel) { }
+            }
+        } message: {
+            if viewModel.kibbleEngine.dogTags >= freeChestSkipCostDogTags {
+                Text("Your free chest isn't ready yet. Spend \(freeChestSkipCostDogTags) Dog Tags to open it now.")
+            } else {
+                Text("Your free chest isn't ready yet. Opening it early costs \(freeChestSkipCostDogTags) Dog Tags.")
+            }
+        }
         .alert("Save Not Restored", isPresented: $viewModel.showIncompatibleSaveAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -379,6 +393,9 @@ struct MergeBoardView: View {
         }
         .onAppear {
             storeManager.onPurchaseComplete = { viewModel.applyPurchase($0, priceUSD: $1) }
+            storeManager.purchaseBlockReason = { iap in
+                viewModel.hasRoomForSpawners(of: iap) ? nil : energyPackMakeRoomMessage
+            }
             viewModel.isPassActive = storeManager.isPassActive
             // The tutorial step above only initialized from the completion flag, never
             // from actual progress — onChange only fires on a later *change* in
@@ -1475,7 +1492,8 @@ private struct KibbleRefillBundleRow: View {
                 Text("Or Refill With a Bundle").font(.subheadline.bold())
                     .foregroundColor(Color(red: 0.12, green: 0.12, blue: 0.12))
                 if let contents = IAPProduct.energySmall.energyPackContents {
-                    EnergyPackRow(iap: .energySmall, contents: contents, storeManager: storeManager)
+                    EnergyPackRow(iap: .energySmall, contents: contents, storeManager: storeManager,
+                                  hasRoom: viewModel.hasRoomForSpawners(of: .energySmall))
                 }
             } else {
                 Label("Welcome Offer", systemImage: "gift.fill")
@@ -1525,7 +1543,9 @@ private struct BubblePopSheet: View {
                         }
                         Text("🫧 Bubbled: \(def.name)")
                             .font(.headline)
-                        Text("Pop it now for the full reward, or leave it — it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes.")
+                        Text(viewModel.isBubblePopOfferAvailable
+                             ? "Pop it now for the full reward, or leave it — it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes."
+                             : "Leave it and it decays into +\(decayedValue) Coins after \(Int(bubbleDecaySeconds / 60)) minutes.")
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .foregroundColor(.secondary)
@@ -1537,6 +1557,9 @@ private struct BubblePopSheet: View {
                             .padding(.horizontal)
                     }
 
+                    // D7: the paid pops (an ad, a Dog Tag spend) stay hidden
+                    // until monetization unlocks, like the kibble sheet's ad row.
+                    if viewModel.isBubblePopOfferAvailable {
                     VStack(spacing: 10) {
                         if viewModel.remainingAdWatches > 0 {
                             Button(action: {
@@ -1578,6 +1601,7 @@ private struct BubblePopSheet: View {
                         .disabled(!canAfford)
                     }
                     .padding(.horizontal)
+                    }
                 } else {
                     Text("This bubble is gone.").foregroundColor(.secondary)
                 }

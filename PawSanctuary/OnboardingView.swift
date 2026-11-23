@@ -2,7 +2,7 @@
 //  OnboardingView.swift
 //  PawSanctuary
 //
-//  First-launch tutorial: rescue → merge → claim quest.
+//  First-launch tutorial: rescue → merge → open quests.
 //  Persisted via UserDefaults "tutorialCompleted"; shows once and is always skippable.
 //
 
@@ -15,7 +15,7 @@ import SwiftUI
 enum TutorialStep: Int {
     case rescue = 0   // tap the spawner to rescue an animal
     case merge  = 1   // select and merge two matching animals
-    case quest  = 2   // open the quest panel and claim a reward
+    case quest  = 2   // open the quest panel (completes on opening it)
     case done   = 3   // tutorial complete — overlay hidden
 
     var isActive: Bool { self != .done }
@@ -29,7 +29,7 @@ struct OnboardingOverlay: View {
     let step: TutorialStep
     /// Centre of the board grid in global (screen) coordinates.
     let boardCenter: CGPoint
-    /// Centre of the task strip in global (screen) coordinates.
+    /// Centre of the task tray band (tray + order lane) in global (screen) coordinates.
     let taskStripCenter: CGPoint
     let onSkip: () -> Void
 
@@ -175,7 +175,7 @@ struct OnboardingOverlay: View {
         switch step {
         case .rescue: return "Rescue Your First Animal"
         case .merge:  return "Perform Your First Merge"
-        case .quest:  return "Claim Your Quest Reward"
+        case .quest:  return "Check Your Quests"
         case .done:   return ""
         }
     }
@@ -187,7 +187,7 @@ struct OnboardingOverlay: View {
         case .merge:
             return "Tap an animal to select it, then tap a matching one to merge them into a higher stage!"
         case .quest:
-            return "Your rescue and merge counted toward a quest. Tap 'Quests' in the strip above the board to open it and claim your reward."
+            return "Your rescue and merge counted toward a quest. Tap the green target tile on the left, above the board, to see your quests and claim rewards."
         case .done:
             return ""
         }
