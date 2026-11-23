@@ -1,6 +1,6 @@
 # Spec — Cards bought with kibble; a bought chest becomes a spawner
 
-**Status: Draft, 22 Nov 2026; owner answered Q1–Q12 on 23 Nov 2026 (§10), two of them against the recommendation (Q3, Q7), which opens Q13–Q14; no code.** This is task **8.1** of `Revision_Plan_ModelOnReferences.md` (W8, triage rows 15 and 16). Every code citation is `file:line` on `origin/main` at **`de3e8b2`** ("Merge pull request #133", 22 Nov 2026). Line numbers drift; search by name if one no longer lands. §4 and §7 below still describe the original proposal; where an answer changes it, a note marked **Answered 23 Nov** says so. §10 is the record.
+**Status: Draft, 22 Nov 2026; owner answered Q1–Q14 on 23 Nov 2026 (§10), two of them against the recommendation (Q3, Q7); no code.** This is task **8.1** of `Revision_Plan_ModelOnReferences.md` (W8, triage rows 15 and 16). Every code citation is `file:line` on `origin/main` at **`de3e8b2`** ("Merge pull request #133", 22 Nov 2026). Line numbers drift; search by name if one no longer lands. §4 and §7 below still describe the original proposal; where an answer changes it, a note marked **Answered 23 Nov** says so. §10 is the record.
 
 **Read first:** `PawSanctuary_Alignment_Plan.md` D3, D7, D9, D13, D14; `Triage_ModelOnReferences.md` §1 rows 15 and 16; `Spec_AlbumGrandPrize.md` (the album's kibble faucet, just built); `Spec_HeldItemOrders.md` §6 (the D14 ratio table).
 
@@ -245,7 +245,7 @@ Stated plainly, as D9 requires:
 | Kibble card purchase (4.1) | none: writes `cardInventory`, which exists | no |
 | Joker sale retired (Q4 a or c) | none: balances stay, `useJoker` still spends them | no |
 | Joker balances **converted** (not recommended) | `jokerCards`/`rareJokerCards` rewritten at load | yes |
-| Rotating offer subset (Q3 b, **chosen 23 Nov**) | none if the 3 are derived from the date (Q13 a); a new saved field if stored (Q13 b) | no under Q13 (a); yes under (b) |
+| Rotating offer subset (Q3 b, **chosen 23 Nov**) | none: the 3 are derived from the date (Q13 a, **chosen 23 Nov**) | no |
 | **`ProducerLevel.kibbleCrate = 30`** | a save may now contain level 30 on the board or in storage | **yes** (rule 4: an older build cannot decode it) |
 | Crate rungs on the ladder | none: same `dogTagExchangesToday` counter | no |
 | Energy-pack fallback | none: storage already persists | no |
@@ -328,7 +328,9 @@ Each has a recommendation; the first option listed is not always it.
 - **Q12. Report the Dog Tag ladder's spend to quests.** (a) Yes, in stage 4. (b) No, leave as is. **Recommend (a)**: every other Dog Tag spend reports, and the crate rung would otherwise inherit the gap.
   **Answered 23 Nov 2026: (a) Yes, report the Dog Tag ladder's spend to quests in stage 4, as recommended.**
 - **Q13. How the 3 offered rares are chosen (new, from the Q3 answer).** (a) Derived from the date: shuffle the 12 rare IDs with a seed from today's date, offer the first 3 the player does not own. Stable all day, no saved field, no schema bump; a bought card is replaced by the next unowned one in the shuffle at once. (b) Stored: a saved list of today's 3 and the day it was picked, so a bought card stays "sold" until the next rotation; needs a schema bump, migration and `PersistenceTests` cases. **Recommend (a)**: no save change, and refilling at once is the more generous reading (D9). The owner should confirm the day boundary is the Dog Tag ladder's reset.
+  **Answered 23 Nov 2026: (a) Derived from the date, as recommended: no saved field, no schema bump. The day boundary is the Dog Tag ladder's daily reset.**
 - **Q14. Sizes of the paid Kibble Crates (new, from the Q7 answer).** The four energy packs credit 25, 60, 120 and 250 kibble today (`energyPackContents`, `AnimalSpecies.swift:1360-1381`). As crates they need a charge count and tier each, with raw value never below today's credit (the §5.2 rule). Options: (a) one Kibble Crate per pack with charges and tier chosen per pack, to be proposed in the stage-5 task for the owner to approve; (b) the same 8-charge tier-3 crate (120) repeated, which would over-pay the $0.99 pack and under-pay the $9.99 one, so not viable without a count change. **Recommend (a)** and that stage 5 starts by writing the table, not code. The real-money behaviour in the reference is unmeasured (R8), so this is a proposal, labelled as such.
+  **Answered 23 Nov 2026: (a) Stage 5 starts by writing the sizing table (charges and tier per pack, each crate never worth less than today's credit) for the owner to approve before any code, as recommended.**
 
 
 ---
