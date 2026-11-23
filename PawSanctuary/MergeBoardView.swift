@@ -1792,6 +1792,15 @@ private struct MergeProgressionView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
+                    // One line per chain, under the title (spec §5.3). Absent
+                    // for chains no single producer makes.
+                    if let producer = chain?.producerDisplayName {
+                        Text("Made by: \(producer)")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 6)
+                    }
                     ForEach(Array((chain?.tiers ?? []).enumerated()), id: \.offset) { index, tier in
                         let ownedCount = owned[ChainTierKey(chainID: chainID, tier: index)] ?? 0
                         // nil before the D7 gate and on tiers the store isn't selling.
