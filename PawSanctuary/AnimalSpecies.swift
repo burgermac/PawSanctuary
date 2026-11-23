@@ -2233,8 +2233,13 @@ func isBubbleEligibleForQuestOrOrder(chainID: ChainID, tier: Int,
 /// Kibble cost of spawning a tier-`tier` item: `2^tier`, the item's merge-input worth.
 func spawnCost(forTier tier: Int) -> Int { 1 << max(0, tier) }
 
-/// Top 0-based tier of every animal chain (12 tiers as of Phase 2b).
-let animalChainTopTier = 11
+/// Top 0-based tier of every animal chain, derived from the chain length
+/// (12 tiers as of Phase 2b, so 11) rather than written as a literal, so the
+/// fifteen-tier change has one place to move (Spec_FifteenTiers.md §9 Task 1).
+/// Every family has the same length; `AnimalChainTopTierTests` pins that.
+/// Deliberately no Ambassador constant here: what counts as the Ambassador is
+/// on hold (owner Q3).
+let animalChainTopTier = AnimalSpecies.dog.tierNames.count - 1
 
 /// Phase 2c §5: the "mid-tier" band for the sell-vs-order contextual nudge —
 /// low enough to exclude the starter tiers (trivially cheap either way), high
