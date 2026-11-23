@@ -345,6 +345,9 @@ class MergeBoardViewModel {
     /// e.g. "collection.1". Never cleared, not even by the debug reset, so a
     /// reset cannot pay the grand prize twice. See `claimCollectionPrize()`.
     var claimedCollectionPrizeIDs: [String] = []
+    /// Tutorial moments already shown or done (`TutorialMoment` raw values,
+    /// `Spec_ContextTutorial.md` §6). Unknown ids from a later build are kept.
+    var seenTutorialMoments: [String] = []
     var pendingCardPacks: [CardPackType] = []
     var jokerCards: Int = 0
     var rareJokerCards: Int = 0
@@ -1056,6 +1059,7 @@ class MergeBoardViewModel {
             }
             freshStart()
         }
+        mergeLegacyTutorialFlags()
         checkDailyLogin()
         checkDailyChallengeReset()
         updateWeeklySpotlight()
@@ -1370,6 +1374,7 @@ class MergeBoardViewModel {
         s.boardThemePrompted        = boardThemePrompted
         s.trophyCounts              = trophyCounts
         s.claimedCollectionPrizeIDs = claimedCollectionPrizeIDs
+        s.seenTutorialMoments       = seenTutorialMoments
         s.lagomorphMergeCount       = lagomorphMergeCount
         s.lastMergeTimestamp        = lastMergeTimestamp
         s.lastMergedSpeciesRaw      = lastMergedSpeciesRaw
@@ -1425,6 +1430,7 @@ class MergeBoardViewModel {
         starCount           = s.starCount
         completedAlbumIDs   = s.completedAlbumIDs
         claimedCollectionPrizeIDs = s.claimedCollectionPrizeIDs
+        seenTutorialMoments = s.seenTutorialMoments
         pendingCardPacks    = s.pendingCardPacks
         jokerCards          = s.jokerCards
         rareJokerCards      = s.rareJokerCards
@@ -1569,6 +1575,7 @@ class MergeBoardViewModel {
         completedAreaIDs = []; areaUpgradeLevels = [:]
         boardTheme = .meadow; boardThemePrompted = false
         trophyCounts = [:]
+        seenTutorialMoments = []
         coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0; freeChestReadyAt = .distantPast
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
@@ -2135,6 +2142,33 @@ class MergeBoardViewModel {
     }
 
     private static let sellVsOrderNudgeShownKey = "hasShownSellVsOrderNudge"
+    private static let legacyTutorialCompletedKey = "tutorialCompleted"
+
+    // MARK: Tutorial moments (Spec_ContextTutorial.md §6)
+
+    func hasSeenTutorialMoment(_ moment: TutorialMoment) -> Bool {
+        seenTutorialMoments.contains(moment.rawValue)
+    }
+
+    /// Records a moment as seen. Stored once; ids this build does not know are left in place.
+    func markTutorialMomentSeen(_ moment: TutorialMoment) {
+        guard !hasSeenTutorialMoment(moment) else { return }
+        seenTutorialMoments.append(moment.rawValue)
+    }
+
+    /// "Skip tips" (owner Q1): marks the whole core group seen.
+    func skipTutorialTips() {
+        TutorialMoment.coreGroup.forEach(markTutorialMomentSeen)
+    }
+
+    /// The old tutorial and nudge kept their "done" flags in `UserDefaults`. Read
+    /// them once at load into the new seen-set; the keys are left alone so a
+    /// downgrade still works (§6.3 item 6).
+    private func mergeLegacyTutorialFlags() {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: Self.legacyTutorialCompletedKey) { skipTutorialTips() }
+        if defaults.bool(forKey: Self.sellVsOrderNudgeShownKey) { markTutorialMomentSeen(.sellVsOrder) }
+    }
 
     /// Phase 2c §5: the first time the player selects a mid-tier item with no
     /// matching order, surface the sell-vs-order tradeoff via toast — the sell

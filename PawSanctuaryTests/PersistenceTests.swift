@@ -2726,4 +2726,122 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.board[0][0].item?.tier, 11)
         XCTAssertEqual(loaded.deepestUnlockedTier, 11)
     }
+    // MARK: v46 → v47 (context tutorial, task 4.3 stage 1)
+
+    /// A save that has done nothing yet: every piece of evidence the tutorial
+    /// inference reads is at its starting value. `edit` then adds exactly one
+    /// piece of evidence, so each test proves one row of `Spec_ContextTutorial.md` §6.3.
+    private func makeBlankTutorialBlob(version: Int = 46,
+                                       _ edit: (inout [String: Any]) -> Void = { _ in }) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(makeSampleState())
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "seenTutorialMoments")
+        obj["mergeCount"] = 0
+        obj["playerLevel"] = 1
+        obj["adoptionOrders"] = [Any]()
+        let slots = (obj["inventory"] as? [Any])?.count ?? 3
+        obj["inventory"] = Array(repeating: NSNull(), count: slots)
+        obj["completedAreaIDs"] = [String]()
+        obj["cardInventory"] = [String: Int]()
+        obj["freeChestReadyAt"] = Date.distantPast.timeIntervalSinceReferenceDate
+        var commerce = obj["commerce"] as? [String: Any] ?? [:]
+        commerce["hasReachedFirstWall"] = false
+        obj["commerce"] = commerce
+        var metrics = obj["playtestMetrics"] as? [String: Any] ?? [:]
+        metrics["dailyTaskClaims"] = 0
+        metrics["toolboxesPlaced"] = 0
+        obj["playtestMetrics"] = metrics
+        edit(&obj)
+        obj["version"] = version
+        return obj
+    }
+
+    private func loadSeenMoments(from blob: [String: Any]) throws -> Set<String> {
+        try writeMainFile(try JSONSerialization.data(withJSONObject: blob))
+        let loaded = try XCTUnwrap(GameStore.load(), "the save should migrate")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        return Set(loaded.seenTutorialMoments)
+    }
+
+    func testV46toV47StartsWithNoTutorialMomentsSeenForAFreshSave() throws {
+        let seen = try loadSeenMoments(from: try makeBlankTutorialBlob())
+        XCTAssertTrue(seen.isEmpty)
+    }
+
+    func testV46toV47InfersTheCoreLessonsFromMergeCount() throws {
+        let seen = try loadSeenMoments(from: try makeBlankTutorialBlob { $0["mergeCount"] = 5 })
+        XCTAssertEqual(seen, ["m01_first_spawn", "m02_first_merge", "m06_first_quest_claim"])
+    }
+
+    func testV46toV47InfersEachLessonFromItsOwnEvidence() throws {
+        // Real encoded pieces, so the blob still decodes after the edit.
+        let sampleObj = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: try JSONEncoder().encode(makeSampleState())) as? [String: Any])
+        var claimedOrder = try XCTUnwrap((sampleObj["adoptionOrders"] as? [[String: Any]])?.first)
+        claimedOrder["isClaimed"] = true
+        let basketItem = try XCTUnwrap((sampleObj["inventory"] as? [Any])?.first)
+
+        let orderLessons: Set<String> = ["m03_order_on_hold", "m04_first_deliver",
+                                         "m05_after_deliver", "m07_split_warning"]
+        let cases: [(String, Set<String>, (inout [String: Any]) -> Void)] = [
+            ("level 2", orderLessons.union(["m13_chain_viewer"]),
+             { $0["playerLevel"] = 2 }),
+            ("a delivered order", orderLessons,
+             { $0["adoptionOrders"] = [claimedOrder] }),
+            ("an animal in the basket", ["m08_board_full", "m09_first_item_stored"],
+             { $0["inventory"] = [basketItem, NSNull(), NSNull()] }),
+            ("a claimed daily task", ["m14_first_daily_hand_in"],
+             { var m = $0["playtestMetrics"] as? [String: Any] ?? [:]; m["dailyTaskClaims"] = 2; $0["playtestMetrics"] = m }),
+            ("a placed toolbox", ["m15_toolbox"],
+             { var m = $0["playtestMetrics"] as? [String: Any] ?? [:]; m["toolboxesPlaced"] = 1; $0["playtestMetrics"] = m }),
+            ("a built area", ["m15_toolbox", "m16_map_area_affordable"],
+             { $0["completedAreaIDs"] = ["area.welcome"] }),
+            ("an owned card", ["m17_first_card_pack"],
+             { $0["cardInventory"] = ["rescue.c1": 1] }),
+            ("a claimed free chest", ["m18_free_chest"],
+             { $0["freeChestReadyAt"] = 1_000.0 }),
+            ("the first wall reached", ["m11_out_of_kibble"],
+             { var c = $0["commerce"] as? [String: Any] ?? [:]; c["hasReachedFirstWall"] = true; $0["commerce"] = c }),
+        ]
+        for (name, expected, edit) in cases {
+            GameStore.clear()
+            let seen = try loadSeenMoments(from: try makeBlankTutorialBlob(edit))
+            XCTAssertEqual(seen, expected, "evidence: \(name)")
+        }
+    }
+
+    func testV8SaveReachesV47WithInferredMoments() throws {
+        // The dispatch table is flat, so the oldest supported save skips every
+        // step in between and must still get the inference.
+        let seen = try loadSeenMoments(from: try makeBlankTutorialBlob(version: 8) { $0["mergeCount"] = 9 })
+        XCTAssertEqual(seen, ["m01_first_spawn", "m02_first_merge", "m06_first_quest_claim"])
+    }
+
+    func testAV47SaveIsNotInferredAgain() throws {
+        // Inference is for saves that predate the field. A current save that
+        // has seen nothing must stay that way however far the player has got.
+        var state = makeSampleState()
+        state.mergeCount = 500
+        state.seenTutorialMoments = []
+        GameStore.saveNow(state, sequence: 1)
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.seenTutorialMoments, [])
+    }
+
+    func testSeenTutorialMomentsRoundTripInOrder() throws {
+        var state = makeSampleState()
+        state.seenTutorialMoments = ["m02_first_merge", "m01_first_spawn", "m13_chain_viewer"]
+        GameStore.saveNow(state, sequence: 1)
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.seenTutorialMoments, ["m02_first_merge", "m01_first_spawn", "m13_chain_viewer"])
+    }
+
+    func testUnknownMomentIDsAreKeptNotDropped() throws {
+        // A later build may add moments; an older build must not erase them.
+        var state = makeSampleState()
+        state.seenTutorialMoments = ["m01_first_spawn", "m99_from_a_later_build"]
+        GameStore.saveNow(state, sequence: 1)
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.seenTutorialMoments, ["m01_first_spawn", "m99_from_a_later_build"])
+    }
 }
