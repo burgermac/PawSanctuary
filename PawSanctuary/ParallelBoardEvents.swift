@@ -49,6 +49,11 @@ enum ParallelBoardEventRegistry {
         return f.date(from: iso) ?? .distantPast
     }
 
+    /// Every Parallel Board event effective this launch. Reads through
+    /// `EventCatalog` (specs/Spec_RemoteEventData.md §3); today it is exactly
+    /// `compiledEvents`, the fallback compiled into this build.
+    static var allEvents: [ParallelBoardEventDefinition] { EventCatalog.effective.parallelBoardEvents }
+
     /// "Second Chances" — Parallel Board's own layer of the real 90-day
     /// calendar (`specs/Spec_Phase6c_Calendar.md`, whose §7 originally
     /// listed this as explicitly out of scope: "Parallel Board itself isn't
@@ -106,7 +111,7 @@ enum ParallelBoardEventRegistry {
     /// that specific triple-overlap by construction — proving it once was
     /// enough — but each still overlaps its own season throughout, which is
     /// the one pairing D5 actually requires of this track.
-    static let allEvents: [ParallelBoardEventDefinition] = [
+    static let compiledEvents: [ParallelBoardEventDefinition] = [
         ParallelBoardEventDefinition(
             id: "second_chances_20260911",
             name: "Second Chances",

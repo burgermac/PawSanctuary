@@ -112,7 +112,16 @@ struct TrackState: Codable, Equatable {
 
 /// Ordered milestone lists, keyed by track ID.
 enum ProgressTrackRegistry {
-    static let tracks: [String: [TrackMilestone]] = [
+    /// Every track effective this launch. Reads through `EventCatalog`
+    /// (specs/Spec_RemoteEventData.md §3); today it is exactly
+    /// `compiledTracks`.
+    static var tracks: [String: [TrackMilestone]] { EventCatalog.effective.tracks }
+
+    /// The tables compiled into this build, the fallback when no valid
+    /// downloaded file is present (Spec_RemoteEventData.md §5.2). Includes
+    /// `reward_ladder`, which stays code (§4.2). Read `tracks`, not this,
+    /// from app code.
+    static let compiledTracks: [String: [TrackMilestone]] = [
         // "Adoption Drive" (EventSystem.swift) — Phase 6b screen-verification
         // content. Thresholds/rewards are a first cut (roughly matching
         // rescue_rush_jun2026's 200/450/700 spacing, scaled down since fewer

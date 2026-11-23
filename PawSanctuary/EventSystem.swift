@@ -93,7 +93,16 @@ enum EventRegistry {
         return f.date(from: iso) ?? .distantPast
     }
 
-    static let allEvents: [EventDefinition] = [
+    /// Every event effective this launch. Reads through `EventCatalog`
+    /// (specs/Spec_RemoteEventData.md §3) so a later step can merge a
+    /// downloaded file over the compiled calendar; today it is exactly
+    /// `compiledEvents`.
+    static var allEvents: [EventDefinition] { EventCatalog.effective.events }
+
+    /// The calendar compiled into this build: the fallback when no valid
+    /// downloaded file is present (Spec_RemoteEventData.md §5.2). Running-total
+    /// test pins count this list. Read `allEvents`, not this, from app code.
+    static let compiledEvents: [EventDefinition] = [
         EventDefinition(
             id: "rescue_rush_jun2026",
             name: "Rescue Rush",
