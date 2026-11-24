@@ -1,6 +1,6 @@
 # PawSanctuary — Project State (maintained by the project-manager agent)
 
-Last updated: 2026-11-23, evening (owner session after the scheduled run: #127, #135–#137, #147–#151 merged, owner answers recorded). The owner pages (Revision Tracker, To-Do) were **not** updated in this edit.
+Last updated: 2026-11-24 (PM run: PR #160). Previously: 2026-11-23, evening (owner session after the scheduled run: #127, #135–#137, #147–#151 merged, owner answers recorded). The owner pages (Revision Tracker, To-Do) were **not** updated in this edit.
 
 ## Autonomy settings (owner edits these)
 
@@ -27,7 +27,7 @@ State as of 23 Nov 2026, evening:
 | 2.3 "Made by" footer | done (merged 23 Nov) | #149 |
 | 4.1 Tutorial lines | done (merged): spawn line #117, quest-step text #142, merge-step text #127 (23 Nov) | #117, #127, #142 |
 | 4.2 Context-triggered tutorial spec | done (merged 23 Nov); **Q25 answered**: (a) on all seven | #135 |
-| 4.3 Tutorial build | ready: six stages in `Spec_ContextTutorial.md` §7; not started | — |
+| 4.3 Tutorial build | **done (merged 24 Nov)**: stages 1-6 | #152, #153, #154, #155, #157, #159 |
 | 5.1 `Spec_FifteenTiers.md` | done (merged 22 Nov); answers recorded as **D15** (#140); Q3 (Ambassador) waits on recording R11 | #134, #140 |
 | 5.0a / 5.0b Fifteen-tier prep (no behaviour change) | done (merged) | #144, #145 |
 | 5.2 Art for 45 restored tiers | owner | — |
@@ -35,6 +35,7 @@ State as of 23 Nov 2026, evening:
 | 6.1–6.2 Album grand prize + set ramp | done (merged 22 Nov) | #113, #130–#133 |
 | 7.1 `Spec_RemoteEventData.md` | done (merged) | #114 |
 | 7.2 Remote events build | 7.2.1 catalog seam merged (#150); 7.2.2 file model, decoder and validator merged (#151); 7.2.3 onward needs the schema bump and, for the download, owner hands (GitHub Pages + signing key) | #150, #151 |
+| 8.1 stage 1 (buy a rare card with 50 kibble, 3 offered per day, D7-gated) | **in review, PR #160** (13 new tests, 1309/1309 local; CI pending at writing; no schema change; no Simulator look yet, stage 6) | #160 |
 | 8.1 Cards for kibble, bought chest becomes a spawner | spec done (merged 23 Nov); **Q26 answered** (Q1–Q14; Q3 and Q7 against the recommendation). Build ready from stage 1; stage 5 starts with a paid-crate sizing table for owner approval | #136 |
 | F.1 / F.2 D7 fixes (bubble pops, free chest) | done (merged 22 Nov) | #138, #139 |
 | F.3 Paid spawner on a full board | done (merged): storage fallback #141, "Make room first" #146 | #141, #146 |
@@ -276,3 +277,4 @@ Default the PM will use unless you object: calendar batch 2 reuses the existing 
 - 2026-11-18 (late) — #123 verification: PM's own full-suite run failed once (host exited unexpectedly inside `RewardFlightTests.testTheBurstClearsOnceTheSpritesHaveLanded`, no crash report; passes alone 3/3). Worker could not reproduce: full suite 932/932 three times, plus a small fix (weak `self` in the 2 s replacement pauses, commit c3efc94). Likely cause: another run sharing the derived data and the single Simulator (inference, not proof). CI on c3efc94 is the independent check; owner should not merge #123 until it is green. Known latent hazard: `deliverOrder` persists through the sandbox store from bare test view models.
 - 2026-11-19 — Owner: add the Lucky-bonus test and carry on to 1.4 (wildcard as recommended). Found PR **#125** already open (tasks 1.4 and 1.5 together, started 19 Nov 04:38 per tracker; stacked on #123). No duplicate made. Worker added to #125: merge of #123's fix c3efc94; `LuckyBonusOrderTests` (12 cases; bonus items land on the board and fill slots; Legendary is a tier above so does not fill a Lucky-tier slot; bonus never banks to storage, silently dropped on a full board; one dice seam in `maybeGrantBonusSpawn`, defaults unchanged); order highlights recoloured to Travel Town's olive/lime with a green Deliver pill (daily tasks stay blue). PM re-ran the full suite on the branch: 963/963, no restart. On-screen look is headless renders only (ImageRenderer PNGs); the real app was not launched (not authorised). Q22 untouched. 1.5 is inside #125 although the latest instruction named 1.4 only: owner may decline to merge #125 as is.
 - 2026-11-22 — Scheduled run (started 20 Nov, finished 22 Nov). main `70a8f5d` green; owner had merged #123/#124/#125/#129. Reconciled ledger (merged main into #128's branch), Revision table rewritten to current state, Q22 marked answered. Closed my own **#110** as superseded by #125. Album 6.2 Task 1 → **#130** (schema v46, persistence only; worker 967/967; PM read the diff; its CI did not start on open, PM closed/reopened the PR to trigger it). Album 6.2 Task 4 → **#131** (set-reward ramp by completion order; 972/972 local; PM read the code diff). Noted: one failed main push run on 19 Nov (#125 merge), next run green; log expired. To-Do: t40 ticked (closed), t44 (#130, then ticked: owner merged it) and t45 (#131), t46 (Q24) added; tracker rows 1.3–1.7 done, 5.1 ready, 6.2 review. Revision 5.1 spec → **#134** (docs; deletion commit `f646ae9` and 180 existing animal images checked by PM); new **Q24**. During the run another session merged #130, opened album Tasks 2/3 (#132, #133, stacked) and merged main into #131; this PM run did not touch those. No merges by the PM.
+- 2026-11-24 — PM run. Main moved on without the ledger: owner/sessions merged #152-#159 (context tutorial stages 1-6, flaky HeldItemOrderUITests fix #156, Golden Ball tap-to-collect #158); main push CI green, last run (#159) in progress. No owner ticks on the To-Do page. Cards 8.1 stage 1 -> **#160** (worker; PM read the diff: no persisted-shape change, gate and quest-spend as spec; CI pending). Next: stage 2 (Star Shop) after #160 merges, Calendar 4 §4.4, remote events 7.2.3 (needs schema bump, own run). No new decisions; Q14 (batch-4 auto-merge) and Q16 still open. Local checkout is still on `fix/golden-ball-tap-to-collect` with the owner's uncommitted Alignment Plan edit; untouched.
