@@ -364,6 +364,23 @@ enum CardRegistry {
     static let commonCards: [CardDefinition] = allCards.filter { $0.rarity == .common }
     static let rareCards:   [CardDefinition] = allCards.filter { $0.rarity == .rare }
 
+    // MARK: Kibble offers (Spec_CardsAndChests.md §4.1, Q3 b, Q13 a)
+
+    /// The missing rares on sale on the calendar day containing `date`: today's
+    /// seeded shuffle of every rare, minus the ones owned, first
+    /// `rareCardOffersPerDay`. Derived from the date alone, so nothing is saved;
+    /// buying one slides the next unowned card of the shuffle into the offer.
+    /// The day boundary is the Dog Tag ladder's (`Calendar` day).
+    static func offeredRareIDs(owned: (String) -> Bool, on date: Date,
+                               calendar: Calendar = .current) -> [String] {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        let seed = UInt64((parts.year ?? 0) * 10_000 + (parts.month ?? 0) * 100 + (parts.day ?? 0))
+        var rng = SeededGenerator(seed: seed)
+        var ids = rareCards.map(\.id).sorted()
+        ids.shuffle(using: &rng)
+        return Array(ids.filter { !owned($0) }.prefix(rareCardOffersPerDay))
+    }
+
     // MARK: Drawing
 
     static func drawCards(from type: CardPackType) -> [CardDefinition] {
@@ -381,5 +398,19 @@ enum CardRegistry {
         }
 
         return drawn.shuffled()
+    }
+}
+
+
+/// Deterministic SplitMix64, so a day's rare offer is the same on every launch.
+struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }

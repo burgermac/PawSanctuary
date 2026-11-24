@@ -2644,6 +2644,16 @@ let albumCollectionPrizeKibble  = 800
 let albumCollectionPrizeDogTags = 100
 let albumCollectionPrizeCoins   = 5_000
 
+// MARK: - Rare cards bought with kibble (Spec_CardsAndChests.md §4.1, owner Q1-Q3, Q13)
+//
+// A missing rare can be bought outright; commons never can. Design proposals sized
+// in the spec, not measured values. 50 is the reference's top-rarity price (5 star
+// = 50 energy); 600 kibble for all 12 rares is 23% of the album's 2,600 kibble return.
+let rareCardKibblePrice = 50
+
+/// Missing rares offered at one time (owner Q3, 23 Nov 2026); the rest wait their turn.
+let rareCardOffersPerDay = 3
+
 // MARK: - Remote event file limits (Spec_RemoteEventData.md §5.1, task 7.2.2)
 //
 // Bounds a downloaded event file must stay inside (RemoteEventFile.swift). A

@@ -3386,6 +3386,33 @@ class MergeBoardViewModel {
         persist()
     }
 
+    // MARK: Rare cards for kibble (Spec_CardsAndChests.md §4.1)
+
+    /// The missing rares currently on sale for kibble. Empty before the D7 gate
+    /// (owner Q5). `now` is injectable so tests never read the wall clock.
+    func offeredRareCardIDs(now: Date = Date()) -> [String] {
+        guard isMonetizationUnlocked else { return [] }
+        return CardRegistry.offeredRareIDs(owned: { cardInventory[$0, default: 0] > 0 }, on: now)
+    }
+
+    /// Buys one of today's offered rares for `rareCardKibblePrice`. Refuses a
+    /// common, an owned card, a card not on offer, an unaffordable price, or the
+    /// D7 gate being shut. Counts as kibble spent for quests (owner Q6). A bought
+    /// card counts toward its set exactly like a drawn one.
+    @discardableResult
+    func purchaseCardWithKibble(_ cardID: String, now: Date = Date()) -> Bool {
+        guard offeredRareCardIDs(now: now).contains(cardID),
+              kibbleEngine.kibble >= rareCardKibblePrice else { return false }
+        kibbleEngine.kibble -= rareCardKibblePrice
+        updateAllAfterSpend(kind: .kibble, amount: rareCardKibblePrice)
+        cardInventory[cardID] = 1
+        checkAlbumCompletions()
+        SoundManager.shared.playQuestClaim()
+        HapticManager.shared.successPattern()
+        persist()
+        return true
+    }
+
     /// What the next set completed will pay: rung `completedAlbumIDs.count` of
     /// `albumSetRewardRamp` (completion order, Spec_AlbumGrandPrize.md Q6 a).
     /// Kibble is before the Pass bonus.

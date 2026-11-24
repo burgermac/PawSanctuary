@@ -932,6 +932,14 @@ struct EconomySimulation {
                + albumCollectionPrizeKibble) / amortisationDays
     }
 
+    /// Kibble per day the player spends buying every rare card outright
+    /// (Spec_CardsAndChests.md §5.1), amortised like the album faucet. Deliberately
+    /// NOT in `grossDemand`: it is elective and one-time per card, so neither
+    /// `row(level:)` nor `dailySupply` moves.
+    static var albumCardKibbleSinkPerDay: Double {
+        Double(CardRegistry.rareCards.count * rareCardKibblePrice) / amortisationDays
+    }
+
     @MainActor
     struct CoinRow {
         let level: Int

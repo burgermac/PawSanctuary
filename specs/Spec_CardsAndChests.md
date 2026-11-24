@@ -281,6 +281,8 @@ One task per session; each leaves the game playable and ships on its own.
 | **5** | Energy packs: route their producers through `placeOrStoreProducer`, last fallback the producer's value in kibble rather than 10 (Q9); retire the dead +10 path | Real-money path; behaviour only improves | `applyPurchase(.energyXL)` on a full board stores both Foster Homes; on full board and full storage credits the stated fallback. Real StoreKit flow joins the existing Xcode-Run item in `TODO.md` |
 | **6** | Simulator pass with screenshots: album price button before and after the gate; a crate bought, tapped out, merged, collected; a full-board purchase | Verification only | Screens shown to the owner |
 
+**Stage status.** Stage 1: **built** (24 Nov 2026). `rareCardKibblePrice` = 50 and `rareCardOffersPerDay` = 3 in `AnimalSpecies.swift`; `CardRegistry.offeredRareIDs` (seeded shuffle of the 12 rares by calendar day, Q3 b / Q13 a, no saved field); `purchaseCardWithKibble` and `offeredRareCardIDs` in the view-model; price pill plus confirmation dialog on missing offered rares in `AlbumDetailView`, beside "Use Joker"; `CardKibblePurchaseTests` (13). No schema change. Stages 2–6: not started.
+
 Stages 1–2 and 3–5 are independent chains; either can go first. Stage 4 needs 3. Every stage runs `EconomyTests` and `PersistenceTests` before commit.
 
 ---
