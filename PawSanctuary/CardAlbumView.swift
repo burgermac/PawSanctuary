@@ -762,6 +762,7 @@ struct AlbumDetailView: View {
     var viewModel: MergeBoardViewModel
     let album: CardAlbumDefinition
     @Environment(\.dismiss) private var dismiss
+    @State private var pendingPurchase: String?
 
     var body: some View {
         NavigationStack {
@@ -781,6 +782,20 @@ struct AlbumDetailView: View {
                 Button("Done") { dismiss() }
             }}
             #endif
+            .confirmationDialog(
+                "Buy this card?",
+                isPresented: Binding(get: { pendingPurchase != nil },
+                                     set: { if !$0 { pendingPurchase = nil } }),
+                titleVisibility: .visible,
+                presenting: pendingPurchase
+            ) { id in
+                Button("Buy for \(rareCardKibblePrice) kibble") {
+                    viewModel.purchaseCardWithKibble(id)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { id in
+                Text("\(CardRegistry.cardsByID[id]?.name ?? "This card") will be added to your album.")
+            }
         }
     }
 
@@ -845,7 +860,8 @@ struct AlbumDetailView: View {
     }
 
     private var cardGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
+        let offered = viewModel.offeredRareCardIDs()
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
                             GridItem(.flexible())], spacing: 12) {
             ForEach(album.cardIDs, id: \.self) { cardID in
                 if let def = CardRegistry.cardsByID[cardID] {
@@ -855,7 +871,10 @@ struct AlbumDetailView: View {
                         canUseJoker: def.rarity == .rare
                             ? viewModel.rareJokerCards > 0
                             : viewModel.jokerCards > 0,
-                        onJokerTap: { viewModel.useJoker(for: cardID) }
+                        onJokerTap: { viewModel.useJoker(for: cardID) },
+                        kibblePrice: offered.contains(cardID) ? rareCardKibblePrice : nil,
+                        canAffordKibble: viewModel.kibbleEngine.kibble >= rareCardKibblePrice,
+                        onBuyTap: { pendingPurchase = cardID }
                     )
                 }
             }
@@ -872,6 +891,9 @@ private struct CardSlotView: View {
     let count: Int             // copies owned; 0 = not collected
     let canUseJoker: Bool
     let onJokerTap: () -> Void
+    var kibblePrice: Int? = nil
+    var canAffordKibble: Bool = false
+    var onBuyTap: () -> Void = {}
 
     private var owned: Bool { count > 0 }
 
@@ -935,6 +957,20 @@ private struct CardSlotView: View {
                         .background(Capsule()
                             .fill(Color(red: 0.25, green: 0.60, blue: 0.40).opacity(0.12)))
                 }
+            }
+
+            if !owned, let price = kibblePrice {
+                Button(action: onBuyTap) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "pawprint.fill").font(.system(size: 7))
+                        Text("\(price)").font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundColor(canAffordKibble ? .green : .gray)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule()
+                        .fill((canAffordKibble ? Color.green : Color.gray).opacity(0.12)))
+                }
+                .disabled(!canAffordKibble)
             }
         }
     }
