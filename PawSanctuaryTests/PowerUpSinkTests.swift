@@ -126,4 +126,92 @@ final class PowerUpSinkTests: XCTestCase {
         XCTAssertEqual(vm.coins, coinsBefore, "storage had room, so the normal bank path pays no coins")
         XCTAssertTrue(vm.inventoryStore.powerUpInventory.contains { $0?.chainID == self.dogSubObjectChain })
     }
+
+    // MARK: collectCompletedSubObject — tapping a finished tile on the board
+
+    private func placeCompleted(_ vm: MergeBoardViewModel, rarity: SubObjectRarity?, at pos: GridPosition) {
+        var board = vm.board
+        board[pos.row][pos.col].item = BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: rarity)
+        vm.board = board
+    }
+
+    func testTappingCompletedSubObjectPaysItsRarityValueAndClearsCell() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .highTierDrop, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.highTierDrop.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+    }
+
+    func testTappingCompletedSubObjectWithoutRarityPaysSpeedValue() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: nil, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.speed.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+    }
+
+    func testTappingLowerTierSubObjectDoesNotCollect() {
+        let vm = makeViewModel()
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertNotNil(vm.board[a.row][a.col].item)
+        XCTAssertEqual(vm.selectedCell, a)
+    }
+
+    func testTappingTopTierAnimalDoesNotCollect() {
+        let vm = makeViewModel()
+        place(vm, chainID: ContentRegistry.animalChainID(.dog), tier: animalChainTopTier, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertNotNil(vm.board[a.row][a.col].item)
+    }
+
+    func testTappingCompletedSubObjectInLockedCellDoesNothing() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .highTierDrop, at: a)
+        vm.board[0][0].isUnlocked = false
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertNotNil(vm.board[a.row][a.col].item)
+    }
+
+    func testSecondTapOnCollectedCellPaysNothing() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .mapSupplies, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+        let coinsAfterFirst = vm.coins
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(coinsAfterFirst, coinsBefore + SubObjectRarity.mapSupplies.coinValue)
+        XCTAssertEqual(vm.coins, coinsAfterFirst, "the cell is empty now, so a second tap pays nothing")
+    }
+
+    func testCollectingClearsSelectionOnThatCell() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .speed, at: a)
+        vm.selectedCell = a
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertNil(vm.selectedCell)
+    }
 }

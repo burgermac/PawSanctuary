@@ -2008,6 +2008,7 @@ class MergeBoardViewModel {
         if collectCurrencyItem(at: pos) {
             return
         }
+        if collectCompletedSubObject(at: pos) { return }
         if collectDecayedBubbleIfAny(at: pos) {
             return
         }
@@ -3535,6 +3536,31 @@ class MergeBoardViewModel {
             message = ""
         }
         if !message.isEmpty { enqueueToast(Toast(kind: .info(message))) }
+        SoundManager.shared.playButtonTap()
+        recalcBoardIsFull()
+        persist()
+        return true
+    }
+
+    /// Tap a completed sub-object (a sub-object chain's top tier, e.g. the
+    /// Canines "Golden Ball") left on the board to cash it in for coins. Without
+    /// this, a completed tile that was never routed to storage (storage full, or
+    /// placed back on the board) had no exit. Pays the rolled rarity's coin value,
+    /// falling back to the `.speed` value for a tile that never rolled one.
+    /// Returns `false` (no-op) for anything else, including lower-tier sub-objects,
+    /// top-tier animals, and tiles in a locked cell.
+    @discardableResult
+    func collectCompletedSubObject(at pos: GridPosition) -> Bool {
+        guard boardState.isUnlocked(at: pos),
+              let item = boardState.item(at: pos),
+              let chain = ContentRegistry.shared.chain(item.chainID),
+              chain.category == .subObject,
+              item.tier == chain.maxTier else { return false }
+        boardState.clearItem(at: pos)
+        if selectedCell == pos { selectedCell = nil }
+        let amount = (item.rarity ?? .speed).coinValue
+        earnCoins(amount)
+        enqueueToast(Toast(kind: .info("+\(amount) Coins")))
         SoundManager.shared.playButtonTap()
         recalcBoardIsFull()
         persist()
