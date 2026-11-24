@@ -123,6 +123,16 @@ struct MergeBoardView: View {
         switch moment {
         case .firstQuestClaim:
             return [tutorialFrames[.questClaim] ?? tutorialTaskFrame]
+        case .orderOnHold:
+            // The card, then the tiles it is holding: the hand slides from one to the other.
+            let card = viewModel.coachMarkOrderID(for: moment).flatMap { orderCardFrames[$0] } ?? tutorialTaskFrame
+            return [card] + viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
+        case .firstDeliver:
+            guard let id = viewModel.coachMarkOrderID(for: moment) else { return [tutorialTaskFrame] }
+            return [tutorialFrames[.deliverPill(id)] ?? orderCardFrames[id] ?? tutorialTaskFrame]
+        case .afterDeliver, .splitWarning:
+            let card = viewModel.coachMarkOrderID(for: moment).flatMap { orderCardFrames[$0] }
+            return [card ?? tutorialTaskFrame]
         default:
             return viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
         }
@@ -324,6 +334,12 @@ struct MergeBoardView: View {
                     onSkipAll: { viewModel.skipTutorialTips() }
                 )
                 .id(moment)
+                .task(id: moment) {
+                    // The short tips close themselves and count as seen.
+                    guard let seconds = moment.autoCloseSeconds else { return }
+                    try? await Task.sleep(for: .seconds(seconds))
+                    if !Task.isCancelled { viewModel.closeCoachMark(moment) }
+                }
                 .transition(.opacity)
                 .zIndex(150)
             }
@@ -712,7 +728,8 @@ struct MergeBoardView: View {
                              showParallelBoard: $showParallelBoard,
                              onOpenShop: { activeRoute = .shop(focusSlot: nil) },
                              isExpanded: $trayExpanded)
-                OrderLaneView(viewModel: viewModel, activeSheet: taskSheetBinding)
+                OrderLaneView(viewModel: viewModel, activeSheet: taskSheetBinding,
+                              scrollToOrderID: coachMoment.flatMap { viewModel.coachMarkOrderID(for: $0) })
             }
             .padding(.leading, 8)
             .frame(height: trayBandHeight)

@@ -2164,6 +2164,30 @@ class MergeBoardViewModel {
     /// tip. Session-only: the gap is about this sitting, so it is not saved.
     private var lastCoachMarkClosedAt: Date?
 
+    /// The order lesson's session-only state (stage 3). `lastDeliveredOrderID` and
+    /// `pendingAfterDeliverTip` carry "an order was just delivered" until the
+    /// after-delivery tip closes; `splitOrderID` carries "a merge just took an
+    /// animal an order was holding" until the split tip closes.
+    private var lastDeliveredOrderID: UUID?
+    private var pendingAfterDeliverTip = false
+    private var splitOrderID: UUID?
+
+    /// Orders a player can act on now: the persistent slots, and the urgent order
+    /// while its clock runs. A delivered order holds nothing.
+    private var openOrdersForTutorial: [AdoptionOrder] {
+        var orders = adoptionBoardCoordinator.adoptionOrders.filter { !$0.isClaimed }
+        if let urgent = adoptionBoardCoordinator.urgentOrder, isUrgentOrderDeliverable {
+            orders.append(urgent)
+        }
+        return orders
+    }
+
+    /// An open order the board holds part of but not all.
+    private func isPartHeld(_ order: AdoptionOrder, census: [ChainTierKey: Int]) -> Bool {
+        let held = order.heldState(census: census)
+        return !held.isReady && held.heldCopies.contains { $0 > 0 }
+    }
+
     /// Where the family spawner is, for the first-spawn tip.
     private var familySpawnerPosition: GridPosition? {
         for row in board { for cell in row where cell.producer?.level == .familySpawner { return cell.position } }
@@ -2181,6 +2205,12 @@ class MergeBoardViewModel {
         s.hasMergeablePair = findMergeableHintPair() != nil
         s.hasMergedOnce = mergeCount > 0
         s.hasClaimableQuest = quests.activeQuests.contains { $0.isComplete }
+        let census = boardTaskCensus
+        let open = openOrdersForTutorial
+        s.hasPartHeldOrder = open.contains { isPartHeld($0, census: census) }
+        s.hasReadyOrder = open.contains { $0.isReady(census: census) }
+        s.justDelivered = pendingAfterDeliverTip
+        s.justUnheldAnOrderSlot = splitOrderID != nil
         return s
     }
 
@@ -2197,13 +2227,68 @@ class MergeBoardViewModel {
             return familySpawnerPosition.map { [$0] } ?? []
         case .firstMerge:
             return findMergeableHintPair().map { [$0.0, $0.1] } ?? []
+        case .orderOnHold:
+            // The tiles the card is holding: the ones the muted highlight is on.
+            let census = boardTaskCensus
+            guard let order = openOrdersForTutorial.first(where: { isPartHeld($0, census: census) }) else { return [] }
+            let held = order.heldState(census: census)
+            let keys = Set(zip(order.lines, held.heldCopies).filter { $0.1 > 0 }
+                .map { ChainTierKey(chainID: $0.0.chainID, tier: $0.0.tier) })
+            return Array(board.flatMap { $0 }.filter { cell in
+                guard cell.isUnlocked, let item = cell.item, item.bubbledAt == nil else { return false }
+                return keys.contains(ChainTierKey(chainID: item.chainID, tier: item.tier))
+            }.prefix(3).map(\.position))
         default:
             return []
         }
     }
 
+    /// The order card an order tip is about, if it is one.
+    func coachMarkOrderID(for moment: TutorialMoment) -> UUID? {
+        let census = boardTaskCensus
+        switch moment {
+        case .orderOnHold:  return openOrdersForTutorial.first { isPartHeld($0, census: census) }?.id
+        case .firstDeliver: return openOrdersForTutorial.first { $0.isReady(census: census) }?.id
+        case .afterDeliver: return lastDeliveredOrderID
+        case .splitWarning: return splitOrderID
+        default:            return nil
+        }
+    }
+
+    /// Held copies per line of every open order, for spotting a merge that
+    /// takes a held animal away. Nil once the split tip has been seen, so the
+    /// game does not do this work for nothing afterwards.
+    private func tutorialOrderHeldCopies() -> [UUID: [Int]]? {
+        guard !hasSeenTutorialMoment(.splitWarning) else { return nil }
+        let census = boardTaskCensus
+        return Dictionary(openOrdersForTutorial.map { ($0.id, $0.heldState(census: census).heldCopies) },
+                          uniquingKeysWith: { first, _ in first })
+    }
+
+    /// After a merge: if an open order now holds fewer copies on some line than
+    /// before, the player just merged away an animal it was holding (M7).
+    private func noteOrderSlotsAfterMerge(before: [UUID: [Int]]?) {
+        guard let before, let after = tutorialOrderHeldCopies() else { return }
+        for (id, copies) in before {
+            guard let now = after[id], zip(copies, now).contains(where: { $1 < $0 }) else { continue }
+            splitOrderID = id
+            return
+        }
+    }
+
+    /// A delivery went through: the Deliver tip's job is done, and the first
+    /// delivery earns the after-delivery tip on that card (M4, M5).
+    private func noteOrderDelivered(_ order: AdoptionOrder) {
+        closeCoachMark(.firstDeliver)
+        guard !hasSeenTutorialMoment(.afterDeliver) else { return }
+        lastDeliveredOrderID = order.id
+        pendingAfterDeliverTip = true
+    }
+
     /// Closes a tip (the "×", or the action it teaches): marks it seen and starts the gap.
     func closeCoachMark(_ moment: TutorialMoment, now: Date = Date()) {
+        if moment == .afterDeliver { pendingAfterDeliverTip = false }
+        if moment == .splitWarning { splitOrderID = nil }
         // Only a tip that was still unseen starts the gap: the game calls this on
         // every spawn, merge and claim, and most of those are not a tip closing.
         guard !hasSeenTutorialMoment(moment) else { return }
@@ -2541,6 +2626,8 @@ class MergeBoardViewModel {
         // didSet, since this merge performs several more board mutations below.
         let preMergeBoard     = board
         let preMergeInventory = inventoryStore.inventory
+        // For the order lesson: which animals each open order holds, before this merge.
+        let orderHeldBefore   = tutorialOrderHeldCopies()
 
         // Tier B (Spec_BoardAnimation_Draft.md §8, task 8.1): record the two
         // source items for the view while the board is still pre-merge. Nothing
@@ -2584,6 +2671,7 @@ class MergeBoardViewModel {
 
         mergeCount += 1
         closeCoachMark(.firstMerge)
+        noteOrderSlotsAfterMerge(before: orderHeldBefore)
         lastMergeTimestamp = Date().timeIntervalSince1970
         if let sp = outcome.mergedSpecies { lastMergedSpeciesRaw = sp.rawValue }
         recalcBoardIsFull()
@@ -4005,6 +4093,7 @@ class MergeBoardViewModel {
         let order = adoptionBoardCoordinator.adoptionOrders[index]
         guard !order.isClaimed, order.isReady(census: boardTaskCensus) else { return false }
         completeDelivery(of: order)
+        noteOrderDelivered(order)
         adoptionBoardCoordinator.markClaimed(at: index)
         // Persistent slots have no timer, so delivering one doesn't touch the
         // rescue-expiring notification: that's the urgent order's job.
@@ -4052,6 +4141,7 @@ class MergeBoardViewModel {
               !order.isClaimed, adoptionBoardCoordinator.urgentOrderTimeRemaining > 0,
               order.isReady(census: boardTaskCensus) else { return false }
         completeDelivery(of: order)
+        noteOrderDelivered(order)
         order.markDelivered()
         adoptionBoardCoordinator.urgentOrder = order
         NotificationManager.shared.cancelRescueExpiring()

@@ -97,8 +97,27 @@ enum TutorialMoment: String, CaseIterable, Codable {
             return "Drag an animal onto a matching one to merge it into the next level."
         case .firstQuestClaim:
             return "Quest complete! Tap Claim for your reward. Quests count what you do; orders and daily tasks want animals you hold."
+        case .orderOnHold:
+            return "This family wants that animal. A soft highlight means you already have it on the board. Keep it there!"
+        case .firstDeliver:
+            return "Everything is on the board. Tap Deliver to send the animals home and collect your reward."
+        case .afterDeliver:
+            return "Delivered animals leave the board. A new family arrives in a moment."
+        case .splitWarning:
+            return "That animal was on hold for an order. Merging it moved it up a level, so the order needs another one."
         default:
             return nil
+        }
+    }
+
+    /// Seconds a short tip stays up before it closes itself and counts as seen
+    /// (the spec's "Done when: shown 4 s / seen for 6 s"). Nil for a tip that
+    /// waits for its action or the x.
+    var autoCloseSeconds: Double? {
+        switch self {
+        case .orderOnHold, .splitWarning: return 6
+        case .afterDeliver:               return 4
+        default:                          return nil
         }
     }
 

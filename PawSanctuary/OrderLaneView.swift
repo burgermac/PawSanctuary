@@ -353,6 +353,7 @@ struct OrderLaneCard: View {
         .overlay(alignment: .topTrailing) {
             if isReady {
                 OrderDeliverButton(order: order, onDeliver: onDeliver)
+                    .reportTutorialFrame(.deliverPill(order.id))
                     .id(order.id)
                     .padding(.top, 2)
                     .padding(.trailing, 7)
@@ -375,6 +376,9 @@ struct OrderLaneCard: View {
 struct OrderLaneView: View {
     var viewModel: MergeBoardViewModel
     @Binding var activeSheet: TaskSheet?
+    /// The order a coach mark is about: the lane scrolls to it, because orders
+    /// sit after the quest and daily cards and are usually off screen.
+    var scrollToOrderID: UUID? = nil
 
     /// Computed once for the whole lane rather than per card — each card would
     /// otherwise rescan the board for itself. Daily tasks and orders read the
@@ -383,6 +387,7 @@ struct OrderLaneView: View {
 
     var body: some View {
         let taskCensus = self.taskCensus
+        ScrollViewReader { proxy in
         ScrollView(.horizontal, showsIndicators: false) {
             // Lazy for the same reason the strip was: the lane grows with
             // Sanctuary Map upgrades, and only two cards are visible at once.
@@ -425,10 +430,16 @@ struct OrderLaneView: View {
                 ForEach(viewModel.adoptionOrders) { order in
                     OrderLaneCard(order: order, census: taskCensus,
                                   onDeliver: { viewModel.deliverOrder(id: order.id) })
+                        .id(order.id)
                         .onTapGesture { activeSheet = .adoptionOrders }
                 }
             }
             .padding(.trailing, 8)
+        }
+        .onChange(of: scrollToOrderID) { _, id in
+            guard let id else { return }
+            withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo(id, anchor: .center) }
+        }
         }
         .frame(height: trayBandHeight)
     }
