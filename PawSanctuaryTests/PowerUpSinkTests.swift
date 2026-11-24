@@ -214,4 +214,46 @@ final class PowerUpSinkTests: XCTestCase {
 
         XCTAssertNil(vm.selectedCell)
     }
+
+    // MARK: send-to-storage — a completed tile is collected, not stored
+
+    func testSendingCompletedSubObjectToStorageCollectsItInstead() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .mapSupplies, at: a)
+        let coinsBefore = vm.coins
+
+        vm.sendBoardItemToInventory(from: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.mapSupplies.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty,
+                      "a completed sub-object is cashed in, never filed as an animal")
+        XCTAssertTrue(vm.inventoryStore.powerUpInventory.allSatisfy { $0 == nil })
+    }
+
+    func testStoringSelectedCompletedSubObjectCollectsItInstead() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .mapSupplies, at: a)
+        let coinsBefore = vm.coins
+        vm.selectedCell = a
+
+        vm.storeSelectedItemToInventory()
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.mapSupplies.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertTrue(vm.inventoryStore.powerUpInventory.allSatisfy { $0 == nil })
+    }
+
+    func testSendingTierTwoSubObjectToStorageStillGoesToAnimalInventory() {
+        let vm = makeViewModel()
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        let coinsBefore = vm.coins
+
+        vm.sendBoardItemToInventory(from: a)
+
+        XCTAssertNil(vm.board[a.row][a.col].item)
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 1)
+    }
 }

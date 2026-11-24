@@ -2455,6 +2455,9 @@ class MergeBoardViewModel {
         // A currency item dragged to storage collects instead of vanishing
         // into a category that never actually holds one (Phase 4, Task 4.1).
         if collectCurrencyItem(at: pos) { return }
+        // A completed sub-object is cashed in for coins, not filed as an
+        // animal (the animal inventory is the wrong home for it).
+        if collectCompletedSubObject(at: pos) { return }
         if inventoryStore.addItem(item) {
             boardState.clearItem(at: pos)
             recalcBoardIsFull()
@@ -2466,6 +2469,7 @@ class MergeBoardViewModel {
     func storeSelectedItemToInventory() {
         guard let pos = selectedCell, let item = boardState.item(at: pos) else { return }
         if collectCurrencyItem(at: pos) { return }
+        if collectCompletedSubObject(at: pos) { return }
         if inventoryStore.addItem(item) {
             boardState.clearItem(at: pos)
             selectedCell = nil
