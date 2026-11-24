@@ -48,6 +48,11 @@ final class FrictionCoachMarkTests: XCTestCase {
         vm.loadGame()
         vm.skipTutorialTips()
         vm.markTutorialMomentSeen(.noMergesLeft)
+        // A new game has a toolbox, a ready chest and maybe a stocked daily task: the
+        // feature tips (stage 5) have their own tests in FeatureCoachMarkTests.
+        let featureTips: [TutorialMoment] = [.chainViewer, .firstDailyHandIn, .toolbox, .mapAreaAffordable,
+                                             .firstCardPack, .freeChest, .firstBubble]
+        for moment in featureTips { vm.markTutorialMomentSeen(moment) }
         vm.adoptionOrders = []
         vm.adoptionBoardCoordinator.urgentOrder = nil
         clearItems(vm)
@@ -182,7 +187,7 @@ final class FrictionCoachMarkTests: XCTestCase {
     func testTheBoardFullTipWaitsOutTheGapAfterAnotherTip() {
         let vm = game()
         let now = Date()
-        vm.closeCoachMark(.toolbox, now: now)   // some other tip just closed
+        vm.closeCoachMark(.sellVsOrder, now: now)   // some other tip just closed
         vm.triggerToast(.boardFull)
         XCTAssertNil(next(vm, now: now.addingTimeInterval(1)), "inside the 20 s gap")
     }
@@ -410,7 +415,7 @@ final class FrictionCoachMarkTests: XCTestCase {
         let vm = gameWithMergesLeftUnseen()
         let spawner = try XCTUnwrap(spawnerPosition(vm))
         place(vm, BoardItem(chainID: dog, tier: 0), at: emptyCells(vm, 1)[0])
-        vm.closeCoachMark(.toolbox)             // a tip just closed: the gap is running
+        vm.closeCoachMark(.sellVsOrder)             // a tip just closed: the gap is running
         XCTAssertNil(next(vm))
         vm.activateProducer(at: spawner)
         XCTAssertFalse(vm.hasSeenTutorialMoment(.noMergesLeft), "it was never shown")
@@ -428,7 +433,7 @@ final class FrictionCoachMarkTests: XCTestCase {
     func testAnotherTipClosingDropsAQueuedFrictionTip() {
         let vm = game()
         vm.triggerToast(.boardFull)
-        vm.closeCoachMark(.toolbox)             // some other tip closes first
+        vm.closeCoachMark(.sellVsOrder)             // some other tip closes first
         XCTAssertNotEqual(next(vm, now: Date().addingTimeInterval(60)), .boardFull,
                           "the moment passed: it is dropped, not shown 20 s late")
         XCTAssertFalse(vm.hasSeenTutorialMoment(.boardFull), "and not used up either")
@@ -437,7 +442,7 @@ final class FrictionCoachMarkTests: XCTestCase {
     func testADroppedFrictionTipFiresOnTheNextEventOnceTheGapHasRunOut() {
         let vm = game()
         let long = Date().addingTimeInterval(-3600)
-        vm.closeCoachMark(.toolbox, now: long)   // closed an hour ago
+        vm.closeCoachMark(.sellVsOrder, now: long)   // closed an hour ago
         vm.triggerToast(.boardFull)
         XCTAssertEqual(next(vm), .boardFull)
     }

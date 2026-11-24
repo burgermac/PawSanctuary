@@ -50,6 +50,11 @@ final class CoachMarkTests: XCTestCase {
         vm.adoptionBoardCoordinator.urgentOrder = nil
         // The no-merges tip (M12) is about an empty-handed board; these tests set up their own boards.
         vm.markTutorialMomentSeen(.noMergesLeft)
+        // A new game has a toolbox, a ready chest and maybe a stocked daily task: the
+        // feature tips (stage 5) have their own tests in FeatureCoachMarkTests.
+        let featureTips: [TutorialMoment] = [.chainViewer, .firstDailyHandIn, .toolbox, .mapAreaAffordable,
+                                             .firstCardPack, .freeChest, .firstBubble]
+        for moment in featureTips { vm.markTutorialMomentSeen(moment) }
         return vm
     }
 
@@ -227,12 +232,16 @@ final class CoachMarkTests: XCTestCase {
     }
 
     func testTipsThatAreNotBuiltYetHaveNoBubbleText() {
-        // Stages 2 to 4 build the opening tips, the order lesson and the friction
-        // tips; the rest get their text in their own stage.
+        // Stages 2 to 5 build the opening tips, the order lesson, the friction
+        // tips and the feature tips (M20 stays a toast, so it has no bubble text);
+        // the wildcard tip gets its text in stage 6.
         let built: Set<TutorialMoment> = [.firstSpawn, .firstMerge, .firstQuestClaim,
                                           .orderOnHold, .firstDeliver, .afterDeliver, .splitWarning,
                                           .boardFull, .firstItemStored, .spawnerResting,
-                                          .outOfKibble, .noMergesLeft]
+                                          .outOfKibble, .noMergesLeft,
+                                          .chainViewer, .firstDailyHandIn, .toolbox,
+                                          .mapAreaAffordable, .firstCardPack, .freeChest,
+                                          .firstBubble]
         for moment in TutorialMoment.allCases where !built.contains(moment) {
             XCTAssertNil(moment.coachMarkText, "\(moment)")
         }

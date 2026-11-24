@@ -414,6 +414,8 @@ struct OrderLaneView: View {
                         census: taskCensus,
                         onClaim: { viewModel.claimDailyTask(id: task.id) },
                         onOpenSheet: { activeSheet = .dailyChallenges })
+                        // Keyed so a coach mark can scroll the lane to this card.
+                        .id(task.id)
                 }
                 // The urgent order leads the orders, because it is the only one
                 // that can be lost by not looking at it.

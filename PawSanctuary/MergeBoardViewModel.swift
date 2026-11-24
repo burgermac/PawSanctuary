@@ -2305,7 +2305,64 @@ class MergeBoardViewModel {
         if !hasSeenTutorialMoment(.noMergesLeft) {
             s.hasNoMergeablePairWithSpawnerReady = hasNoMergesLeftWithSpawnerReady
         }
+        // Group C (stage 5). Each read is skipped once its tip is seen: the view
+        // asks for this snapshot on every redraw.
+        if !hasSeenTutorialMoment(.chainViewer) { s.chainItemIsSelected = selectedBoardItemHasChain }
+        if !hasSeenTutorialMoment(.firstDailyHandIn) { s.hasClaimableDailyTask = firstClaimableDailyTaskID != nil }
+        if !hasSeenTutorialMoment(.toolbox) { s.hasToolboxOnBoard = toolboxPosition != nil }
+        if !hasSeenTutorialMoment(.mapAreaAffordable) { s.hasAffordableArea = hasAffordableArea }
+        if !hasSeenTutorialMoment(.firstCardPack) { s.hasPendingCardPack = !pendingCardPacks.isEmpty }
+        // Only a ready chest: a resting one is never pointed at (D7, spec §5).
+        if !hasSeenTutorialMoment(.freeChest) { s.freeChestIsReady = isFreeChestReady }
+        if !hasSeenTutorialMoment(.firstBubble) { s.hasBubbledItem = activeBubblePosition != nil }
+        // sellVsOrderNudgeApplies stays false: M20 is a toast, not a bubble.
         return s
+    }
+
+    // MARK: Feature tips (stage 5, spec §4.2 group C)
+
+    /// The info bar is showing the "i" for a selected item: the very condition the
+    /// bar uses to draw that button, so the tip can never outlive the thing it points at.
+    private var selectedBoardItemHasChain: Bool { selectedItemInfo?.chainID != nil }
+
+    /// The first daily hand-in task the board can pay for now (M14).
+    private var firstClaimableDailyTaskID: UUID? {
+        let census = boardTaskCensus
+        return unclaimedDailyTasks.first { $0.isStocked(census: census) }?.id
+    }
+
+    /// The first toolbox on the board (M15).
+    private var toolboxPosition: GridPosition? {
+        for row in board {
+            for cell in row where cell.isUnlocked && cell.item?.chainID == ContentRegistry.toolboxChainID {
+                return cell.position
+            }
+        }
+        return nil
+    }
+
+    /// The next Sanctuary area can be built with the materials on hand (M16).
+    private var hasAffordableArea: Bool {
+        sanctuaryAreas.contains { !$0.costs.isEmpty && isAreaAvailable($0) && canAffordArea($0) }
+    }
+
+    /// The first bubble that has not decayed yet (M19).
+    private var activeBubblePosition: GridPosition? {
+        for row in board {
+            for cell in row where cell.isUnlocked {
+                if let item = cell.item, item.bubbledAt != nil, !item.isBubbleDecayed() { return cell.position }
+            }
+        }
+        return nil
+    }
+
+    /// The player opened the chain viewer from the info bar (M13 done).
+    func noteChainViewerOpened() { closeCoachMark(.chainViewer) }
+
+    /// The player opened the map (M16 done), but only when there was something to
+    /// build: looking at the map early must not use up "you can build now".
+    func noteMapOpened() {
+        if hasAffordableArea { closeCoachMark(.mapAreaAffordable) }
     }
 
     /// The one tip to show now, or nil.
@@ -2336,15 +2393,22 @@ class MergeBoardViewModel {
                 guard cell.isUnlocked, let item = cell.item, item.bubbledAt == nil else { return false }
                 return keys.contains(ChainTierKey(chainID: item.chainID, tier: item.tier))
             }.prefix(3).map(\.position))
+        case .toolbox:
+            return toolboxPosition.map { [$0] } ?? []
+        case .firstBubble:
+            // The bubbled cell itself, never the pop sheet (spec §5).
+            return activeBubblePosition.map { [$0] } ?? []
         default:
             return []
         }
     }
 
-    /// The order card an order tip is about, if it is one.
+    /// The lane card a tip is about, if it is one: an order card, or (M14) the
+    /// daily task card. The lane scrolls to it.
     func coachMarkOrderID(for moment: TutorialMoment) -> UUID? {
         let census = boardTaskCensus
         switch moment {
+        case .firstDailyHandIn: return firstClaimableDailyTaskID
         case .orderOnHold:  return openOrdersForTutorial.first { isPartHeld($0, census: census) }?.id
         case .firstDeliver: return openOrdersForTutorial.first { $0.isReady(census: census) }?.id
         case .afterDeliver: return lastDeliveredOrderID
@@ -2420,20 +2484,25 @@ class MergeBoardViewModel {
     /// matching order, surface the sell-vs-order tradeoff via toast — the sell
     /// button already shows both numbers (§5's other requirement), but a player
     /// who never opens the info panel could otherwise miss the choice entirely.
+    ///
+    /// M20 of the context tutorial (stage 5): same trigger and words, but the
+    /// "shown once" flag lives in `seenTutorialMoments` with the other tips (the
+    /// old `UserDefaults` key is only read at load, `mergeLegacyTutorialFlags`),
+    /// and "an order wants it" now looks at every line of a basket, not the first
+    /// (spec §10 item 6).
     private func maybeShowSellVsOrderNudge(at pos: GridPosition) {
-        guard !UserDefaults.standard.bool(forKey: Self.sellVsOrderNudgeShownKey) else { return }
+        guard !hasSeenTutorialMoment(.sellVsOrder) else { return }
         guard let item = boardState.item(at: pos),
               item.chain?.category == .animal,
               sellVsOrderNudgeTierRange.contains(item.tier) else { return }
-        let hasMatchingOrder = adoptionOrders.contains {
-            !$0.isClaimed && !$0.isComplete
-                && $0.wantedChainID == item.chainID && $0.wantedTier == item.tier
-        } || {
-            guard let urgent = urgentOrder, !urgent.isClaimed, !urgent.isComplete else { return false }
-            return urgent.wantedChainID == item.chainID && urgent.wantedTier == item.tier
-        }()
+        func wants(_ order: AdoptionOrder) -> Bool {
+            !order.isClaimed && !order.isComplete
+                && order.lines.contains { $0.chainID == item.chainID && $0.tier == item.tier }
+        }
+        let hasMatchingOrder = adoptionOrders.contains(where: wants)
+            || (urgentOrder.map(wants) ?? false)
         guard !hasMatchingOrder else { return }
-        UserDefaults.standard.set(true, forKey: Self.sellVsOrderNudgeShownKey)
+        markTutorialMomentSeen(.sellVsOrder)
         let sell = sellValue(forTier: item.tier)
         let order = orderValue(forTier: item.tier)
         enqueueToast(Toast(kind: .info(
@@ -2728,6 +2797,8 @@ class MergeBoardViewModel {
         let preMergeInventory = inventoryStore.inventory
         // For the order lesson: which animals each open order holds, before this merge.
         let orderHeldBefore   = tutorialOrderHeldCopies()
+        // For the bubble tip: was the merge dropped onto a bubbled animal (M19 done)?
+        let mergedOntoBubble  = boardState.item(at: outcome.to)?.bubbledAt != nil
 
         // Tier B (Spec_BoardAnimation_Draft.md §8, task 8.1): record the two
         // source items for the view while the board is still pre-merge. Nothing
@@ -2771,6 +2842,7 @@ class MergeBoardViewModel {
 
         mergeCount += 1
         closeCoachMark(.firstMerge)
+        if mergedOntoBubble { closeCoachMark(.firstBubble) }
         closeBoardFullTipAfterAction()
         noteOrderSlotsAfterMerge(before: orderHeldBefore)
         lastMergeTimestamp = Date().timeIntervalSince1970
@@ -2982,6 +3054,7 @@ class MergeBoardViewModel {
         let value = max(1, Int((Double(animalSellValue(tier: item.tier)) * bubbleDecayFloor).rounded()))
         boardState.clearItem(at: pos)
         if selectedCell == pos { selectedCell = nil }
+        closeCoachMark(.firstBubble)   // the bubble ran out: the tip's other way to end
         earnCoins(value)
         enqueueToast(Toast(kind: .info("Bubble decayed — collected +\(value) Coins")))
         SoundManager.shared.playButtonTap()
@@ -3245,6 +3318,7 @@ class MergeBoardViewModel {
     @discardableResult
     func openNextCardPack() -> [OpenedCard] {
         guard !pendingCardPacks.isEmpty else { return [] }
+        closeCoachMark(.firstCardPack)   // the opening the tip teaches
         let packType = pendingCardPacks.removeFirst()
         let drawn = CardRegistry.drawCards(from: packType)
         var opened: [OpenedCard] = []
@@ -3963,6 +4037,7 @@ class MergeBoardViewModel {
         inventoryStore.absorbMaterialItems(lot)
         boardState.clearItem(at: pos)
         selectedCell = nil
+        closeCoachMark(.toolbox)   // the tap the tip teaches
         if !lot.isEmpty {
             let woodCount   = lot.filter { $0.chainID == ContentRegistry.woodChainID }.count
             let metalCount  = lot.filter { $0.chainID == ContentRegistry.metalChainID }.count
@@ -4071,6 +4146,7 @@ class MergeBoardViewModel {
         }
         surrenderBoardItems(Dictionary(task.lines.map { ($0.key, $0.count) },
                                        uniquingKeysWith: +))
+        closeCoachMark(.firstDailyHandIn)   // the claim the tip teaches
         earnCoins(task.coinReward)
         grantXP(task.difficulty.xpReward)
         awardCarePoints(carePoints(forQuest: task.difficulty))
@@ -4774,6 +4850,7 @@ class MergeBoardViewModel {
             updateAllAfterSpend(kind: .dogTags, amount: freeChestSkipCostDogTags)
         }
         freeChestReadyAt = Date().addingTimeInterval(freeChestCooldownHours * 3600)
+        closeCoachMark(.freeChest)   // the claim the tip teaches
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
         persist()

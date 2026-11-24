@@ -166,6 +166,7 @@ struct DailyTaskLaneCard: View {
             }
             .buttonStyle(.plain)
             .disabled(!isClaimable)
+            .reportTutorialFrame(.dailyTaskClaim(task.id), enabled: isClaimable)
         }
     }
 
