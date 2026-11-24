@@ -19,6 +19,7 @@ import SwiftUI
 enum TutorialFrameID: Hashable {
     case cell(GridPosition)
     case questClaim
+    case deliverPill(UUID)
 }
 
 struct TutorialFrameKey: PreferenceKey {

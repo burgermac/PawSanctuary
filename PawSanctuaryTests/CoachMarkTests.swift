@@ -40,9 +40,14 @@ final class CoachMarkTests: XCTestCase {
 
     // MARK: Helpers
 
+    /// A fresh game with the order lane emptied: a real fresh game has orders,
+    /// and holding an animal one wants brings the order tips (OrderCoachMarkTests),
+    /// which these tests are not about.
     private func freshGame() -> MergeBoardViewModel {
         let vm = MergeBoardViewModel()
         vm.loadGame()
+        vm.adoptionOrders = []
+        vm.adoptionBoardCoordinator.urgentOrder = nil
         return vm
     }
 
@@ -220,8 +225,10 @@ final class CoachMarkTests: XCTestCase {
     }
 
     func testTipsThatAreNotBuiltYetHaveNoBubbleText() {
-        // Stage 2 builds three tips; the rest get their text in their own stage.
-        let built: Set<TutorialMoment> = [.firstSpawn, .firstMerge, .firstQuestClaim]
+        // Stages 2 and 3 build the opening tips and the order lesson; the rest
+        // get their text in their own stage.
+        let built: Set<TutorialMoment> = [.firstSpawn, .firstMerge, .firstQuestClaim,
+                                          .orderOnHold, .firstDeliver, .afterDeliver, .splitWarning]
         for moment in TutorialMoment.allCases where !built.contains(moment) {
             XCTAssertNil(moment.coachMarkText, "\(moment)")
         }
