@@ -105,6 +105,19 @@ enum TutorialMoment: String, CaseIterable, Codable {
             return "Delivered animals leave the board. A new family arrives in a moment."
         case .splitWarning:
             return "That animal was on hold for an order. Merging it moved it up a level, so the order needs another one."
+        case .boardFull:
+            return "No room left. Merge a pair, drag an animal to the basket to store it, or sell one from the info bar."
+        case .firstItemStored:
+            return "Stored animals are safe in the basket, but orders and daily tasks only count animals on the board."
+        case .spawnerResting:
+            // The spec says "in a few seconds"; the wait is 30, so the words stay vague.
+            // Never "skip": before the D7 gate nothing here is for sale (spec §5).
+            return "This spawner is resting. It will be ready again soon."
+        case .outOfKibble:
+            // Shown as a line inside the kibble sheet, never as an overlay bubble.
+            return "Kibble refills on its own. Meanwhile, merge what you have or deliver an order."
+        case .noMergesLeft:
+            return "No matching pairs right now. Tap the spawner for more animals."
         default:
             return nil
         }
@@ -117,6 +130,7 @@ enum TutorialMoment: String, CaseIterable, Codable {
         switch self {
         case .orderOnHold, .splitWarning: return 6
         case .afterDeliver:               return 4
+        case .firstItemStored, .spawnerResting: return 5
         default:                          return nil
         }
     }

@@ -133,6 +133,8 @@ struct MergeBoardView: View {
         case .afterDeliver, .splitWarning:
             let card = viewModel.coachMarkOrderID(for: moment).flatMap { orderCardFrames[$0] }
             return [card ?? tutorialTaskFrame]
+        case .boardFull, .firstItemStored:
+            return tutorialFrames[.basketButton].map { [$0] } ?? []
         default:
             return viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
         }
@@ -1124,6 +1126,8 @@ struct MergeBoardView: View {
             } action: { newFrame in
                 basketGlobalFrame = newFrame
             }
+            .reportTutorialFrame(.basketButton,
+                                 enabled: coachMoment == .boardFull || coachMoment == .firstItemStored)
 
             // Centre info panel — fills available space
             ZStack {
@@ -1346,12 +1350,19 @@ private struct KibbleRefillSheet: View {
                         dogTagExchangeSection
                         Divider()
                         KibbleRefillBundleRow(viewModel: viewModel, storeManager: storeManager)
-                    } else {
+                    } else if !viewModel.showsOutOfKibbleTip {
+                        // The first time, the tip line below says this and more.
                         Text("Kibble refills on its own — check back in a bit!")
                             .font(.subheadline)
                             .foregroundColor(Color(red: 0.50, green: 0.50, blue: 0.50))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
+                    }
+
+                    // M11: the first time only. It sits right above the order footer
+                    // and points at it, below any refill rows, never at one of them.
+                    if viewModel.showsOutOfKibbleTip, let text = TutorialMoment.outOfKibble.coachMarkText {
+                        outOfKibbleTip(text)
                     }
 
                     if let (order, timeText) = viewModel.nearestIncompleteOrder {
@@ -1371,6 +1382,33 @@ private struct KibbleRefillSheet: View {
             #endif
         }
         .presentationDetents([.medium, .large])
+        // M11 is done when the sheet closes, whatever closed it.
+        .onDisappear { viewModel.closeCoachMark(.outOfKibble) }
+    }
+
+    /// The first-time line (M11): a small note, with an arrow down at the order
+    /// footer when there is one. It has no button and never names a purchase.
+    private func outOfKibbleTip(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lightbulb.fill")
+                .foregroundColor(Color(red: 0.85, green: 0.62, blue: 0.05))
+            Text(text)
+                .font(.footnote.weight(.medium))
+                .foregroundColor(Color(red: 0.25, green: 0.18, blue: 0.05))
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+            if viewModel.nearestIncompleteOrder != nil {
+                Image(systemName: "arrow.down")
+                    .font(.footnote.bold())
+                    .foregroundColor(Color(red: 0.85, green: 0.62, blue: 0.05))
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(Color(red: 1.0, green: 0.96, blue: 0.80)))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(Color(red: 0.85, green: 0.62, blue: 0.05).opacity(0.6), lineWidth: 1.5))
+        .accessibilityElement(children: .combine)
     }
 
     private var kibbleStatusCard: some View {
