@@ -62,9 +62,15 @@ final class OrderCoachMarkTests: XCTestCase {
     }
 
     private func emptyCells(_ vm: MergeBoardViewModel, _ n: Int) -> [GridPosition] {
-        Array(vm.board.flatMap { $0 }
-            .filter { $0.isUnlocked && $0.item == nil && $0.producer == nil }
-            .prefix(n).map(\.position))
+        // A plain loop: the chained form timed out the type checker on CI's Xcode.
+        var found: [GridPosition] = []
+        for row in vm.board {
+            for cell in row where cell.isUnlocked && cell.item == nil && cell.producer == nil {
+                if found.count == n { return found }
+                found.append(cell.position)
+            }
+        }
+        return found
     }
 
     @discardableResult
