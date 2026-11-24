@@ -127,6 +127,68 @@ final class PowerUpSinkTests: XCTestCase {
         XCTAssertTrue(vm.inventoryStore.powerUpInventory.contains { $0?.chainID == self.dogSubObjectChain })
     }
 
+    // MARK: stored balls — a completed ball may only be banked in Supplies
+
+    private func fillSupplies(_ vm: MergeBoardViewModel) {
+        for i in 0..<vm.inventoryStore.powerUpInventory.count {
+            vm.inventoryStore.powerUpInventory[i] =
+                BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: .speed)
+        }
+    }
+
+    func testCompletedSubObjectIsRefusedWhenSuppliesFullAndNeverEntersAnimalStorage() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+
+        let banked = vm.inventoryStore.addItem(
+            BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: .speed))
+
+        XCTAssertFalse(banked, "Supplies is full, so the ball is refused for the caller to cash")
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty,
+                      "a completed ball must never spill into animal storage")
+    }
+
+    func testCompletedSubObjectGoesToASuppliesSlotWhenOneIsFree() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+        vm.inventoryStore.powerUpInventory[4] = nil
+
+        let banked = vm.inventoryStore.addItem(
+            BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: .mapSupplies))
+
+        XCTAssertTrue(banked)
+        XCTAssertEqual(vm.inventoryStore.powerUpInventory[4]?.rarity, .mapSupplies)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+    }
+
+    func testTierTwoSubObjectStillGoesToAnimalStorageWhenSuppliesFull() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+
+        let banked = vm.inventoryStore.addItem(BoardItem(chainID: dogSubObjectChain, tier: 2))
+
+        XCTAssertTrue(banked)
+        XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 1,
+                       "an inert tier 0-2 intermediate keeps its animal-storage home")
+    }
+
+    func testCompletingASubObjectWithSuppliesFullPaysCoinsAndLeavesAnimalStorageEmpty() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: b)
+        let coinsBefore = vm.coins
+
+        vm.attemptMergeOrMove(from: a, to: b)
+
+        XCTAssertNil(vm.board[b.row][b.col].item)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty,
+                      "animal storage must stay empty")
+        let paid = vm.coins - coinsBefore
+        XCTAssertTrue(SubObjectRarity.allCases.map(\.coinValue).contains(paid),
+                      "the rolled rarity's coin value was banked, got \(paid)")
+    }
+
     // MARK: collectCompletedSubObject — tapping a finished tile on the board
 
     private func placeCompleted(_ vm: MergeBoardViewModel, rarity: SubObjectRarity?, at pos: GridPosition) {

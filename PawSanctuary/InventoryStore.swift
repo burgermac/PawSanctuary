@@ -114,8 +114,9 @@ class InventoryStore {
 
     /// Routes an item to the correct store. Material items go to the accumulator (always
     /// succeeds). Tool items (toolboxes) are absorbed on the board — discard here safely.
-    /// Sub-objects and power-ups go to powerUpInventory (6 slots); falls back to animal
-    /// inventory if full. Returns `true` on success.
+    /// Completed sub-objects and power-ups go to powerUpInventory (6 slots) and are refused
+    /// (`false`) when it is full; uncompleted sub-objects (tiers 0–2) go to animal inventory.
+    /// Returns `true` on success.
     @discardableResult
     func addItem(_ item: BoardItem) -> Bool {
         let category = ContentRegistry.shared.chain(item.chainID)?.category
@@ -130,7 +131,11 @@ class InventoryStore {
             // usable power-up. Tiers 0–2 are inert intermediates and belong in
             // the animal inventory, not in the 6 power-up slots.
             guard item.rarity != nil else { return addToAnimalInventory(item) }
-            return addToPowerUpInventory(item) || addToAnimalInventory(item)
+            // A completed ball is banked in Supplies only. It never spills into
+            // animal storage, where it would crowd out animals and superpower
+            // pieces; when Supplies is full this returns false and the caller
+            // (applyMergeOutcome) cashes the ball for coins.
+            return addToPowerUpInventory(item)
         case .powerUp:
             return addToPowerUpInventory(item)
         case .currency:
