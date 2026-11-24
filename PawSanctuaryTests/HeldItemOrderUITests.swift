@@ -62,6 +62,19 @@ final class HeldItemOrderUITests: XCTestCase {
         vm.boardState.setItem(BoardItem(chainID: chain, tier: tier), at: GridPosition(row: row, col: col))
     }
 
+    /// The first `count` cells with no item and no producer, in board order.
+    /// A plain loop: chained closures here have timed out CI's type checker before.
+    private func emptyCells(_ vm: MergeBoardViewModel, _ count: Int) -> [GridPosition] {
+        var found: [GridPosition] = []
+        for row in vm.board {
+            for cell in row where cell.isUnlocked && cell.item == nil && cell.producer == nil {
+                if found.count == count { return found }
+                found.append(cell.position)
+            }
+        }
+        return found
+    }
+
     private func held(_ vm: MergeBoardViewModel, _ chain: ChainID, tier: Int) -> Int {
         vm.boardTaskCensus[ChainTierKey(chainID: chain, tier: tier)] ?? 0
     }
@@ -321,10 +334,14 @@ final class HeldItemOrderUITests: XCTestCase {
 
         XCTAssertTrue(vm.purchaseDogTagStoreSlot(slot), "a board change that readies the card")
         XCTAssertEqual(held(vm, dog, tier: wantedTier), 1, "the bought item is on the board")
-        // Another board change: a move on the bottom row, away from the purchase.
-        let last = boardRows - 1
-        put(vm, cat, tier: 0, row: last, col: 6)
-        vm.attemptMergeOrMove(from: GridPosition(row: last, col: 6), to: GridPosition(row: last, col: 5))
+        // Another board change: a move between two empty cells. The purchase lands
+        // on a random cell, so the cells are looked up after it, never fixed: a fixed
+        // one is overwritten by the bought item about one run in fifty.
+        let spare = emptyCells(vm, 2)
+        XCTAssertEqual(spare.count, 2)
+        guard spare.count == 2 else { return }
+        put(vm, cat, tier: 0, row: spare[0].row, col: spare[0].col)
+        vm.attemptMergeOrMove(from: spare[0], to: spare[1])
         // Give any scheduled main-actor work every chance to run.
         try? await Task.sleep(for: .milliseconds(300))
 
