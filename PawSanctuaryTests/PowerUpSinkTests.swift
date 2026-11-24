@@ -25,6 +25,18 @@ final class PowerUpSinkTests: XCTestCase {
     private let a = GridPosition(row: 0, col: 0)
     private let b = GridPosition(row: 0, col: 1)
 
+    // The load-wiring tests below go through `GameStore`, which is shared
+    // on-disk state; every test in this class starts and ends with it empty.
+    override func setUp() {
+        super.setUp()
+        GameStore.clear()
+    }
+
+    override func tearDown() {
+        GameStore.clear()
+        super.tearDown()
+    }
+
     private func makeBoard() -> [[BoardCell]] {
         (0..<boardRows).map { row in
             (0..<7).map { col in
@@ -486,5 +498,71 @@ final class PowerUpSinkTests: XCTestCase {
             return XCTFail("expected an info toast")
         }
         XCTAssertTrue(text.contains("1 stored Golden Ball:"), text)
+    }
+
+    func testSweepBallOfAnUnresolvableFamilyIsCashedAtItsRarityValue() {
+        // "subobject.unknownspecies" still has the subobject. prefix and a rarity,
+        // so the sweep treats it as a completed ball; no AnimalSpecies matches,
+        // so it skips the Trophy page and pays the rarity value.
+        let vm = makeViewModel()
+        storeBall(vm, chainID: "subobject.unknownspecies", rarity: .speed)
+        let coinsBefore = vm.coins
+
+        let paid = vm.sweepStoredGoldenBalls()
+
+        XCTAssertEqual(paid, SubObjectRarity.speed.coinValue)
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.speed.coinValue)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertTrue(vm.trophyCounts.isEmpty)
+    }
+
+    // MARK: loadGame runs the sweep (the production path)
+
+    /// A save written by an older build: one completed dog ball in animal storage.
+    private func saveWithStoredBall(lastWeeklyReset: Date? = nil) -> Int {
+        let vm = makeViewModel()
+        storeBall(vm, count: 1)
+        if let lastWeeklyReset { vm.lastWeeklyGoalReset = lastWeeklyReset }
+        vm.persistNow()
+        return vm.coins
+    }
+
+    func testLoadGameCashesABallAnOldSaveLeftInAnimalStorage() {
+        let savedCoins = saveWithStoredBall()
+
+        let relaunched = MergeBoardViewModel()
+        relaunched.loadGame()
+
+        XCTAssertTrue(relaunched.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertEqual(relaunched.coins, savedCoins + trophySlotCoins)
+        XCTAssertEqual(relaunched.trophyCounts["dog"], 1)
+        XCTAssertTrue(relaunched.toastQueue.contains { toast in
+            if case .info(let text) = toast.kind { return text.contains("1 stored Golden Ball") }
+            return false
+        })
+    }
+
+    func testLoadGameSweepPayoutCountsTowardTheCurrentWeekNotTheOneJustEnded() {
+        // The save's last weekly reset was two weeks ago, so loadGame zeroes
+        // coinsEarnedThisWeek. The sweep must pay after that, or its coins land
+        // in last week's total and are wiped.
+        let twoWeeksAgo = Date().addingTimeInterval(-14 * 24 * 3600)
+        _ = saveWithStoredBall(lastWeeklyReset: twoWeeksAgo)
+
+        let relaunched = MergeBoardViewModel()
+        relaunched.loadGame()
+
+        XCTAssertEqual(relaunched.coinsEarnedThisWeek, trophySlotCoins)
+    }
+
+    func testFreshStartPaysNothingAndShowsNoSweepToast() {
+        let vm = MergeBoardViewModel()
+        vm.loadGame()
+
+        XCTAssertTrue(vm.trophyCounts.isEmpty)
+        XCTAssertFalse(vm.toastQueue.contains { toast in
+            if case .info(let text) = toast.kind { return text.contains("Golden Ball") }
+            return false
+        })
     }
 }

@@ -1053,11 +1053,16 @@ class MergeBoardViewModel {
     func loadGame(at date: Date = Date()) {
         guard !didLoadGame else { return }
         didLoadGame = true
+        let loadedSave: Bool
         if let saved = GameStore.load() {
+            loadedSave = true
             apply(saved)
-            sweepStoredGoldenBalls()
+            // The stored-Golden-Ball sweep is NOT called here: it pays coins, and
+            // the weekly reset below would zero a payout made before it. See the
+            // call after `checkEventLifecycle`.
             if let last = saved.lastActiveDate { applyOfflineProgress(since: last) }
         } else {
+            loadedSave = false
             if let oldVersion = GameStore.discardedIncompatibleVersion {
                 incompatibleSaveVersion = oldVersion
                 showIncompatibleSaveAlert = true
@@ -1077,6 +1082,12 @@ class MergeBoardViewModel {
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
         checkEventLifecycle(at: date)
+        // Cash completed Golden Balls an older build left in animal storage
+        // (specs/Spec_StoredGoldenBalls.md). After the weekly/monthly resets so
+        // its coins count toward the new week rather than being zeroed with the
+        // old one; before any player input or board sample. Saved games only: a
+        // fresh start has nothing stored. Idempotent, so it needs no flag.
+        if loadedSave { sweepStoredGoldenBalls() }
         // Playtest instrumentation (v41). Placed here rather than beside the
         // restore, because at that point a fresh game has no board yet — the
         // first version of this sampled `freshStart` before `buildEmptyBoard`
