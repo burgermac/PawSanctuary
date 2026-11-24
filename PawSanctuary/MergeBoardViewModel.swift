@@ -2321,7 +2321,24 @@ class MergeBoardViewModel {
         if !hasSeenTutorialMoment(.freeChest) { s.freeChestIsReady = isFreeChestReady }
         if !hasSeenTutorialMoment(.firstBubble) { s.hasBubbledItem = activeBubblePosition != nil }
         // sellVsOrderNudgeApplies stays false: M20 is a toast, not a bubble.
+        // Group D (stage 6). The rule checks D7's gate when it decides, at fire
+        // time; the board is only scanned while the gate is open and the tip unseen.
+        if isMonetizationUnlocked && !hasSeenTutorialMoment(.firstWildcard) {
+            s.hasWildcardOnBoard = wildcardPosition != nil
+        }
         return s
+    }
+
+    // MARK: Group D tip (stage 6, spec §4.2 M22)
+
+    /// The first wildcard tile on the board (M22). One in storage is not on the board.
+    private var wildcardPosition: GridPosition? {
+        for row in board {
+            for cell in row where cell.isUnlocked && cell.item?.chainID == ContentRegistry.wildcardChainID {
+                return cell.position
+            }
+        }
+        return nil
     }
 
     // MARK: Feature tips (stage 5, spec §4.2 group C)
@@ -2400,6 +2417,8 @@ class MergeBoardViewModel {
             }.prefix(3).map(\.position))
         case .toolbox:
             return toolboxPosition.map { [$0] } ?? []
+        case .firstWildcard:
+            return wildcardPosition.map { [$0] } ?? []
         case .firstBubble:
             // The bubbled cell itself, never the pop sheet (spec §5).
             return activeBubblePosition.map { [$0] } ?? []
@@ -2804,6 +2823,8 @@ class MergeBoardViewModel {
         let orderHeldBefore   = tutorialOrderHeldCopies()
         // For the bubble tip: was the merge dropped onto a bubbled animal (M19 done)?
         let mergedOntoBubble  = boardState.item(at: outcome.to)?.bubbledAt != nil
+        // For the wildcard tip: was the dragged piece a wildcard (M22 done)?
+        let usedAWildcard     = boardState.item(at: outcome.from)?.chainID == ContentRegistry.wildcardChainID
 
         // Tier B (Spec_BoardAnimation_Draft.md §8, task 8.1): record the two
         // source items for the view while the board is still pre-merge. Nothing
@@ -2848,6 +2869,7 @@ class MergeBoardViewModel {
         mergeCount += 1
         closeCoachMark(.firstMerge)
         if mergedOntoBubble { closeCoachMark(.firstBubble) }
+        if usedAWildcard { closeCoachMark(.firstWildcard) }
         closeBoardFullTipAfterAction()
         noteOrderSlotsAfterMerge(before: orderHeldBefore)
         lastMergeTimestamp = Date().timeIntervalSince1970

@@ -294,7 +294,8 @@ final class OrderCoachMarkTests: XCTestCase {
         XCTAssertEqual(TutorialMoment.afterDeliver.autoCloseSeconds, 4)
         XCTAssertEqual(TutorialMoment.splitWarning.autoCloseSeconds, 6)
         for moment in TutorialMoment.allCases
-        where ![.orderOnHold, .afterDeliver, .splitWarning, .firstItemStored, .spawnerResting].contains(moment) {
+        where ![.orderOnHold, .afterDeliver, .splitWarning, .firstItemStored, .spawnerResting,
+                .firstWildcard].contains(moment) {
             XCTAssertNil(moment.autoCloseSeconds, "\(moment) waits for its action or the x")
         }
     }

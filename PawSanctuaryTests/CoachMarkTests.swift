@@ -234,14 +234,14 @@ final class CoachMarkTests: XCTestCase {
     func testTipsThatAreNotBuiltYetHaveNoBubbleText() {
         // Stages 2 to 5 build the opening tips, the order lesson, the friction
         // tips and the feature tips (M20 stays a toast, so it has no bubble text);
-        // the wildcard tip gets its text in stage 6.
+        // and stage 6 builds the wildcard tip, the last bubble.
         let built: Set<TutorialMoment> = [.firstSpawn, .firstMerge, .firstQuestClaim,
                                           .orderOnHold, .firstDeliver, .afterDeliver, .splitWarning,
                                           .boardFull, .firstItemStored, .spawnerResting,
                                           .outOfKibble, .noMergesLeft,
                                           .chainViewer, .firstDailyHandIn, .toolbox,
                                           .mapAreaAffordable, .firstCardPack, .freeChest,
-                                          .firstBubble]
+                                          .firstBubble, .firstWildcard]
         for moment in TutorialMoment.allCases where !built.contains(moment) {
             XCTAssertNil(moment.coachMarkText, "\(moment)")
         }
