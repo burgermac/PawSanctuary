@@ -27,8 +27,8 @@ final class EconomyTests: XCTestCase {
     func testMultiplierMapsToExpectedTiers() {
         XCTAssertEqual(spawnTierIndex(forMultiplier: 1), 0)
         XCTAssertEqual(spawnTierIndex(forMultiplier: 2), 1)
-        XCTAssertEqual(spawnTierIndex(forMultiplier: 4), 2)
-        XCTAssertEqual(spawnTierIndex(forMultiplier: 8), 3)
+        XCTAssertEqual(spawnTierIndex(forMultiplier: 4), 3, "×4 spawns a level-4 item")
+        XCTAssertEqual(spawnTierIndex(forMultiplier: 8), 7, "×8 spawns a level-8 item")
         XCTAssertEqual(spawnTierIndex(forMultiplier: 99), 0, "unknown multipliers fall back to tier 0")
     }
 

@@ -2134,13 +2134,15 @@ func dailyTaskSellValue(lines: [DailyTaskLine]) -> Int {
 // that unlocked at level 20 and never closed.
 
 /// Maps a spawn multiplier (1 / 2 / 4 / 8) to the 0-based tier it produces.
+/// The multiplier IS the item level (1-based), matching the reference games:
+/// ×1 → level 1, ×2 → level 2, ×4 → level 4, ×8 → level 8 (tiers 0 / 1 / 3 / 7).
 /// Total by construction: any unrecognised value falls back to tier 0.
 func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
     switch multiplier {
     case 1:  return 0
     case 2:  return 1
-    case 4:  return 2
-    case 8:  return 3
+    case 4:  return 3
+    case 8:  return 7
     default: return 0
     }
 }
@@ -2154,13 +2156,13 @@ func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
 // generosity is real, but so is the acceleration.
 
 /// Chance of a bonus extra spawn, keyed by the multiplier's tier index
-/// (0/1/2/3 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
+/// (0/1/3/7 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
 func bonusSpawnChance(forMultiplierTier tierIndex: Int) -> Double {
     switch tierIndex {
-    case 0:  return 0.00
-    case 1:  return 0.10
-    case 2:  return 0.25
-    default: return 0.40
+    case 0:       return 0.00
+    case 1:       return 0.10
+    case 2...3:   return 0.25
+    default:      return 0.40
     }
 }
 
