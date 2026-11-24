@@ -2123,15 +2123,23 @@ func dailyTaskSellValue(lines: [DailyTaskLine]) -> Int {
     lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
 }
 
-// ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
+// ── Spawn multiplier pricing ──────────────────────────────────
 //
-// The multiplier selects a TIER; the tier sets the price. Cost is `2^tier`,
-// which is exactly what that item is worth in merge inputs, so no multiplier
-// level buys progress at a discount to building it by hand.
-//
-// Before Phase 2 the tier was `multiplier - 1` at a cost of `multiplier`,
-// which made ×8 an 8-kibble purchase of a 128-kibble item — a 16× arbitrage
-// that unlocked at level 20 and never closed.
+// The multiplier selects the item LEVEL (×1/×2/×4/×8 → level 1/2/4/8) and the
+// kibble price per tap equals the multiplier itself (1/2/4/8 kibble), matching
+// the reference games' spawner rate. Owner decision, 24 Nov 2026 — this
+// supersedes Phase 2 Task 2.1's `2^tier` "energy-neutral" pricing. Note the
+// consequence: a ×8 tap buys a level-8 item worth 128 merge inputs for 8 kibble,
+// so boosted taps are deliberately a strong shortcut.
+
+/// Kibble cost of one spawner tap at `multiplier`: the multiplier itself.
+/// Unrecognised values fall back to 1, matching `spawnTierIndex`.
+func spawnTapCost(forMultiplier multiplier: Int) -> Int {
+    switch multiplier {
+    case 1, 2, 4, 8: return multiplier
+    default:         return 1
+    }
+}
 
 /// Maps a spawn multiplier (1 / 2 / 4 / 8) to the 0-based tier it produces.
 /// The multiplier IS the item level (1-based), matching the reference games:

@@ -13,15 +13,12 @@ final class EconomyTests: XCTestCase {
 
     // MARK: Task 2.1 — neutral spawn multiplier
 
-    /// No multiplier level may buy an item at a discount to building it by hand.
-    func testEveryMultiplierIsEnergyNeutral() {
+    /// Owner decision (24 Nov 2026): a tap costs exactly the multiplier in kibble.
+    func testSpawnTapCostEqualsMultiplier() {
         for multiplier in [1, 2, 4, 8] {
-            let tier = spawnTierIndex(forMultiplier: multiplier)
-            let cost = spawnCost(forTier: tier)
-            let worth = 1 << tier          // merge-input cost of that tier
-            XCTAssertEqual(cost, worth,
-                           "×\(multiplier) buys tier \(tier) for \(cost) but it is worth \(worth)")
+            XCTAssertEqual(spawnTapCost(forMultiplier: multiplier), multiplier)
         }
+        XCTAssertEqual(spawnTapCost(forMultiplier: 99), 1, "unknown multipliers fall back to 1")
     }
 
     func testMultiplierMapsToExpectedTiers() {
