@@ -158,15 +158,18 @@ final class PowerUpSinkTests: XCTestCase {
     }
 
     func testTappingLowerTierSubObjectDoesNotCollect() {
-        let vm = makeViewModel()
-        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
-        let coinsBefore = vm.coins
+        // Tiers 0 through 2 of the dog sub-object chain are all below the completed tier.
+        for tier in 0...2 {
+            let vm = makeViewModel()
+            place(vm, chainID: dogSubObjectChain, tier: tier, at: a)
+            let coinsBefore = vm.coins
 
-        vm.boardCellTapped(at: a)
+            vm.boardCellTapped(at: a)
 
-        XCTAssertEqual(vm.coins, coinsBefore)
-        XCTAssertNotNil(vm.board[a.row][a.col].item)
-        XCTAssertEqual(vm.selectedCell, a)
+            XCTAssertEqual(vm.coins, coinsBefore, "tier \(tier) must not pay coins")
+            XCTAssertNotNil(vm.board[a.row][a.col].item, "tier \(tier) must stay on the board")
+            XCTAssertEqual(vm.selectedCell, a, "tier \(tier) tap selects the cell as usual")
+        }
     }
 
     func testTappingTopTierAnimalDoesNotCollect() {
@@ -210,9 +213,52 @@ final class PowerUpSinkTests: XCTestCase {
         placeCompleted(vm, rarity: .speed, at: a)
         vm.selectedCell = a
 
-        vm.boardCellTapped(at: a)
+        XCTAssertTrue(vm.collectCompletedSubObject(at: a))
 
         XCTAssertNil(vm.selectedCell)
+    }
+
+    func testCollectingLeavesSelectionOnAnotherCellAlone() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .speed, at: a)
+        vm.selectedCell = b
+
+        XCTAssertTrue(vm.collectCompletedSubObject(at: a))
+
+        XCTAssertEqual(vm.selectedCell, b)
+    }
+
+    // MARK: drag hint — dropping a completed tile off-board collects it
+
+    func testDragHintForCompletedSubObjectSaysDropCollectsCoins() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .highTierDrop, at: a)
+        vm.draggingFrom = a
+
+        let text = vm.selectedItemInfo?.text ?? ""
+
+        XCTAssertTrue(text.contains("\(SubObjectRarity.highTierDrop.coinValue)"),
+                      "hint must show the payout, got: \(text)")
+        XCTAssertTrue(text.lowercased().contains("collect"), "got: \(text)")
+        XCTAssertFalse(text.contains("storage"), "got: \(text)")
+    }
+
+    func testDragHintForCompletedSubObjectWithoutRarityShowsSpeedValue() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: nil, at: a)
+        vm.draggingFrom = a
+
+        let text = vm.selectedItemInfo?.text ?? ""
+
+        XCTAssertTrue(text.contains("\(SubObjectRarity.speed.coinValue)"), "got: \(text)")
+    }
+
+    func testDragHintForNonCompletedItemStillSaysMoveToStorage() {
+        let vm = makeViewModel()
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        vm.draggingFrom = a
+
+        XCTAssertEqual(vm.selectedItemInfo?.text, "Drag off-board to move to storage")
     }
 
     // MARK: send-to-storage — a completed tile is collected, not stored

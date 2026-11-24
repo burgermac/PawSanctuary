@@ -698,7 +698,11 @@ class MergeBoardViewModel {
     func orderValue(forTier tier: Int) -> Int { orderCoinPayout(tier: tier) }
 
     var selectedItemInfo: (text: String, chainID: ChainID?)? {
-        if draggingFrom != nil {
+        if let from = draggingFrom {
+            // A completed sub-object is cashed in on drop, so say so and show the payout.
+            if let item = boardState.item(at: from), let payout = completedSubObjectPayout(item) {
+                return ("Drop off-board to collect +\(payout) coins", nil)
+            }
             return ("Drag off-board to move to storage", nil)
         }
         guard let pos = selectedCell,
@@ -3546,6 +3550,16 @@ class MergeBoardViewModel {
         return true
     }
 
+    /// Coins a completed sub-object (a sub-object chain's top tier) pays when
+    /// collected, or `nil` if `item` is anything else. Single source for both the
+    /// collect and the drag hint, so the number shown is the number paid.
+    private func completedSubObjectPayout(_ item: BoardItem) -> Int? {
+        guard let chain = ContentRegistry.shared.chain(item.chainID),
+              chain.category == .subObject,
+              item.tier == chain.maxTier else { return nil }
+        return (item.rarity ?? .speed).coinValue
+    }
+
     /// Tap a completed sub-object (a sub-object chain's top tier, e.g. the
     /// Canines "Golden Ball") left on the board to cash it in for coins. Without
     /// this, a completed tile that was never routed to storage (storage full, or
@@ -3557,12 +3571,9 @@ class MergeBoardViewModel {
     func collectCompletedSubObject(at pos: GridPosition) -> Bool {
         guard boardState.isUnlocked(at: pos),
               let item = boardState.item(at: pos),
-              let chain = ContentRegistry.shared.chain(item.chainID),
-              chain.category == .subObject,
-              item.tier == chain.maxTier else { return false }
+              let amount = completedSubObjectPayout(item) else { return false }
         boardState.clearItem(at: pos)
         if selectedCell == pos { selectedCell = nil }
-        let amount = (item.rarity ?? .speed).coinValue
         earnCoins(amount)
         enqueueToast(Toast(kind: .info("+\(amount) Coins")))
         SoundManager.shared.playButtonTap()
