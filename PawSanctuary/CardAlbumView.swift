@@ -842,8 +842,12 @@ struct AlbumDetailView: View {
 
     private var jokerBar: some View {
         HStack(spacing: 12) {
-            jokerPill("Jokers", count: viewModel.jokerCards,
-                      color: Color(red: 0.25, green: 0.60, blue: 0.40))
+            // The common Joker is no longer sold (stage 2, owner Q4 (c)), so its count is
+            // shown only while a held balance remains.
+            if viewModel.jokerCards > 0 {
+                jokerPill("Jokers", count: viewModel.jokerCards,
+                          color: Color(red: 0.25, green: 0.60, blue: 0.40))
+            }
             jokerPill("Rare Jokers", count: viewModel.rareJokerCards,
                       color: Color(red: 0.88, green: 0.68, blue: 0.15))
             Spacer()

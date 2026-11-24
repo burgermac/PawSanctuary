@@ -145,16 +145,17 @@ enum CardPackType: String, CaseIterable, Codable {
 // MARK: - STAR SHOP ITEM
 // ============================================================
 
+/// What the Star Shop sells. The common Joker was retired from sale (cards and chests
+/// stage 2, owner Q4 (c)); balances already held still work through `useJoker`.
 enum StarShopItem: String, CaseIterable {
     case pack1Star, pack2Star, pack3Star
-    case jokerCard, rareJokerCard
+    case rareJokerCard
 
     var displayName: String {
         switch self {
         case .pack1Star:     return "1-Star Pack"
         case .pack2Star:     return "2-Star Pack"
         case .pack3Star:     return "3-Star Pack"
-        case .jokerCard:     return "Joker Card"
         case .rareJokerCard: return "Rare Joker"
         }
     }
@@ -163,7 +164,6 @@ enum StarShopItem: String, CaseIterable {
         case .pack1Star:     return "2 random cards"
         case .pack2Star:     return "2 cards, better odds"
         case .pack3Star:     return "3 cards"
-        case .jokerCard:     return "Fills any missing common"
         case .rareJokerCard: return "Fills any missing rare"
         }
     }
@@ -172,14 +172,13 @@ enum StarShopItem: String, CaseIterable {
         case .pack1Star:     return 20
         case .pack2Star:     return 35
         case .pack3Star:     return 55
-        case .jokerCard:     return 40
         case .rareJokerCard: return 120
         }
     }
     var sfSymbol: String {
         switch self {
         case .pack1Star, .pack2Star, .pack3Star: return "star.circle.fill"
-        case .jokerCard, .rareJokerCard:         return "j.circle.fill"
+        case .rareJokerCard:                     return "j.circle.fill"
         }
     }
     var sfSymbolColor: Color {
@@ -187,11 +186,10 @@ enum StarShopItem: String, CaseIterable {
         case .pack1Star:     return Color(red: 0.50, green: 0.55, blue: 0.70)
         case .pack2Star:     return Color(red: 0.30, green: 0.55, blue: 0.75)
         case .pack3Star:     return Color(red: 0.40, green: 0.65, blue: 0.40)
-        case .jokerCard:     return Color(red: 0.25, green: 0.60, blue: 0.40)
         case .rareJokerCard: return Color(red: 0.88, green: 0.68, blue: 0.15)
         }
     }
-    /// The pack type granted when this shop item is bought (nil for jokers).
+    /// The pack type granted when this shop item is bought (nil for the Rare Joker).
     var grantsPack: CardPackType? {
         switch self {
         case .pack1Star: return .star1

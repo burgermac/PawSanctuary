@@ -3527,7 +3527,6 @@ class MergeBoardViewModel {
             earnCardPack(pack)
         } else {
             switch item {
-            case .jokerCard:     jokerCards += 1
             case .rareJokerCard: rareJokerCards += 1
             default: break
             }
