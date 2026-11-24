@@ -25,6 +25,18 @@ final class PowerUpSinkTests: XCTestCase {
     private let a = GridPosition(row: 0, col: 0)
     private let b = GridPosition(row: 0, col: 1)
 
+    // The load-wiring tests below go through `GameStore`, which is shared
+    // on-disk state; every test in this class starts and ends with it empty.
+    override func setUp() {
+        super.setUp()
+        GameStore.clear()
+    }
+
+    override func tearDown() {
+        GameStore.clear()
+        super.tearDown()
+    }
+
     private func makeBoard() -> [[BoardCell]] {
         (0..<boardRows).map { row in
             (0..<7).map { col in
@@ -125,6 +137,68 @@ final class PowerUpSinkTests: XCTestCase {
         XCTAssertNil(vm.board[b.row][b.col].item)
         XCTAssertEqual(vm.coins, coinsBefore, "storage had room, so the normal bank path pays no coins")
         XCTAssertTrue(vm.inventoryStore.powerUpInventory.contains { $0?.chainID == self.dogSubObjectChain })
+    }
+
+    // MARK: stored balls — a completed ball may only be banked in Supplies
+
+    private func fillSupplies(_ vm: MergeBoardViewModel) {
+        for i in 0..<vm.inventoryStore.powerUpInventory.count {
+            vm.inventoryStore.powerUpInventory[i] =
+                BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: .speed)
+        }
+    }
+
+    func testCompletedSubObjectIsRefusedWhenSuppliesFullAndNeverEntersAnimalStorage() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+
+        let banked = vm.inventoryStore.addItem(
+            BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: .speed))
+
+        XCTAssertFalse(banked, "Supplies is full, so the ball is refused for the caller to cash")
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty,
+                      "a completed ball must never spill into animal storage")
+    }
+
+    func testCompletedSubObjectGoesToASuppliesSlotWhenOneIsFree() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+        vm.inventoryStore.powerUpInventory[4] = nil
+
+        let banked = vm.inventoryStore.addItem(
+            BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: .mapSupplies))
+
+        XCTAssertTrue(banked)
+        XCTAssertEqual(vm.inventoryStore.powerUpInventory[4]?.rarity, .mapSupplies)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+    }
+
+    func testTierTwoSubObjectStillGoesToAnimalStorageWhenSuppliesFull() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+
+        let banked = vm.inventoryStore.addItem(BoardItem(chainID: dogSubObjectChain, tier: 2))
+
+        XCTAssertTrue(banked)
+        XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 1,
+                       "an inert tier 0-2 intermediate keeps its animal-storage home")
+    }
+
+    func testCompletingASubObjectWithSuppliesFullPaysCoinsAndLeavesAnimalStorageEmpty() {
+        let vm = makeViewModel()
+        fillSupplies(vm)
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: b)
+        let coinsBefore = vm.coins
+
+        vm.attemptMergeOrMove(from: a, to: b)
+
+        XCTAssertNil(vm.board[b.row][b.col].item)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty,
+                      "animal storage must stay empty")
+        let paid = vm.coins - coinsBefore
+        XCTAssertTrue(SubObjectRarity.allCases.map(\.coinValue).contains(paid),
+                      "the rolled rarity's coin value was banked, got \(paid)")
     }
 
     // MARK: collectCompletedSubObject — tapping a finished tile on the board
@@ -301,5 +375,194 @@ final class PowerUpSinkTests: XCTestCase {
         XCTAssertNil(vm.board[a.row][a.col].item)
         XCTAssertEqual(vm.coins, coinsBefore)
         XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 1)
+    }
+
+    // MARK: sweepStoredGoldenBalls — cashing balls an old save left in animal storage
+
+    private func storeBall(_ vm: MergeBoardViewModel, chainID: ChainID? = nil, count: Int = 1,
+                           rarity: SubObjectRarity? = .speed, tier: Int = 3, from start: Int = 0) {
+        for i in 0..<count {
+            vm.inventoryStore.inventory[start + i] =
+                BoardItem(chainID: chainID ?? dogSubObjectChain, tier: tier, rarity: rarity)
+        }
+    }
+
+    private var fiveSlotTotal: Int { 5 * trophySlotCoins + trophyPageBonusCoins }
+
+    func testSweepPaysTrophySlotsInOrderAndClearsStorage() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 3)
+        let coinsBefore = vm.coins
+
+        let paid = vm.sweepStoredGoldenBalls()
+
+        XCTAssertEqual(paid, 3 * trophySlotCoins)
+        XCTAssertEqual(vm.trophyCounts["dog"], 3)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertEqual(vm.coins, coinsBefore + paid)
+    }
+
+    func testSweepFifthSlotPaysThePageBonus() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 5)
+
+        XCTAssertEqual(vm.sweepStoredGoldenBalls(), fiveSlotTotal)
+        XCTAssertEqual(vm.trophyCounts["dog"], trophySlotsPerFamily)
+    }
+
+    func testSweepSixthBallPaysItsRarityValue() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 6)
+
+        XCTAssertEqual(vm.sweepStoredGoldenBalls(), fiveSlotTotal + SubObjectRarity.speed.coinValue)
+        XCTAssertEqual(vm.trophyCounts["dog"], 5)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+    }
+
+    func testSweepBallWithNoRarityIsLeftAlone() {
+        let vm = makeViewModel()
+        storeBall(vm, rarity: nil)
+
+        XCTAssertEqual(vm.sweepStoredGoldenBalls(), 0)
+        XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 1)
+    }
+
+    func testSweepKeepsFamiliesOnSeparatePages() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 2)
+        storeBall(vm, chainID: "subobject.cat", from: 2)
+
+        vm.sweepStoredGoldenBalls()
+
+        XCTAssertEqual(vm.trophyCounts[AnimalSpecies.dog.rawValue], 2)
+        XCTAssertEqual(vm.trophyCounts[AnimalSpecies.cat.rawValue], 1)
+    }
+
+    func testSweepLeavesAnimalsSuperpowerPiecesAndLowerTiersAlone() {
+        let vm = makeViewModel()
+        guard let active = AnimalSpecies.allCases.first(where: { $0.superpower.isActive }) else {
+            return XCTFail("no species has an active superpower")
+        }
+        vm.inventoryStore.inventory[0] = BoardItem(chainID: "dog", tier: 2)
+        vm.inventoryStore.inventory[1] = BoardItem(chainID: dogSubObjectChain, tier: 2)
+        vm.inventoryStore.inventory[2] = BoardItem(chainID: ContentRegistry.superpowerChainID(active), tier: 0)
+        let coinsBefore = vm.coins
+
+        XCTAssertEqual(vm.sweepStoredGoldenBalls(), 0)
+        XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 3)
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertTrue(vm.trophyCounts.isEmpty)
+    }
+
+    func testSweepTwiceDoesNotPayTwice() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 3)
+        vm.sweepStoredGoldenBalls()
+        let coinsAfterFirst = vm.coins
+
+        XCTAssertEqual(vm.sweepStoredGoldenBalls(), 0)
+        XCTAssertEqual(vm.coins, coinsAfterFirst)
+        XCTAssertEqual(vm.trophyCounts["dog"], 3)
+    }
+
+    func testSweepWithEmptyStorageShowsNoToastAndPaysNothing() {
+        let vm = makeViewModel()
+        let toastsBefore = vm.toastQueue.count
+        let coinsBefore = vm.coins
+
+        XCTAssertEqual(vm.sweepStoredGoldenBalls(), 0)
+        XCTAssertEqual(vm.toastQueue.count, toastsBefore)
+        XCTAssertEqual(vm.coins, coinsBefore)
+    }
+
+    func testSweepToastNamesCountAndCoins() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 3)
+
+        let paid = vm.sweepStoredGoldenBalls()
+
+        guard let toast = vm.toastQueue.last, case .info(let text) = toast.kind else {
+            return XCTFail("expected an info toast")
+        }
+        XCTAssertTrue(text.contains("3 stored Golden Balls"), text)
+        XCTAssertTrue(text.contains("+\(paid) coins"), text)
+    }
+
+    func testSweepToastIsSingularForOneBall() {
+        let vm = makeViewModel()
+        storeBall(vm, count: 1)
+
+        vm.sweepStoredGoldenBalls()
+
+        guard let toast = vm.toastQueue.last, case .info(let text) = toast.kind else {
+            return XCTFail("expected an info toast")
+        }
+        XCTAssertTrue(text.contains("1 stored Golden Ball:"), text)
+    }
+
+    func testSweepBallOfAnUnresolvableFamilyIsCashedAtItsRarityValue() {
+        // "subobject.unknownspecies" still has the subobject. prefix and a rarity,
+        // so the sweep treats it as a completed ball; no AnimalSpecies matches,
+        // so it skips the Trophy page and pays the rarity value.
+        let vm = makeViewModel()
+        storeBall(vm, chainID: "subobject.unknownspecies", rarity: .speed)
+        let coinsBefore = vm.coins
+
+        let paid = vm.sweepStoredGoldenBalls()
+
+        XCTAssertEqual(paid, SubObjectRarity.speed.coinValue)
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.speed.coinValue)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertTrue(vm.trophyCounts.isEmpty)
+    }
+
+    // MARK: loadGame runs the sweep (the production path)
+
+    /// A save written by an older build: one completed dog ball in animal storage.
+    private func saveWithStoredBall(lastWeeklyReset: Date? = nil) -> Int {
+        let vm = makeViewModel()
+        storeBall(vm, count: 1)
+        if let lastWeeklyReset { vm.lastWeeklyGoalReset = lastWeeklyReset }
+        vm.persistNow()
+        return vm.coins
+    }
+
+    func testLoadGameCashesABallAnOldSaveLeftInAnimalStorage() {
+        let savedCoins = saveWithStoredBall()
+
+        let relaunched = MergeBoardViewModel()
+        relaunched.loadGame()
+
+        XCTAssertTrue(relaunched.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertEqual(relaunched.coins, savedCoins + trophySlotCoins)
+        XCTAssertEqual(relaunched.trophyCounts["dog"], 1)
+        XCTAssertTrue(relaunched.toastQueue.contains { toast in
+            if case .info(let text) = toast.kind { return text.contains("1 stored Golden Ball") }
+            return false
+        })
+    }
+
+    func testLoadGameSweepPayoutCountsTowardTheCurrentWeekNotTheOneJustEnded() {
+        // The save's last weekly reset was two weeks ago, so loadGame zeroes
+        // coinsEarnedThisWeek. The sweep must pay after that, or its coins land
+        // in last week's total and are wiped.
+        let twoWeeksAgo = Date().addingTimeInterval(-14 * 24 * 3600)
+        _ = saveWithStoredBall(lastWeeklyReset: twoWeeksAgo)
+
+        let relaunched = MergeBoardViewModel()
+        relaunched.loadGame()
+
+        XCTAssertEqual(relaunched.coinsEarnedThisWeek, trophySlotCoins)
+    }
+
+    func testFreshStartPaysNothingAndShowsNoSweepToast() {
+        let vm = MergeBoardViewModel()
+        vm.loadGame()
+
+        XCTAssertTrue(vm.trophyCounts.isEmpty)
+        XCTAssertFalse(vm.toastQueue.contains { toast in
+            if case .info(let text) = toast.kind { return text.contains("Golden Ball") }
+            return false
+        })
     }
 }

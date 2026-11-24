@@ -1053,10 +1053,16 @@ class MergeBoardViewModel {
     func loadGame(at date: Date = Date()) {
         guard !didLoadGame else { return }
         didLoadGame = true
+        let loadedSave: Bool
         if let saved = GameStore.load() {
+            loadedSave = true
             apply(saved)
+            // The stored-Golden-Ball sweep is NOT called here: it pays coins, and
+            // the weekly reset below would zero a payout made before it. See the
+            // call after `checkEventLifecycle`.
             if let last = saved.lastActiveDate { applyOfflineProgress(since: last) }
         } else {
+            loadedSave = false
             if let oldVersion = GameStore.discardedIncompatibleVersion {
                 incompatibleSaveVersion = oldVersion
                 showIncompatibleSaveAlert = true
@@ -1076,6 +1082,12 @@ class MergeBoardViewModel {
         checkWeeklyGoalReset()
         checkMonthlyGoalReset()
         checkEventLifecycle(at: date)
+        // Cash completed Golden Balls an older build left in animal storage
+        // (specs/Spec_StoredGoldenBalls.md). After the weekly/monthly resets so
+        // its coins count toward the new week rather than being zeroed with the
+        // old one; before any player input or board sample. Saved games only: a
+        // fresh start has nothing stored. Idempotent, so it needs no flag.
+        if loadedSave { sweepStoredGoldenBalls() }
         // Playtest instrumentation (v41). Placed here rather than beside the
         // restore, because at that point a fresh game has no board yet — the
         // first version of this sampled `freshStart` before `buildEmptyBoard`
@@ -2917,10 +2929,10 @@ class MergeBoardViewModel {
                 let msg: String
                 switch (banked, powerUpItem.rarity) {
                 case (false, let rolled?):
-                    // Both the 6 Supplies slots and animal inventory were full.
-                    // Previously this destroyed the completed sub-object while
-                    // still reporting success (found in review) — now it always
-                    // has somewhere to go.
+                    // The 6 Supplies slots were full (a completed ball is never
+                    // filed in animal storage). Previously this destroyed the
+                    // completed sub-object while still reporting success (found
+                    // in review) — now it always has somewhere to go.
                     earnCoins(rolled.coinValue)
                     msg = "Supplies full — converted to +\(rolled.coinValue) Coins"
                 case (true, let rolled?):
@@ -4673,18 +4685,56 @@ class MergeBoardViewModel {
         trophySlotCoins + (trophySlotsFilled(for: species) + 1 == trophySlotsPerFamily ? trophyPageBonusCoins : 0)
     }
 
+    /// Fills `species`' next free Trophy slot and pays for it. The caller has
+    /// already checked the page has room and removed the ball.
+    private func fillNextTrophySlot(for species: AnimalSpecies) -> (payout: Int, filled: Int) {
+        let payout = nextTrophyPayout(for: species)
+        let filled = trophySlotsFilled(for: species) + 1
+        trophyCounts[species.rawValue] = filled
+        earnCoins(payout)
+        return (payout, filled)
+    }
+
+    /// Load-time cleanup for saves from before a completed ball was barred from
+    /// animal storage. Cashes every completed sub-object left there, in slot
+    /// order: each fills its family's next free Trophy slot, or pays its rarity's
+    /// coin value once that family's page is full. Animals, superpower pieces and
+    /// tier 0-2 sub-objects stay. Returns the coins paid; 0 means nothing found,
+    /// and nothing is toasted or saved. Can be deleted once old saves are clean.
+    @discardableResult
+    func sweepStoredGoldenBalls() -> Int {
+        var swept = 0
+        var paid = 0
+        for index in inventoryStore.inventory.indices {
+            guard let item = inventoryStore.inventory[index],
+                  let rarity = item.rarity,
+                  item.chainID.hasPrefix("subobject.") else { continue }
+            inventoryStore.inventory[index] = nil
+            if let species = trophyFamily(of: item), trophySlotsFilled(for: species) < trophySlotsPerFamily {
+                paid += fillNextTrophySlot(for: species).payout
+            } else {
+                earnCoins(rarity.coinValue)
+                paid += rarity.coinValue
+            }
+            swept += 1
+        }
+        guard swept > 0 else { return 0 }
+        inventoryStore.recalcInventoryOccupied()
+        enqueueToast(Toast(kind: .info(
+            "Cashed \(swept) stored Golden Ball\(swept == 1 ? "" : "s"): +\(paid) coins")))
+        persist()
+        return paid
+    }
+
     /// Moves the selected completed sub-object onto its family's Trophy page.
     /// Returns true when a slot was filled; leaves the item alone otherwise.
     @discardableResult
     func addSelectedPowerUpToTrophy() -> Bool {
         guard let slot = selectedPowerUpSlot,
               let species = selectedPowerUpTrophyFamily else { return false }
-        let payout = nextTrophyPayout(for: species)
-        let filled = trophySlotsFilled(for: species) + 1
         inventoryStore.powerUpInventory[slot] = nil
         selectedPowerUpSlot = nil
-        trophyCounts[species.rawValue] = filled
-        earnCoins(payout)
+        let (payout, filled) = fillNextTrophySlot(for: species)
         SoundManager.shared.playQuestClaim()
         HapticManager.shared.successPattern()
         if filled == trophySlotsPerFamily {
