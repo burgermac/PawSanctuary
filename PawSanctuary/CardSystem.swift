@@ -374,7 +374,13 @@ enum CardRegistry {
     static func offeredRareIDs(owned: (String) -> Bool, on date: Date,
                                calendar: Calendar = .current) -> [String] {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        let seed = UInt64((parts.year ?? 0) * 10_000 + (parts.month ?? 0) * 100 + (parts.day ?? 0))
+        // Split into typed steps: CI's compiler (Xcode 16.4) cannot type-check the
+        // one-line sum of three optionals in reasonable time.
+        let year: Int = parts.year ?? 0
+        let month: Int = parts.month ?? 0
+        let day: Int = parts.day ?? 0
+        let dayNumber: Int = year * 10_000 + month * 100 + day
+        let seed = UInt64(dayNumber)
         var rng = SeededGenerator(seed: seed)
         var ids = rareCards.map(\.id).sorted()
         ids.shuffle(using: &rng)
