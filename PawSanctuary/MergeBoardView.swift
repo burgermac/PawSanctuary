@@ -135,6 +135,19 @@ struct MergeBoardView: View {
             return [card ?? tutorialTaskFrame]
         case .boardFull, .firstItemStored:
             return tutorialFrames[.basketButton].map { [$0] } ?? []
+        case .chainViewer:
+            return tutorialFrames[.chainInfoButton].map { [$0] } ?? []
+        case .firstDailyHandIn:
+            // The Claim button on the task's card; the lane scrolls to it, so until
+            // it is drawn the tip points at the whole band.
+            guard let id = viewModel.coachMarkOrderID(for: moment) else { return [tutorialTaskFrame] }
+            return [tutorialFrames[.dailyTaskClaim(id)] ?? tutorialTaskFrame]
+        case .mapAreaAffordable, .firstCardPack:
+            return tutorialFrames[.mapButton].map { [$0] } ?? []
+        case .freeChest:
+            // The tile reports a frame only while it is on screen (not behind the
+            // collapsed tray, not scrolled away); else the tip points at the tray band.
+            return [tutorialFrames[.freeChestTile] ?? tutorialTaskFrame]
         default:
             return viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
         }
@@ -326,7 +339,10 @@ struct MergeBoardView: View {
 
             // Coach mark — a bubble and a pointing hand on the real target, no
             // scrim, and play is never blocked (Spec_ContextTutorial.md §4.1).
-            if let moment = coachMoment, let text = moment.coachMarkText {
+            // The chain-viewer tip is only about the "i" button, so it waits until that
+            // button is on screen and has reported where it is.
+            if let moment = coachMoment, let text = moment.coachMarkText,
+               moment != .chainViewer || tutorialFrames[.chainInfoButton] != nil {
                 CoachMarkOverlay(
                     moment: moment,
                     text: text,
@@ -729,7 +745,8 @@ struct MergeBoardView: View {
                              activeSheet: taskSheetBinding,
                              showParallelBoard: $showParallelBoard,
                              onOpenShop: { activeRoute = .shop(focusSlot: nil) },
-                             isExpanded: $trayExpanded)
+                             isExpanded: $trayExpanded,
+                             pointsAtFreeChest: coachMoment == .freeChest)
                 OrderLaneView(viewModel: viewModel, activeSheet: taskSheetBinding,
                               scrollToOrderID: coachMoment.flatMap { viewModel.coachMarkOrderID(for: $0) })
             }
@@ -1134,7 +1151,10 @@ struct MergeBoardView: View {
                 if let info = viewModel.selectedItemInfo {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         if info.chainID != nil {
-                            Button(action: { activeRoute = info.chainID.map { .mergeProgression($0) } }) {
+                            Button(action: {
+                                viewModel.noteChainViewerOpened()
+                                activeRoute = info.chainID.map { .mergeProgression($0) }
+                            }) {
                                 ZStack {
                                     Circle()
                                         .fill(Color(red: 0.28, green: 0.50, blue: 0.72))
@@ -1146,6 +1166,7 @@ struct MergeBoardView: View {
                                 }
                             }
                             .offset(y: -4)
+                            .reportTutorialFrame(.chainInfoButton, enabled: coachMoment == .chainViewer)
                         }
                         Text(info.text)
                             .font(.system(size: 11, weight: .medium))
@@ -1179,6 +1200,7 @@ struct MergeBoardView: View {
                     if viewModel.showMap {
                         viewModel.showMap = false
                     } else {
+                        viewModel.noteMapOpened()
                         viewModel.showInventory = false
                         viewModel.selectedInventorySlot = nil
                         viewModel.showMap = true
@@ -1208,6 +1230,8 @@ struct MergeBoardView: View {
                           : Color.white.opacity(0.35)))
             }
             .foregroundColor(Color(red: 0.10, green: 0.28, blue: 0.06))
+            .reportTutorialFrame(.mapButton,
+                                 enabled: coachMoment == .mapAreaAffordable || coachMoment == .firstCardPack)
             .padding(.trailing, 16)
         }
         .padding(.vertical, 8)

@@ -50,6 +50,11 @@ final class OrderCoachMarkTests: XCTestCase {
         vm.markTutorialMomentSeen(.firstMerge)
         // An empty board has no pair to merge, which is M12's moment; these tests are not about it.
         vm.markTutorialMomentSeen(.noMergesLeft)
+        // A new game has a toolbox, a ready chest and maybe a stocked daily task: the
+        // feature tips (stage 5) have their own tests in FeatureCoachMarkTests.
+        let featureTips: [TutorialMoment] = [.chainViewer, .firstDailyHandIn, .toolbox, .mapAreaAffordable,
+                                             .firstCardPack, .freeChest, .firstBubble]
+        for moment in featureTips { vm.markTutorialMomentSeen(moment) }
         var board = vm.board
         for r in board.indices { for c in board[r].indices { board[r][c].item = nil } }
         vm.board = board

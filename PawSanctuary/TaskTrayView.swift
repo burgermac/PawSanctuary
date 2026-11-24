@@ -282,6 +282,11 @@ struct TaskTrayView: View {
     /// to be able to collapse the tray, and the board is the parent's.
     @Binding var isExpanded: Bool
 
+    /// A coach mark points at the free-chest tile (M18). The tile reports its
+    /// frame only while it can be seen, so the bubble never aims at a tile
+    /// hidden behind the collapsed tray or scrolled out of the viewport.
+    var pointsAtFreeChest: Bool = false
+
     @State private var scrollOffset: CGFloat = 0
 
     private let scrollSpace = "taskTrayScroll"
@@ -362,7 +367,7 @@ struct TaskTrayView: View {
                                                          spacing: trayTileSpacing),
                                      count: trayColumns),
                       spacing: trayRowSpacing) {
-                ForEach(tiles) { tile in
+                ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in
                     Button(action: tile.action) {
                         TrayTileView(icon: tile.icon,
                                      tint: tile.tint,
@@ -371,6 +376,9 @@ struct TaskTrayView: View {
                                      accessibilityText: tile.accessibilityText)
                     }
                     .buttonStyle(.plain)
+                    .reportTutorialFrame(.freeChestTile,
+                                         enabled: pointsAtFreeChest && tile.id == "freeChest"
+                                                  && isTileOnScreen(at: index))
                 }
             }
             .frame(width: trayGridWidth)
@@ -407,6 +415,15 @@ struct TaskTrayView: View {
         .contentShape(Rectangle())
         .padding(.vertical, trayPanelPadV)
         .padding(.trailing, trayPanelPadH)
+    }
+
+    /// Whether the tile at `index` is on screen now: not behind the collapsed
+    /// tray's clip (only column 1 survives), and inside the scroll viewport.
+    private func isTileOnScreen(at index: Int) -> Bool {
+        let column = index % trayColumns, row = index / trayColumns
+        guard isExpanded || column == 0 else { return false }
+        let top = CGFloat(row) * (trayTileSize + trayRowSpacing) + scrollOffset
+        return top >= -2 && top + trayTileSize <= trayViewportH + 2
     }
 
     // MARK: Scroll position

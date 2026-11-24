@@ -118,7 +118,26 @@ enum TutorialMoment: String, CaseIterable, Codable {
             return "Kibble refills on its own. Meanwhile, merge what you have or deliver an order."
         case .noMergesLeft:
             return "No matching pairs right now. Tap the spawner for more animals."
-        default:
+        case .chainViewer:
+            return "Tap i to see every level this animal can grow into."
+        case .firstDailyHandIn:
+            return "You have everything for this task. Claim takes those animals off the board."
+        case .toolbox:
+            return "Tap the toolbox to collect building materials."
+        case .mapAreaAffordable:
+            return "You can build something on the Sanctuary Map!"
+        case .firstCardPack:
+            return "You earned a card pack. Open it in the Card Album on the map."
+        case .freeChest:
+            return "A free chest is ready. Tap to open it."
+        case .firstBubble:
+            // The free route only: never the pop sheet's paid buttons (spec §5, M19).
+            return "A bubbled animal is still waiting to be rescued. Drag a matching animal onto it to free it, or leave it and it turns into coins."
+        case .sellVsOrder:
+            // Not a bubble: it stays the toast it always was, with its own wording.
+            return nil
+        case .firstWildcard:
+            // Stage 6.
             return nil
         }
     }

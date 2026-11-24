@@ -21,6 +21,11 @@ enum TutorialFrameID: Hashable {
     case questClaim
     case deliverPill(UUID)
     case basketButton
+    // Stage 5 (feature tips)
+    case chainInfoButton
+    case dailyTaskClaim(UUID)
+    case mapButton
+    case freeChestTile
 }
 
 struct TutorialFrameKey: PreferenceKey {
