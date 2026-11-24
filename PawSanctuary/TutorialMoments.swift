@@ -137,8 +137,9 @@ enum TutorialMoment: String, CaseIterable, Codable {
             // Not a bubble: it stays the toast it always was, with its own wording.
             return nil
         case .firstWildcard:
-            // Stage 6.
-            return nil
+            // Group D: only ever shown with D7's gate open. It explains the tile and
+            // says nothing about getting another one (no price, no shop; spec §5, Q6).
+            return "A wildcard merges with any animal. It does not fill an order slot."
         }
     }
 
@@ -147,7 +148,7 @@ enum TutorialMoment: String, CaseIterable, Codable {
     /// waits for its action or the x.
     var autoCloseSeconds: Double? {
         switch self {
-        case .orderOnHold, .splitWarning: return 6
+        case .orderOnHold, .splitWarning, .firstWildcard: return 6
         case .afterDeliver:               return 4
         case .firstItemStored, .spawnerResting: return 5
         default:                          return nil
