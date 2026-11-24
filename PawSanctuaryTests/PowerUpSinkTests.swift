@@ -126,4 +126,180 @@ final class PowerUpSinkTests: XCTestCase {
         XCTAssertEqual(vm.coins, coinsBefore, "storage had room, so the normal bank path pays no coins")
         XCTAssertTrue(vm.inventoryStore.powerUpInventory.contains { $0?.chainID == self.dogSubObjectChain })
     }
+
+    // MARK: collectCompletedSubObject — tapping a finished tile on the board
+
+    private func placeCompleted(_ vm: MergeBoardViewModel, rarity: SubObjectRarity?, at pos: GridPosition) {
+        var board = vm.board
+        board[pos.row][pos.col].item = BoardItem(chainID: dogSubObjectChain, tier: 3, rarity: rarity)
+        vm.board = board
+    }
+
+    func testTappingCompletedSubObjectPaysItsRarityValueAndClearsCell() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .highTierDrop, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.highTierDrop.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+    }
+
+    func testTappingCompletedSubObjectWithoutRarityPaysSpeedValue() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: nil, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.speed.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+    }
+
+    func testTappingLowerTierSubObjectDoesNotCollect() {
+        // Tiers 0 through 2 of the dog sub-object chain are all below the completed tier.
+        for tier in 0...2 {
+            let vm = makeViewModel()
+            place(vm, chainID: dogSubObjectChain, tier: tier, at: a)
+            let coinsBefore = vm.coins
+
+            vm.boardCellTapped(at: a)
+
+            XCTAssertEqual(vm.coins, coinsBefore, "tier \(tier) must not pay coins")
+            XCTAssertNotNil(vm.board[a.row][a.col].item, "tier \(tier) must stay on the board")
+            XCTAssertEqual(vm.selectedCell, a, "tier \(tier) tap selects the cell as usual")
+        }
+    }
+
+    func testTappingTopTierAnimalDoesNotCollect() {
+        let vm = makeViewModel()
+        place(vm, chainID: ContentRegistry.animalChainID(.dog), tier: animalChainTopTier, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertNotNil(vm.board[a.row][a.col].item)
+    }
+
+    func testTappingCompletedSubObjectInLockedCellDoesNothing() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .highTierDrop, at: a)
+        vm.board[0][0].isUnlocked = false
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertNotNil(vm.board[a.row][a.col].item)
+    }
+
+    func testSecondTapOnCollectedCellPaysNothing() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .mapSupplies, at: a)
+        let coinsBefore = vm.coins
+
+        vm.boardCellTapped(at: a)
+        let coinsAfterFirst = vm.coins
+        vm.boardCellTapped(at: a)
+
+        XCTAssertEqual(coinsAfterFirst, coinsBefore + SubObjectRarity.mapSupplies.coinValue)
+        XCTAssertEqual(vm.coins, coinsAfterFirst, "the cell is empty now, so a second tap pays nothing")
+    }
+
+    func testCollectingClearsSelectionOnThatCell() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .speed, at: a)
+        vm.selectedCell = a
+
+        XCTAssertTrue(vm.collectCompletedSubObject(at: a))
+
+        XCTAssertNil(vm.selectedCell)
+    }
+
+    func testCollectingLeavesSelectionOnAnotherCellAlone() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .speed, at: a)
+        vm.selectedCell = b
+
+        XCTAssertTrue(vm.collectCompletedSubObject(at: a))
+
+        XCTAssertEqual(vm.selectedCell, b)
+    }
+
+    // MARK: drag hint — dropping a completed tile off-board collects it
+
+    func testDragHintForCompletedSubObjectSaysDropCollectsCoins() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .highTierDrop, at: a)
+        vm.draggingFrom = a
+
+        let text = vm.selectedItemInfo?.text ?? ""
+
+        XCTAssertTrue(text.contains("\(SubObjectRarity.highTierDrop.coinValue)"),
+                      "hint must show the payout, got: \(text)")
+        XCTAssertTrue(text.lowercased().contains("collect"), "got: \(text)")
+        XCTAssertFalse(text.contains("storage"), "got: \(text)")
+    }
+
+    func testDragHintForCompletedSubObjectWithoutRarityShowsSpeedValue() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: nil, at: a)
+        vm.draggingFrom = a
+
+        let text = vm.selectedItemInfo?.text ?? ""
+
+        XCTAssertTrue(text.contains("\(SubObjectRarity.speed.coinValue)"), "got: \(text)")
+    }
+
+    func testDragHintForNonCompletedItemStillSaysMoveToStorage() {
+        let vm = makeViewModel()
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        vm.draggingFrom = a
+
+        XCTAssertEqual(vm.selectedItemInfo?.text, "Drag off-board to move to storage")
+    }
+
+    // MARK: send-to-storage — a completed tile is collected, not stored
+
+    func testSendingCompletedSubObjectToStorageCollectsItInstead() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .mapSupplies, at: a)
+        let coinsBefore = vm.coins
+
+        vm.sendBoardItemToInventory(from: a)
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.mapSupplies.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty,
+                      "a completed sub-object is cashed in, never filed as an animal")
+        XCTAssertTrue(vm.inventoryStore.powerUpInventory.allSatisfy { $0 == nil })
+    }
+
+    func testStoringSelectedCompletedSubObjectCollectsItInstead() {
+        let vm = makeViewModel()
+        placeCompleted(vm, rarity: .mapSupplies, at: a)
+        let coinsBefore = vm.coins
+        vm.selectedCell = a
+
+        vm.storeSelectedItemToInventory()
+
+        XCTAssertEqual(vm.coins, coinsBefore + SubObjectRarity.mapSupplies.coinValue)
+        XCTAssertNil(vm.board[a.row][a.col].item)
+        XCTAssertTrue(vm.inventoryStore.inventory.compactMap { $0 }.isEmpty)
+        XCTAssertTrue(vm.inventoryStore.powerUpInventory.allSatisfy { $0 == nil })
+    }
+
+    func testSendingTierTwoSubObjectToStorageStillGoesToAnimalInventory() {
+        let vm = makeViewModel()
+        place(vm, chainID: dogSubObjectChain, tier: 2, at: a)
+        let coinsBefore = vm.coins
+
+        vm.sendBoardItemToInventory(from: a)
+
+        XCTAssertNil(vm.board[a.row][a.col].item)
+        XCTAssertEqual(vm.coins, coinsBefore)
+        XCTAssertEqual(vm.inventoryStore.inventory.compactMap { $0 }.count, 1)
+    }
 }

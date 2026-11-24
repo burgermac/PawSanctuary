@@ -705,7 +705,11 @@ class MergeBoardViewModel {
     func orderValue(forTier tier: Int) -> Int { orderCoinPayout(tier: tier) }
 
     var selectedItemInfo: (text: String, chainID: ChainID?)? {
-        if draggingFrom != nil {
+        if let from = draggingFrom {
+            // A completed sub-object is cashed in on drop, so say so and show the payout.
+            if let item = boardState.item(at: from), let payout = completedSubObjectPayout(item) {
+                return ("Drop off-board to collect +\(payout) coins", nil)
+            }
             return ("Drag off-board to move to storage", nil)
         }
         guard let pos = selectedCell,
@@ -2125,6 +2129,7 @@ class MergeBoardViewModel {
         if collectCurrencyItem(at: pos) {
             return
         }
+        if collectCompletedSubObject(at: pos) { return }
         if collectDecayedBubbleIfAny(at: pos) {
             return
         }
@@ -2844,6 +2849,9 @@ class MergeBoardViewModel {
         // A currency item dragged to storage collects instead of vanishing
         // into a category that never actually holds one (Phase 4, Task 4.1).
         if collectCurrencyItem(at: pos) { return }
+        // A completed sub-object is cashed in for coins, not filed as an
+        // animal (the animal inventory is the wrong home for it).
+        if collectCompletedSubObject(at: pos) { return }
         if inventoryStore.addItem(item) {
             boardState.clearItem(at: pos)
             recalcBoardIsFull()
@@ -2856,6 +2864,7 @@ class MergeBoardViewModel {
     func storeSelectedItemToInventory() {
         guard let pos = selectedCell, let item = boardState.item(at: pos) else { return }
         if collectCurrencyItem(at: pos) { return }
+        if collectCompletedSubObject(at: pos) { return }
         if inventoryStore.addItem(item) {
             boardState.clearItem(at: pos)
             selectedCell = nil
@@ -4006,6 +4015,38 @@ class MergeBoardViewModel {
             message = ""
         }
         if !message.isEmpty { enqueueToast(Toast(kind: .info(message))) }
+        SoundManager.shared.playButtonTap()
+        recalcBoardIsFull()
+        persist()
+        return true
+    }
+
+    /// Coins a completed sub-object (a sub-object chain's top tier) pays when
+    /// collected, or `nil` if `item` is anything else. Single source for both the
+    /// collect and the drag hint, so the number shown is the number paid.
+    private func completedSubObjectPayout(_ item: BoardItem) -> Int? {
+        guard let chain = ContentRegistry.shared.chain(item.chainID),
+              chain.category == .subObject,
+              item.tier == chain.maxTier else { return nil }
+        return (item.rarity ?? .speed).coinValue
+    }
+
+    /// Tap a completed sub-object (a sub-object chain's top tier, e.g. the
+    /// Canines "Golden Ball") left on the board to cash it in for coins. Without
+    /// this, a completed tile that was never routed to storage (storage full, or
+    /// placed back on the board) had no exit. Pays the rolled rarity's coin value,
+    /// falling back to the `.speed` value for a tile that never rolled one.
+    /// Returns `false` (no-op) for anything else, including lower-tier sub-objects,
+    /// top-tier animals, and tiles in a locked cell.
+    @discardableResult
+    func collectCompletedSubObject(at pos: GridPosition) -> Bool {
+        guard boardState.isUnlocked(at: pos),
+              let item = boardState.item(at: pos),
+              let amount = completedSubObjectPayout(item) else { return false }
+        boardState.clearItem(at: pos)
+        if selectedCell == pos { selectedCell = nil }
+        earnCoins(amount)
+        enqueueToast(Toast(kind: .info("+\(amount) Coins")))
         SoundManager.shared.playButtonTap()
         recalcBoardIsFull()
         persist()
