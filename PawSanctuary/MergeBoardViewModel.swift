@@ -1576,6 +1576,7 @@ class MergeBoardViewModel {
         boardTheme = .meadow; boardThemePrompted = false
         trophyCounts = [:]
         seenTutorialMoments = []
+        pendingFrictionTip = nil
         coins = 0; coinsEarnedThisWeek = 0; piggyBankCoins = 0; freeChestReadyAt = .distantPast
         weeklyGoalBronzeClaimed = false; weeklyGoalSilverClaimed = false; weeklyGoalGoldClaimed = false
         lastWeeklyGoalReset = nil; weeklyGoldCompletions = 0
@@ -1790,6 +1791,7 @@ class MergeBoardViewModel {
             // instead of spawning. Checked first so the wait is never bypassed.
             guard producer.isReady else {
                 requestSpawnerSkip(at: pos)
+                noteRestingSpawnerTap(at: pos)
                 selectedCell = pos
                 return
             }
@@ -1810,6 +1812,7 @@ class MergeBoardViewModel {
             guard let target = empty.randomElement() else {
                 triggerToast(.boardFull); selectedCell = pos; return
             }
+            closeNoMergesTipOnSpawn()
 
             // High-Tier Drop guarantee: force tier ≥ 2 and consume the buff.
             if producer.nextDropGuaranteedHighTier {
@@ -2172,6 +2175,90 @@ class MergeBoardViewModel {
     private var pendingAfterDeliverTip = false
     private var splitOrderID: UUID?
 
+    /// The friction lesson's session-only state (stage 4). A friction event (the
+    /// board-full toast, a first store, a tap on a resting spawner) sets
+    /// `pendingFrictionTip` only if the gap since the last tip has run out, so a
+    /// tip that could not show is dropped, never queued to appear stale later. It
+    /// stays set until the tip closes, so the bubble does not vanish by itself.
+    /// The out-of-kibble line (M11) and the no-merges tip (M12) need no latch: M11
+    /// lives inside the kibble sheet and M12 is read off the board.
+    private var pendingFrictionTip: TutorialMoment?
+    private var restingSpawnerPosition: GridPosition?
+
+    private func gapSinceLastTipHasRunOut(now: Date = Date()) -> Bool {
+        guard let last = lastCoachMarkClosedAt else { return true }
+        return now.timeIntervalSince(last) >= tutorialMomentGapSeconds
+    }
+
+    private func offerFrictionTip(_ moment: TutorialMoment, now: Date = Date()) {
+        guard !hasSeenTutorialMoment(moment), pendingFrictionTip == nil,
+              gapSinceLastTipHasRunOut(now: now) else { return }
+        pendingFrictionTip = moment
+    }
+
+    /// "Board is Full" toast (M8).
+    private func noteBoardFullToast() { offerFrictionTip(.boardFull) }
+
+    /// A merge or a sell frees a cell, which is what the board-full tip asks for.
+    private func closeBoardFullTipAfterAction() {
+        if pendingFrictionTip == .boardFull { closeCoachMark(.boardFull) }
+    }
+
+    /// An animal went into storage (M8 done, M9). While the board-full tip is
+    /// up the store finishes it and the stored tip follows at once: it is the
+    /// same moment, the rule behind the basket, so the gap does not apply.
+    private func noteItemStored() {
+        if pendingFrictionTip == .boardFull {
+            markTutorialMomentSeen(.boardFull)
+            pendingFrictionTip = hasSeenTutorialMoment(.firstItemStored) ? nil : .firstItemStored
+            return
+        }
+        offerFrictionTip(.firstItemStored)
+    }
+
+    /// A tap on a cooling family spawner (M10). Only before the D7 gate: after
+    /// it the skip alert explains itself (M21) and the tip never shows.
+    private func noteRestingSpawnerTap(at pos: GridPosition) {
+        guard !isMonetizationUnlocked else { return }
+        restingSpawnerPosition = pos
+        offerFrictionTip(.spawnerResting)
+    }
+
+    /// The first family spawner that is ready and that the player can pay for.
+    private var readyFamilySpawnerPosition: GridPosition? {
+        for row in board {
+            for cell in row {
+                guard let tile = cell.producer, tile.level == .familySpawner, tile.isReady,
+                      let species = tile.species else { continue }
+                let maxTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(species))?.maxTier ?? 0
+                let tier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
+                if kibbleEngine.kibble >= spawnerTapCost(forTier: tier, species: species) { return cell.position }
+            }
+        }
+        return nil
+    }
+
+    /// M12's trigger: nothing to merge, and a spawn is possible (ready, paid for, room for it).
+    private var hasNoMergesLeftWithSpawnerReady: Bool {
+        readyFamilySpawnerPosition != nil && !emptyUnlockedCells.isEmpty && findMergeableHintPair() == nil
+    }
+
+    /// A spawn tap is about to land. If the no-merges tip was up, this is the
+    /// action it asks for. Checked before the new animal lands (it could make a
+    /// pair), and only when the tip could have been showing, so a spawn inside
+    /// the gap does not use the tip up unseen.
+    private func closeNoMergesTipOnSpawn() {
+        guard !hasSeenTutorialMoment(.noMergesLeft), gapSinceLastTipHasRunOut(),
+              hasNoMergesLeftWithSpawnerReady else { return }
+        closeCoachMark(.noMergesLeft)
+    }
+
+    /// The out-of-kibble line (M11) is offered inside the sheet until it has been
+    /// seen once. It sits beside the nearest-order footer and never beside a
+    /// refill row, even when the tap that opened the sheet also opened the D7
+    /// gate (spec §5).
+    var showsOutOfKibbleTip: Bool { !hasSeenTutorialMoment(.outOfKibble) }
+
     /// Orders a player can act on now: the persistent slots, and the urgent order
     /// while its clock runs. A delivered order holds nothing.
     private var openOrdersForTutorial: [AdoptionOrder] {
@@ -2211,6 +2298,13 @@ class MergeBoardViewModel {
         s.hasReadyOrder = open.contains { $0.isReady(census: census) }
         s.justDelivered = pendingAfterDeliverTip
         s.justUnheldAnOrderSlot = splitOrderID != nil
+        s.boardFullToastJustShown = pendingFrictionTip == .boardFull
+        s.itemJustStored = pendingFrictionTip == .firstItemStored
+        s.restingSpawnerJustTapped = pendingFrictionTip == .spawnerResting
+        // outOfKibbleSheetJustOpened stays false: M11 is the sheet's own line.
+        if !hasSeenTutorialMoment(.noMergesLeft) {
+            s.hasNoMergeablePairWithSpawnerReady = hasNoMergesLeftWithSpawnerReady
+        }
         return s
     }
 
@@ -2227,6 +2321,10 @@ class MergeBoardViewModel {
             return familySpawnerPosition.map { [$0] } ?? []
         case .firstMerge:
             return findMergeableHintPair().map { [$0.0, $0.1] } ?? []
+        case .spawnerResting:
+            return restingSpawnerPosition.map { [$0] } ?? []
+        case .noMergesLeft:
+            return readyFamilySpawnerPosition.map { [$0] } ?? []
         case .orderOnHold:
             // The tiles the card is holding: the ones the muted highlight is on.
             let census = boardTaskCensus
@@ -2292,6 +2390,8 @@ class MergeBoardViewModel {
         // Only a tip that was still unseen starts the gap: the game calls this on
         // every spawn, merge and claim, and most of those are not a tip closing.
         guard !hasSeenTutorialMoment(moment) else { return }
+        // A tip closing ends the moment of any friction tip waiting behind it.
+        pendingFrictionTip = nil
         markTutorialMomentSeen(moment)
         lastCoachMarkClosedAt = now
     }
@@ -2671,6 +2771,7 @@ class MergeBoardViewModel {
 
         mergeCount += 1
         closeCoachMark(.firstMerge)
+        closeBoardFullTipAfterAction()
         noteOrderSlotsAfterMerge(before: orderHeldBefore)
         lastMergeTimestamp = Date().timeIntervalSince1970
         if let sp = outcome.mergedSpecies { lastMergedSpeciesRaw = sp.rawValue }
@@ -2746,6 +2847,7 @@ class MergeBoardViewModel {
         if inventoryStore.addItem(item) {
             boardState.clearItem(at: pos)
             recalcBoardIsFull()
+            noteItemStored()
         } else {
             triggerToast(.inventoryFull)
         }
@@ -2758,6 +2860,7 @@ class MergeBoardViewModel {
             boardState.clearItem(at: pos)
             selectedCell = nil
             recalcBoardIsFull()
+            noteItemStored()
         } else {
             triggerToast(.inventoryFull)
         }
@@ -2776,6 +2879,7 @@ class MergeBoardViewModel {
         earnCoins(value)
         selectedCell = nil
         recalcBoardIsFull()
+        closeBoardFullTipAfterAction()
         SoundManager.shared.playButtonTap()
         HapticManager.shared.lightTap()
         enqueueToast(Toast(kind: .info("+\(value) Coins")))
@@ -3125,7 +3229,9 @@ class MergeBoardViewModel {
     func triggerToast(_ type: ToastType) {
         switch type {
         case .inventoryFull: enqueueToast(Toast(kind: .inventoryFull(canMerge: findMergeableHintPair() != nil)))
-        case .boardFull:     enqueueToast(Toast(kind: .boardFull(canMerge: findMergeableHintPair() != nil)))
+        case .boardFull:
+            noteBoardFullToast()
+            enqueueToast(Toast(kind: .boardFull(canMerge: findMergeableHintPair() != nil)))
         case .noKibble:      kibbleEngine.showKibbleSheet = true
         }
     }

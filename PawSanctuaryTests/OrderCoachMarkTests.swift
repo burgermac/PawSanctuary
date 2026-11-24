@@ -48,6 +48,8 @@ final class OrderCoachMarkTests: XCTestCase {
         vm.loadGame()
         vm.markTutorialMomentSeen(.firstSpawn)
         vm.markTutorialMomentSeen(.firstMerge)
+        // An empty board has no pair to merge, which is M12's moment; these tests are not about it.
+        vm.markTutorialMomentSeen(.noMergesLeft)
         var board = vm.board
         for r in board.indices { for c in board[r].indices { board[r][c].item = nil } }
         vm.board = board
@@ -287,7 +289,7 @@ final class OrderCoachMarkTests: XCTestCase {
         XCTAssertEqual(TutorialMoment.afterDeliver.autoCloseSeconds, 4)
         XCTAssertEqual(TutorialMoment.splitWarning.autoCloseSeconds, 6)
         for moment in TutorialMoment.allCases
-        where ![.orderOnHold, .afterDeliver, .splitWarning].contains(moment) {
+        where ![.orderOnHold, .afterDeliver, .splitWarning, .firstItemStored, .spawnerResting].contains(moment) {
             XCTAssertNil(moment.autoCloseSeconds, "\(moment) waits for its action or the x")
         }
     }

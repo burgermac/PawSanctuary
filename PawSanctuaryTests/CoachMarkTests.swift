@@ -48,6 +48,8 @@ final class CoachMarkTests: XCTestCase {
         vm.loadGame()
         vm.adoptionOrders = []
         vm.adoptionBoardCoordinator.urgentOrder = nil
+        // The no-merges tip (M12) is about an empty-handed board; these tests set up their own boards.
+        vm.markTutorialMomentSeen(.noMergesLeft)
         return vm
     }
 
@@ -225,10 +227,12 @@ final class CoachMarkTests: XCTestCase {
     }
 
     func testTipsThatAreNotBuiltYetHaveNoBubbleText() {
-        // Stages 2 and 3 build the opening tips and the order lesson; the rest
-        // get their text in their own stage.
+        // Stages 2 to 4 build the opening tips, the order lesson and the friction
+        // tips; the rest get their text in their own stage.
         let built: Set<TutorialMoment> = [.firstSpawn, .firstMerge, .firstQuestClaim,
-                                          .orderOnHold, .firstDeliver, .afterDeliver, .splitWarning]
+                                          .orderOnHold, .firstDeliver, .afterDeliver, .splitWarning,
+                                          .boardFull, .firstItemStored, .spawnerResting,
+                                          .outOfKibble, .noMergesLeft]
         for moment in TutorialMoment.allCases where !built.contains(moment) {
             XCTAssertNil(moment.coachMarkText, "\(moment)")
         }

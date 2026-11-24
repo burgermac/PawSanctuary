@@ -20,6 +20,7 @@ enum TutorialFrameID: Hashable {
     case cell(GridPosition)
     case questClaim
     case deliverPill(UUID)
+    case basketButton
 }
 
 struct TutorialFrameKey: PreferenceKey {
