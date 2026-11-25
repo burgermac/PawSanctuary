@@ -634,18 +634,18 @@ class MergeBoardViewModel {
         get { progression.deepestUnlockedTier }
         set { progression.deepestUnlockedTier = newValue }
     }
-    /// Kibble a single spawner tap costs at the current multiplier (Task 2.1: `2^tier`).
+    /// Kibble a single spawner tap costs at the current multiplier (= the multiplier).
     /// Excludes per-family modifiers such as Bask, which are applied at the tap site.
     var currentSpawnCost: Int {
-        spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
+        spawnTapCost(forMultiplier: progression.spawnMultiplier)
     }
 
-    /// The real kibble cost of one tap on `species`'s family spawner at `tier`,
+    /// The real kibble cost of one tap on `species`'s family spawner at the current multiplier,
     /// including per-family modifiers (Bask) — mirrors the cost computation
     /// `activateProducer` applies at the actual tap site, so a caller can
     /// never derive a cost that disagrees with what a tap will charge.
-    func spawnerTapCost(forTier tier: Int, species: AnimalSpecies) -> Int {
-        let baseCost = spawnCost(forTier: tier)
+    func spawnerTapCost(species: AnimalSpecies) -> Int {
+        let baseCost = currentSpawnCost
         let baskActive = species == .turtle && unlockedSuperpowerSpecies.contains(AnimalSpecies.turtle.rawValue)
         return baskActive ? max(1, baseCost / 2) : baseCost
     }
@@ -654,9 +654,7 @@ class MergeBoardViewModel {
     /// now, at the current spawn multiplier — the affordance gate for the
     /// producer shimmer (`Spec_BoardAnimation_Draft.md` §5).
     func canAffordSpawnerTap(species: AnimalSpecies) -> Bool {
-        let maxTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(species))?.maxTier ?? 0
-        let tier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
-        return kibbleEngine.kibble >= spawnerTapCost(forTier: tier, species: species)
+        return kibbleEngine.kibble >= spawnerTapCost(species: species)
     }
     var showLevelUpBanner: Bool {
         get { progression.showLevelUpBanner }
@@ -1814,12 +1812,12 @@ class MergeBoardViewModel {
             // Family spawner — kibble-based, unlimited, species-specific animal chain
             let chainID = ContentRegistry.animalChainID(species)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
-            // Task 2.1: the multiplier picks the tier, and the tier sets the price
-            // at 2^tier — energy-neutral at every level.
+            // The multiplier picks the tier (×1/2/4/8 → level 1/2/4/8) and the
+            // price is the multiplier itself in kibble.
             var spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             // Bask (Reptiles .turtle): half kibble cost — folded into spawnerTapCost
             // so this and the affordance shimmer's gate can never disagree.
-            let cost = spawnerTapCost(forTier: spawnTier, species: species)
+            let cost = spawnerTapCost(species: species)
             guard kibbleEngine.kibble >= cost else {
                 recordWallEvent(chainID: chainID, tier: spawnTier)
                 triggerToast(.noKibble); selectedCell = pos; return
@@ -1892,12 +1890,12 @@ class MergeBoardViewModel {
             }
         } else if producer.level.targetCategory == .animal {
             // Legacy rescue-tier producers (rescueCrate/shelterPod/fosterHome) — random family
-            // Task 2.1: priced from the selected tier, same as the family spawner.
+            // Priced at the multiplier, same as the family spawner.
             // Unlike the family spawner branch above, these are NOT unlimited — they carry
             // a real per-level cooldown/chargesRemaining (30-60s, 5-12 charges) that this
             // branch used to skip entirely, making any legacy tile an unlimited free spawner.
             guard producer.isReady else { selectedCell = pos; return }
-            let cost = spawnCost(forTier: spawnTierIndex(forMultiplier: progression.spawnMultiplier))
+            let cost = currentSpawnCost
             guard kibbleEngine.kibble >= cost else {
                 // Which chain would be picked is randomized below and never reached —
                 // nothing specific was actually blocked, so record no chain/tier.
@@ -2247,9 +2245,7 @@ class MergeBoardViewModel {
             for cell in row {
                 guard let tile = cell.producer, tile.level == .familySpawner, tile.isReady,
                       let species = tile.species else { continue }
-                let maxTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(species))?.maxTier ?? 0
-                let tier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
-                if kibbleEngine.kibble >= spawnerTapCost(forTier: tier, species: species) { return cell.position }
+                if kibbleEngine.kibble >= spawnerTapCost(species: species) { return cell.position }
             }
         }
         return nil

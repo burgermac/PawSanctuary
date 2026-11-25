@@ -2123,24 +2123,34 @@ func dailyTaskSellValue(lines: [DailyTaskLine]) -> Int {
     lines.reduce(0) { $0 + animalSellValue(tier: $1.tier) * $1.count }
 }
 
-// ── Spawn multiplier pricing (Phase 2, Task 2.1) ──────────────
+// ── Spawn multiplier pricing ──────────────────────────────────
 //
-// The multiplier selects a TIER; the tier sets the price. Cost is `2^tier`,
-// which is exactly what that item is worth in merge inputs, so no multiplier
-// level buys progress at a discount to building it by hand.
-//
-// Before Phase 2 the tier was `multiplier - 1` at a cost of `multiplier`,
-// which made ×8 an 8-kibble purchase of a 128-kibble item — a 16× arbitrage
-// that unlocked at level 20 and never closed.
+// The multiplier selects the item LEVEL (×1/×2/×4/×8 → level 1/2/4/8) and the
+// kibble price per tap equals the multiplier itself (1/2/4/8 kibble), matching
+// the reference games' spawner rate. Owner decision, 24 Nov 2026 — this
+// supersedes Phase 2 Task 2.1's `2^tier` "energy-neutral" pricing. Note the
+// consequence: a ×8 tap buys a level-8 item worth 128 merge inputs for 8 kibble,
+// so boosted taps are deliberately a strong shortcut.
+
+/// Kibble cost of one spawner tap at `multiplier`: the multiplier itself.
+/// Unrecognised values fall back to 1, matching `spawnTierIndex`.
+func spawnTapCost(forMultiplier multiplier: Int) -> Int {
+    switch multiplier {
+    case 1, 2, 4, 8: return multiplier
+    default:         return 1
+    }
+}
 
 /// Maps a spawn multiplier (1 / 2 / 4 / 8) to the 0-based tier it produces.
+/// The multiplier IS the item level (1-based), matching the reference games:
+/// ×1 → level 1, ×2 → level 2, ×4 → level 4, ×8 → level 8 (tiers 0 / 1 / 3 / 7).
 /// Total by construction: any unrecognised value falls back to tier 0.
 func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
     switch multiplier {
     case 1:  return 0
     case 2:  return 1
-    case 4:  return 2
-    case 8:  return 3
+    case 4:  return 3
+    case 8:  return 7
     default: return 0
     }
 }
@@ -2154,13 +2164,13 @@ func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
 // generosity is real, but so is the acceleration.
 
 /// Chance of a bonus extra spawn, keyed by the multiplier's tier index
-/// (0/1/2/3 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
+/// (0/1/3/7 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
 func bonusSpawnChance(forMultiplierTier tierIndex: Int) -> Double {
     switch tierIndex {
-    case 0:  return 0.00
-    case 1:  return 0.10
-    case 2:  return 0.25
-    default: return 0.40
+    case 0:       return 0.00
+    case 1:       return 0.10
+    case 2...3:   return 0.25
+    default:      return 0.40
     }
 }
 
