@@ -1802,27 +1802,58 @@ enum WeeklyGoalTier: Int, CaseIterable {
 /// absorb per day. That cap is what protects the pacing curve.
 struct DogTagKibbleExchange {
     let dogTagCost: Int
+    /// Kibble this rung is worth: the credit for a plain rung, the crate's raw value
+    /// (every piece collected, nothing merged) for a crate rung.
     let kibbleGain: Int
     /// 0-based position in today's ladder.
     let purchaseIndex: Int
-    var label: String { "\(dogTagCost) Dog Tags → \(kibbleGain) Kibble" }
-
-    /// Every rung buys the same kibble; only the price climbs.
-    static let kibblePerExchange = 100
-    /// Tag cost by purchase number within the day. The last entry repeats forever.
-    static let dailyLadder = [15, 30, 60]
-
-    /// The offer a player with `purchasesToday` exchanges already made would see.
-    static func offer(purchasesToday: Int) -> DogTagKibbleExchange {
-        let i = max(0, purchasesToday)
-        let cost = dailyLadder[min(i, dailyLadder.count - 1)]
-        return DogTagKibbleExchange(dogTagCost: cost,
-                                    kibbleGain: kibblePerExchange,
-                                    purchaseIndex: i)
+    /// True when the rung puts a Kibble Crate on the board instead of crediting kibble
+    /// (specs/Spec_CardsAndChests.md §4.2). The view-model performs it, because placement
+    /// needs the board.
+    let isCrate: Bool
+    var label: String { "\(dogTagCost) Dog Tags → \(rewardLabel)" }
+    /// What the rung delivers, as the refill sheet and the Shop show it.
+    var rewardLabel: String {
+        isCrate ? "Kibble Crate ×\(kibbleCrateCharges)" : "+\(kibbleGain) Kibble"
     }
 
-    /// True once the ladder has bottomed out and the rate is flat.
-    var isAtFlatRate: Bool { purchaseIndex >= Self.dailyLadder.count - 1 }
+    /// A plain rung buys this much kibble.
+    static let kibblePerExchange = 100
+    /// Tag cost of the two opening credit rungs (purchases 1 and 2).
+    static let openingCreditCosts = [15, 30]
+    /// The 3rd purchase: a crate that ties rung 2's tags per kibble (36 for 120 = 30 for 100).
+    static let firstCrateCost = 36
+    /// Every credit rung from the 4th on, and the price floor the discounts end at.
+    static let flatCreditCost = 60
+    /// Crate rungs from the 5th on, every second purchase: ties the flat rung (72 for 120 = 60 for 100).
+    static let repeatCrateCost = 72
+    /// Purchases that still carry a discount (the 1st to the 3rd); from the 4th the rate is flat.
+    static let discountedRungCount = 3
+
+    /// The offer a player with `purchasesToday` exchanges already made would see:
+    /// credit, credit, crate, credit, then crate on every second purchase (5th, 7th, ...).
+    static func offer(purchasesToday: Int) -> DogTagKibbleExchange {
+        let i = max(0, purchasesToday)
+        let crateRaw = kibbleCrateCharges * kibbleCurrencyValue(tier: kibbleCrateTier)
+        let crate: DogTagKibbleExchange? = {
+            if i == 2 {
+                return DogTagKibbleExchange(dogTagCost: firstCrateCost, kibbleGain: crateRaw,
+                                            purchaseIndex: i, isCrate: true)
+            }
+            if i >= 4 && i % 2 == 0 {
+                return DogTagKibbleExchange(dogTagCost: repeatCrateCost, kibbleGain: crateRaw,
+                                            purchaseIndex: i, isCrate: true)
+            }
+            return nil
+        }()
+        if let crate { return crate }
+        let cost = i < openingCreditCosts.count ? openingCreditCosts[i] : flatCreditCost
+        return DogTagKibbleExchange(dogTagCost: cost, kibbleGain: kibblePerExchange,
+                                    purchaseIndex: i, isCrate: false)
+    }
+
+    /// True once the discounts are used up and the rate is flat (the 4th purchase onward).
+    var isAtFlatRate: Bool { purchaseIndex >= Self.discountedRungCount }
 }
 
 // ── Dog Tag store stock (Phase 2, Task 2.3c) ──────────────────

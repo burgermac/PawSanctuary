@@ -2050,9 +2050,46 @@ class MergeBoardViewModel {
     /// Today's rung of the escalating Dog Tag ladder (Task 2.4).
     var currentTagExchange: DogTagKibbleExchange { kibbleEngine.currentTagExchange }
 
+    /// Buys today's rung: kibble credited, or (cards and chests stage 4) a Kibble Crate
+    /// placed through `placeOrStoreProducer`. Reports the Dog Tag spend to quests either way
+    /// (owner Q12). A crate that has nowhere to go charges nothing and toasts `.boardFull`.
     @discardableResult
     func exchangeTagsForKibble() -> Bool {
-        kibbleEngine.exchangeTagsForKibble()
+        kibbleEngine.rollOverExchangeDayIfNeeded()
+        let offer = currentTagExchange
+        let spent: Int
+        if offer.isCrate {
+            guard kibbleEngine.dogTags >= offer.dogTagCost else { return false }
+            guard let cost = kibbleEngine.exchangeTagsForCrate(
+                deliver: { placeOrStoreProducer(ProducerTile(level: .kibbleCrate)) }
+            ) else {
+                triggerToast(.boardFull)
+                return false
+            }
+            spent = cost
+        } else {
+            guard kibbleEngine.exchangeTagsForKibble() else { return false }
+            spent = offer.dogTagCost
+        }
+        updateAllAfterSpend(kind: .dogTags, amount: spent)
+        if offer.isCrate {
+            SoundManager.shared.playQuestClaim()
+            HapticManager.shared.successPattern()
+        }
+        persist()
+        return true
+    }
+
+    /// Puts a producer on a random empty unlocked cell, else into producer storage (its own
+    /// slot, else an overflow slot). False when there is nowhere to put it (owner Q10 a);
+    /// the caller decides whether that refuses a Dog Tag purchase or credits kibble instead.
+    func placeOrStoreProducer(_ tile: ProducerTile) -> Bool {
+        if let target = emptyUnlockedCells.randomElement() {
+            boardState.setProducer(tile, at: target.position)
+            recalcBoardIsFull()
+            return true
+        }
+        return inventoryStore.retireProducer(tile, playerLevel: progression.playerLevel)
     }
 
     /// How many producers of `level` could be kept right now without the

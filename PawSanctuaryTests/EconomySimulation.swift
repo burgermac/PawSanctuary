@@ -781,6 +781,10 @@ struct EconomySimulation {
         return rate <= 0 ? .infinity : Double(total) / rate
     }
 
+    /// Not modelled: a bought Kibble Crate (cards and chests stage 4,
+    /// `Spec_CardsAndChests.md` §5.2). It holds one cell, and its pieces hold cells
+    /// until collected, but it is transient and player-timed and the model has no
+    /// purchase term, so it is left out here rather than invented.
     struct CongestionRow {
         let level: Int
         let familiesOwned: Int

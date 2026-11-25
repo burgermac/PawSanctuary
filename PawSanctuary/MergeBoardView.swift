@@ -1504,8 +1504,9 @@ private struct KibbleRefillSheet: View {
             let exchange = viewModel.currentTagExchange
             let canAfford = viewModel.dogTags >= exchange.dogTagCost
             Button(action: {
-                viewModel.exchangeTagsForKibble()
-                dismiss()
+                // A crate with nowhere to go charges nothing and keeps the sheet open
+                // (the toast says why); every other outcome closes it as before.
+                if viewModel.exchangeTagsForKibble() { dismiss() }
             }) {
                 HStack {
                     Image(systemName: "tag.fill")
@@ -1514,9 +1515,9 @@ private struct KibbleRefillSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                     Spacer()
                     HStack(spacing: 3) {
-                        Image(systemName: "pawprint.fill")
+                        Image(systemName: exchange.isCrate ? "shippingbox.fill" : "pawprint.fill")
                             .font(.system(size: 11))
-                        Text("+\(exchange.kibbleGain) Kibble")
+                        Text(exchange.rewardLabel)
                             .font(.system(size: 14, weight: .bold))
                     }
                 }
