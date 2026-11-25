@@ -146,16 +146,32 @@ class KibbleEngine {
         lastExchangeResetDate = Date()
     }
 
-    /// Buys the current rung of today's ladder. Each purchase makes the next dearer.
+    /// Buys the current rung of today's ladder if it credits kibble. Each purchase makes
+    /// the next dearer. A crate rung is refused here: it needs the board, so the view-model
+    /// performs it through `exchangeTagsForCrate(deliver:)`.
     @discardableResult
     func exchangeTagsForKibble() -> Bool {
         rollOverExchangeDayIfNeeded()
         let offer = DogTagKibbleExchange.offer(purchasesToday: dogTagExchangesToday)
-        guard dogTags >= offer.dogTagCost else { return false }
+        guard !offer.isCrate, dogTags >= offer.dogTagCost else { return false }
         dogTags -= offer.dogTagCost
         kibble  += offer.kibbleGain
         dogTagExchangesToday += 1
         return true
+    }
+
+    /// Buys the current rung when it is a crate. `deliver` puts the crate somewhere and
+    /// returns whether it landed; it runs before anything is deducted, so a full board and
+    /// full storage take no tags and leave the ladder where it was. Returns the rung's cost
+    /// on success, nil when nothing was bought.
+    func exchangeTagsForCrate(deliver: () -> Bool) -> Int? {
+        rollOverExchangeDayIfNeeded()
+        let offer = DogTagKibbleExchange.offer(purchasesToday: dogTagExchangesToday)
+        guard offer.isCrate, dogTags >= offer.dogTagCost else { return nil }
+        guard deliver() else { return nil }
+        dogTags -= offer.dogTagCost
+        dogTagExchangesToday += 1
+        return offer.dogTagCost
     }
 
     // MARK: Rewarded ads

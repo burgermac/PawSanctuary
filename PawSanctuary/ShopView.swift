@@ -760,7 +760,7 @@ struct DogTagKibbleSection: View {
                     .font(.caption).foregroundColor(.secondary)
             }
 
-            Text("Spend your Dog Tags for an instant Kibble boost. Kibble can exceed the regen cap this way.")
+            Text("Spend your Dog Tags for an instant Kibble boost, or a Kibble Crate to tap open. Kibble can exceed the regen cap this way.")
                 .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -784,7 +784,7 @@ struct DogTagKibbleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "pawprint.fill")
+            Image(systemName: exchange.isCrate ? "shippingbox.fill" : "pawprint.fill")
                 .font(.title2)
                 .foregroundColor(Color(red: 0.2, green: 0.6, blue: 0.4))
                 .frame(width: 44, height: 44)
@@ -793,8 +793,8 @@ struct DogTagKibbleRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Image(systemName: "pawprint").font(.system(size: 11))
-                    Text("+\(exchange.kibbleGain) Kibble").font(.subheadline.bold())
+                    Image(systemName: exchange.isCrate ? "shippingbox" : "pawprint").font(.system(size: 11))
+                    Text(exchange.rewardLabel).font(.subheadline.bold())
                 }
                 HStack(spacing: 4) {
                     Image(systemName: "tag.fill").font(.system(size: 10)).foregroundColor(.blue)

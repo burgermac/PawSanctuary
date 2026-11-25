@@ -599,27 +599,72 @@ final class EconomyTests: XCTestCase {
         let second = DogTagKibbleExchange.offer(purchasesToday: 1)
         let third  = DogTagKibbleExchange.offer(purchasesToday: 2)
 
-        XCTAssertEqual(first.kibbleGain, second.kibbleGain, "every rung buys the same kibble")
-        XCTAssertEqual(second.kibbleGain, third.kibbleGain)
+        XCTAssertEqual(first.kibbleGain, second.kibbleGain, "the credit rungs buy the same kibble")
+        XCTAssertGreaterThanOrEqual(third.kibbleGain, second.kibbleGain,
+                                    "the crate rung is never worth less than a credit rung")
         XCTAssertLessThan(first.dogTagCost, second.dogTagCost, "price must climb, not fall")
         XCTAssertLessThan(second.dogTagCost, third.dogTagCost)
     }
 
     func testDogTagLadderGoesFlatRatherThanUnbounded() {
-        let third  = DogTagKibbleExchange.offer(purchasesToday: 2)
+        // From the 4th purchase on the discounts are spent: credit rungs sit at 60
+        // and crate rungs at 72, the same 0.6 tags per kibble, alternating forever.
+        let fourth = DogTagKibbleExchange.offer(purchasesToday: 3)
         let tenth  = DogTagKibbleExchange.offer(purchasesToday: 9)
-        XCTAssertEqual(third.dogTagCost, tenth.dogTagCost)
+        XCTAssertEqual(fourth.dogTagCost, tenth.dogTagCost)
         XCTAssertTrue(tenth.isAtFlatRate)
+        XCTAssertTrue(fourth.isAtFlatRate)
         XCTAssertFalse(DogTagKibbleExchange.offer(purchasesToday: 0).isAtFlatRate)
+        XCTAssertFalse(DogTagKibbleExchange.offer(purchasesToday: 2).isAtFlatRate,
+                       "the 3rd purchase (the crate at 36) is still a discounted rung")
     }
 
     /// The old table was a volume discount — the exact shape Phase 2 reverses.
+    /// Compared as cross-multiplied integers so a tie (the crate rung ties rung 2)
+    /// is exact rather than a floating-point coin flip.
     func testRateWorsensRatherThanImproves() {
-        let rates = (0..<3).map { i -> Double in
-            let o = DogTagKibbleExchange.offer(purchasesToday: i)
-            return Double(o.kibbleGain) / Double(o.dogTagCost)
+        for i in 0..<9 {
+            let a = DogTagKibbleExchange.offer(purchasesToday: i)
+            let b = DogTagKibbleExchange.offer(purchasesToday: i + 1)
+            // tags per kibble: a.cost / a.gain <= b.cost / b.gain
+            XCTAssertLessThanOrEqual(a.dogTagCost * b.kibbleGain, b.dogTagCost * a.kibbleGain,
+                                     "rung \(i + 2) must not be cheaper per kibble than rung \(i + 1)")
         }
-        XCTAssertEqual(rates, rates.sorted(by: >), "kibble-per-tag must decrease with each purchase")
+    }
+
+    // MARK: Cards and chests stage 4 — crate rungs (specs/Spec_CardsAndChests.md §5.2)
+
+    func testAKibbleCrateNeverPaysLessThanItsPrice() {
+        let raw = kibbleCrateCharges * kibbleCurrencyValue(tier: kibbleCrateTier)
+        XCTAssertGreaterThanOrEqual(raw, 120, "a crate is worth at least the 120 the spec states")
+        XCTAssertGreaterThanOrEqual(raw, DogTagKibbleExchange.kibblePerExchange,
+                                    "and never less than the plain credit rung it replaces")
+        let crate = DogTagKibbleExchange.offer(purchasesToday: 2)
+        XCTAssertTrue(crate.isCrate)
+        XCTAssertEqual(crate.kibbleGain, raw)
+    }
+
+    func testCrateRungsTieTheirNeighbouringPackRungs() {
+        let rung2  = DogTagKibbleExchange.offer(purchasesToday: 1)   // 30 for 100
+        let crate1 = DogTagKibbleExchange.offer(purchasesToday: 2)   // 36 for 120
+        let flat   = DogTagKibbleExchange.offer(purchasesToday: 3)   // 60 for 100
+        let crate2 = DogTagKibbleExchange.offer(purchasesToday: 4)   // 72 for 120
+        // Equal tags-per-kibble, cross-multiplied so the tie is exact.
+        XCTAssertEqual(crate1.dogTagCost * rung2.kibbleGain, rung2.dogTagCost * crate1.kibbleGain)
+        XCTAssertEqual(crate2.dogTagCost * flat.kibbleGain, flat.dogTagCost * crate2.kibbleGain)
+    }
+
+    /// Kibble bought at the discounted rates (at most 0.30 tags per kibble, i.e. rungs 1–3).
+    /// The reference's measured figure is about 320 a day.
+    func testTheDiscountedDailyAllowanceStaysNearTheReference() {
+        var allowance = 0
+        for i in 0..<12 {
+            let offer = DogTagKibbleExchange.offer(purchasesToday: i)
+            if offer.dogTagCost * 10 <= offer.kibbleGain * 3 { allowance += offer.kibbleGain }
+        }
+        XCTAssertEqual(allowance, 320)
+        XCTAssertGreaterThanOrEqual(allowance, 280)
+        XCTAssertLessThanOrEqual(allowance, 360)
     }
 
     // MARK: Task 2.3c — Dog Tag store
