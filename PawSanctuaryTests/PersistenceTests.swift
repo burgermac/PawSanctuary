@@ -2844,4 +2844,50 @@ final class PersistenceTests: XCTestCase {
         let loaded = try XCTUnwrap(GameStore.load())
         XCTAssertEqual(loaded.seenTutorialMoments, ["m01_first_spawn", "m99_from_a_later_build"])
     }
+
+    // MARK: v47 → v48 (Kibble Crate producer level, cards and chests stage 3)
+
+    func testV47toV48KeepsEveryProducerAsItWas() throws {
+        var state = makeSampleState()
+        let boardTile = ProducerTile(level: .rescueCrate, chargesRemaining: 3)
+        state.board[1][0].producer = boardTile
+        let stored = ProducerTile(level: .groomingBox)
+        state.producerStorage = [ProducerLevel.groomingBox.rawValue: stored]
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj["version"] = 47
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v47 save should migrate to v48")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.board[1][0].producer, boardTile)
+        XCTAssertEqual(loaded.producerStorage[ProducerLevel.groomingBox.rawValue], stored)
+        XCTAssertEqual(loaded.board[1][0].producer?.chargesRemaining, 3)
+    }
+
+    func testKibbleCrateTileRoundTrips() throws {
+        var state = makeSampleState()
+        state.board[1][0].producer = ProducerTile(level: .kibbleCrate, chargesRemaining: 5)
+        GameStore.saveNow(state, sequence: 1)
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.board[1][0].producer?.level, .kibbleCrate)
+        XCTAssertEqual(loaded.board[1][0].producer?.chargesRemaining, 5)
+    }
+
+    func testKibbleCrateRoundTripsThroughProducerStorage() throws {
+        var state = makeSampleState()
+        let designated = ProducerTile(level: .kibbleCrate, chargesRemaining: 8)
+        let overflow = ProducerTile(level: .kibbleCrate, chargesRemaining: 2)
+        state.producerStorage = [ProducerLevel.kibbleCrate.rawValue: designated]
+        state.overflowProducerStorage[0] = overflow
+        GameStore.saveNow(state, sequence: 1)
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.producerStorage[30], designated)
+        XCTAssertEqual(loaded.overflowProducerStorage[0], overflow)
+    }
+
+    func testProducerLevelRawValuesArePinned() {
+        XCTAssertEqual(ProducerLevel.allCases.map(\.rawValue).sorted(), [1, 2, 3, 10, 11, 12, 20, 30],
+                       "a renumbered or added level would silently corrupt saves")
+    }
 }

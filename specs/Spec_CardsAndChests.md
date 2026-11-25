@@ -238,7 +238,7 @@ Stated plainly, as D9 requires:
 
 ## 7. Persistence
 
-**Current schema on `origin/main`: v46** (`GameStore.swift:401`). Open specs may claim the next numbers (#134 fifteen tiers; #135 context tutorial, v47). **The number below is written v(N), assigned at build time** to whatever follows `currentVersion` then.
+**Current schema on `origin/main`: v48 after stage 3** (was v46 when this was written; `GameStore.swift`). Open specs may claim the next numbers (#134 fifteen tiers; #135 context tutorial, v47). **The number below is written v(N), assigned at build time** to whatever follows `currentVersion` then.
 
 | Stage | Persisted shape change | Bump? |
 |---|---|---|
@@ -283,7 +283,9 @@ One task per session; each leaves the game playable and ships on its own.
 
 **Stage status.** Stage 1: **built** (24 Nov 2026). `rareCardKibblePrice` = 50 and `rareCardOffersPerDay` = 3 in `AnimalSpecies.swift`; `CardRegistry.offeredRareIDs` (seeded shuffle of the 12 rares by calendar day, Q3 b / Q13 a, no saved field); `purchaseCardWithKibble` and `offeredRareCardIDs` in the view-model; price pill plus confirmation dialog on missing offered rares in `AlbumDetailView`, beside "Use Joker"; `CardKibblePurchaseTests` (13). No schema change.
 
-Stage 2: **built** (24 Nov 2026). `StarShopItem.jokerCard` is deleted, so the Star Shop sells the three packs and the Rare Joker only (Q4 c); `buyFromStarShop` and the shop grid follow from the enum; `useJoker` is untouched, so a held common Joker still fills a missing common; the "Jokers" count pill in the album now shows only while a held balance remains (nothing can add to it any more). `StarShopJokerRetirementTests` (8). No schema change; no persistence test touched. Stages 3–6: not started.
+Stage 2: **built** (24 Nov 2026). `StarShopItem.jokerCard` is deleted, so the Star Shop sells the three packs and the Rare Joker only (Q4 c); `buyFromStarShop` and the shop grid follow from the enum; `useJoker` is untouched, so a held common Joker still fills a missing common; the "Jokers" count pill in the album now shows only while a held balance remains (nothing can add to it any more). `StarShopJokerRetirementTests` (8). No schema change; no persistence test touched.
+
+Stage 3: **built** (24 Nov 2026). `ProducerLevel.kibbleCrate = 30` with every switch case (8 charges, tier-3 kibble, 0 s cooldown, no merge-up, storage from level 1); constants `kibbleCrateCharges` and `kibbleCrateTier` at the bottom of `AnimalSpecies.swift`; the crate reuses the supply-producer branch of `activateProducer` (free, burns a charge, tile removed at zero, board-full tap burns nothing) and the supply cell face; the selection line reads "Kibble Crate · Tap to open · free · N left" (the generic line said "costs N kibble"); the Inventory "Producers" tab gains a Kibble Crate slot; `#if DEBUG` `debugGrantKibbleCrate()` with a "Grant Kibble Crate (Debug)" button on the Profile sheet. **Schema v48** (`migrateByInjecting`, no default needed). `KibbleCrateTests` (12) and four `PersistenceTests` (§7). Stages 4–6: not started.
 
 Stages 1–2 and 3–5 are independent chains; either can go first. Stage 4 needs 3. Every stage runs `EconomyTests` and `PersistenceTests` before commit.
 
