@@ -60,9 +60,11 @@ final class PaidSpawnerFullBoardTests: XCTestCase {
 
         vm.applyPurchase(.energySmall, priceUSD: 0.99)
 
-        XCTAssertEqual(storedProducers(vm), [pack.spawnerLevel], "the paid spawner is kept")
-        XCTAssertEqual(vm.kibbleEngine.kibble, kibble + pack.kibble,
-                       "only the pack's own kibble, no 10-kibble conversion")
+        XCTAssertEqual(storedProducers(vm).map(\.rawValue).sorted(),
+                       [pack.spawnerLevel, .kibbleCrate].map(\.rawValue).sorted(),
+                       "the paid spawner and the kibble crate are both kept")
+        XCTAssertEqual(vm.kibbleEngine.kibble, kibble,
+                       "the pack's kibble arrives as a crate; no 10-kibble conversion either")
     }
 
     func testOnAFullBoardBothSpawnersOfTheLargestPackAreKept() {
@@ -72,7 +74,9 @@ final class PaidSpawnerFullBoardTests: XCTestCase {
 
         vm.applyPurchase(.energyXL, priceUSD: 9.99)
 
-        XCTAssertEqual(storedProducers(vm), Array(repeating: pack.spawnerLevel, count: pack.spawnerCount))
+        XCTAssertEqual(storedProducers(vm).map(\.rawValue).sorted(),
+                       (Array(repeating: pack.spawnerLevel, count: pack.spawnerCount)
+                        + Array(repeating: ProducerLevel.kibbleCrate, count: pack.crates.count)).map(\.rawValue).sorted())
 
         // A $9.99 purchase can also reach a VIP tier that pays kibble, so compare
         // with the same purchase on a board with room: a full board must not add
@@ -89,7 +93,8 @@ final class PaidSpawnerFullBoardTests: XCTestCase {
 
         vm.applyPurchase(.energySmall, priceUSD: 0.99)
 
-        XCTAssertEqual(boardProducers(vm), [pack.spawnerLevel])
+        XCTAssertEqual(boardProducers(vm).map(\.rawValue).sorted(),
+                       [pack.spawnerLevel, .kibbleCrate].map(\.rawValue).sorted())
         XCTAssertTrue(storedProducers(vm).isEmpty)
     }
 

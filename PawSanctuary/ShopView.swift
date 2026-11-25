@@ -938,7 +938,7 @@ struct EnergyPackShopSection: View {
                     .font(.caption).foregroundColor(.secondary)
             }
 
-            Text("Each bundle includes kibble, dog tags, a board spawner, and a card pack. Higher tiers include rarer packs and spawners.")
+            Text("Each bundle includes a Kibble Crate (tap it open for kibble), dog tags, a board spawner, and a card pack. Higher tiers include bigger crates and rarer packs and spawners.")
                 .font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -986,22 +986,30 @@ struct EnergyPackRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(iap.displayName).font(.subheadline.bold())
                 HStack(spacing: 8) {
-                    Label("+\(contents.kibble)", systemImage: "pawprint")
+                    Label(contents.crates.count > 1
+                          ? "\(contents.crates.count)x Crate \(contents.kibble)"
+                          : "Crate \(contents.kibble)",
+                          systemImage: "shippingbox.fill")
                         .font(.caption).foregroundColor(.green)
                     Label("+\(contents.dogTags)", systemImage: "tag.fill")
                         .font(.caption).foregroundColor(.blue)
+                }
+                // The crate label is longer than the old "+kibble" figure, so the spawner
+                // moved down here beside the card pack rather than squeezing a third label
+                // onto the first line.
+                HStack(spacing: 8) {
                     Label(contents.spawnerCount > 1
                           ? "\(contents.spawnerCount)x \(contents.spawnerLevel.displayName)"
                           : contents.spawnerLevel.displayName,
                           systemImage: contents.spawnerLevel.sfSymbol)
                         .font(.caption).foregroundColor(contents.spawnerLevel.tintColor)
-                }
-                HStack(spacing: 4) {
-                    Image(systemName: contents.cardPack.sfSymbol)
-                        .font(.system(size: 9))
-                        .foregroundColor(contents.cardPack.accentColor)
-                    Text(contents.cardPack.displayName)
-                        .font(.caption).foregroundColor(contents.cardPack.accentColor)
+                    HStack(spacing: 4) {
+                        Image(systemName: contents.cardPack.sfSymbol)
+                            .font(.system(size: 9))
+                            .foregroundColor(contents.cardPack.accentColor)
+                        Text(contents.cardPack.displayName)
+                            .font(.caption).foregroundColor(contents.cardPack.accentColor)
+                    }
                 }
             }
 

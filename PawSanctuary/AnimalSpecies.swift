@@ -568,6 +568,27 @@ struct ProducerTile: Identifiable, Equatable, Codable {
     /// cooldown starts rather than resetting to zero.
     var kibbleSpentSinceCooldown: Int = 0
 
+    /// Kibble Crates only (cards and chests stage 5): the tier of each piece this crate
+    /// emits, when it differs from the level's own `startTier`. nil for every other producer
+    /// and for an unsized crate (stage 3's debug grant), which keeps the level's defaults.
+    var pieceTier: Int? = nil
+    /// Kibble Crates only: the charges this crate started with, so its pips show its own
+    /// size instead of the level's `maxCharges`. nil means the level's default.
+    var capacity: Int? = nil
+
+    /// The tier of the item this tile emits per tap.
+    var emitTier: Int { pieceTier ?? level.startTier }
+    /// The charges this tile started with (the pip count). Falls back to the level's default.
+    var totalCharges: Int { capacity ?? level.maxCharges }
+
+    /// A Kibble Crate of a given size, full.
+    static func kibbleCrate(_ size: KibbleCrateSize) -> ProducerTile {
+        var tile = ProducerTile(level: .kibbleCrate, chargesRemaining: size.charges)
+        tile.pieceTier = size.tier
+        tile.capacity = size.charges
+        return tile
+    }
+
     // Phase 6 — Avians Scout preview: non-nil when Scout is unlocked and a spawn has just fired.
     // true = next spawn from this tile will be a sub-object, false = animal.
     var scoutPreviewIsSubObject: Bool? = nil
@@ -584,6 +605,7 @@ struct ProducerTile: Identifiable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case id, level, readyAt, chargesRemaining, species, speedBurstEndsAt
         case nextDropGuaranteedHighTier, scoutPreviewIsSubObject, kibbleSpentSinceCooldown
+        case pieceTier, capacity
         // Legacy keys — decode-only. Old saves persisted a hand-ticked
         // `cooldownRemaining` Double and `speedBurstActive`/`speedBurstRemaining`
         // instead of the Date-based fields above; encode(to:) never writes
@@ -619,6 +641,8 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         nextDropGuaranteedHighTier = try c.decodeIfPresent(Bool.self, forKey: .nextDropGuaranteedHighTier) ?? false
         scoutPreviewIsSubObject    = try c.decodeIfPresent(Bool.self, forKey: .scoutPreviewIsSubObject)
         kibbleSpentSinceCooldown   = try c.decodeIfPresent(Int.self, forKey: .kibbleSpentSinceCooldown) ?? 0
+        pieceTier                  = try c.decodeIfPresent(Int.self, forKey: .pieceTier)
+        capacity                   = try c.decodeIfPresent(Int.self, forKey: .capacity)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -632,6 +656,8 @@ struct ProducerTile: Identifiable, Equatable, Codable {
         try c.encode(nextDropGuaranteedHighTier, forKey: .nextDropGuaranteedHighTier)
         try c.encodeIfPresent(scoutPreviewIsSubObject, forKey: .scoutPreviewIsSubObject)
         try c.encode(kibbleSpentSinceCooldown, forKey: .kibbleSpentSinceCooldown)
+        try c.encodeIfPresent(pieceTier, forKey: .pieceTier)
+        try c.encodeIfPresent(capacity, forKey: .capacity)
     }
 
     var isReady: Bool { readyAt <= Date() }
@@ -1377,19 +1403,19 @@ enum IAPProduct: String, CaseIterable {
     var energyPackContents: EnergyPackContents? {
         switch self {
         case .energySmall:
-            return EnergyPackContents(kibble: 25, dogTags: 8,
+            return EnergyPackContents(crates: energyPackCrates(.energySmall), dogTags: 8,
                                       spawnerLevel: .rescueCrate, spawnerCount: 1,
                                       cardPack: .star2, previewPrice: "$0.99")
         case .energyMedium:
-            return EnergyPackContents(kibble: 60, dogTags: 20,
+            return EnergyPackContents(crates: energyPackCrates(.energyMedium), dogTags: 20,
                                       spawnerLevel: .shelterPod, spawnerCount: 1,
                                       cardPack: .star4, previewPrice: "$2.99")
         case .energyLarge:
-            return EnergyPackContents(kibble: 120, dogTags: 40,
+            return EnergyPackContents(crates: energyPackCrates(.energyLarge), dogTags: 40,
                                       spawnerLevel: .fosterHome, spawnerCount: 1,
                                       cardPack: .star5, previewPrice: "$4.99")
         case .energyXL:
-            return EnergyPackContents(kibble: 250, dogTags: 80,
+            return EnergyPackContents(crates: energyPackCrates(.energyXL), dogTags: 80,
                                       spawnerLevel: .fosterHome, spawnerCount: 2,
                                       cardPack: .star6, previewPrice: "$9.99")
         default:
@@ -2776,3 +2802,33 @@ let tutorialMomentGapSeconds: Double = 20
 let kibbleCrateCharges = 8
 /// Tier (0-based) of the kibble piece each tap places: `kibbleCurrencyValue(tier: 3)` = 15.
 let kibbleCrateTier = 3
+
+// MARK: - Energy pack crates (cards and chests stage 5)
+
+/// One Kibble Crate's size: how many pieces it holds and the tier of each.
+struct KibbleCrateSize: Equatable {
+    let charges: Int
+    let tier: Int
+    /// Kibble if every piece is collected as it is (nothing merged).
+    var kibbleValue: Int { charges * kibbleCurrencyValue(tier: tier) }
+}
+
+/// The kibble in each IAP energy pack arrives as Kibble Crates instead of a credit
+/// (owner Q7, 23 Nov 2026). Owner, 25 Nov 2026: Small 100, Medium 300, Large 480 and
+/// XL 1000 kibble; each crate is sized to that figure or at most 5% above it, never below.
+///
+///   Small  : 7 × tier 3 (15)        = 105
+///   Medium : 5 × tier 5 (63)        = 315
+///   Large  : 8 × tier 5 (63)        = 504
+///   XL     : 2 crates of 8 × tier 5 = 1008
+///
+/// Tier-5 pieces are the top kibble tier and cannot be merged further.
+func energyPackCrates(_ product: IAPProduct) -> [KibbleCrateSize] {
+    switch product {
+    case .energySmall:  return [KibbleCrateSize(charges: 7, tier: 3)]
+    case .energyMedium: return [KibbleCrateSize(charges: 5, tier: 5)]
+    case .energyLarge:  return [KibbleCrateSize(charges: 8, tier: 5)]
+    case .energyXL:     return [KibbleCrateSize(charges: 8, tier: 5), KibbleCrateSize(charges: 8, tier: 5)]
+    default:            return []
+    }
+}

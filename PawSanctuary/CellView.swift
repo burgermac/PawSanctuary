@@ -600,7 +600,7 @@ struct ProducerTileContent: View {
                 }
 
                 HStack(spacing: 1) {
-                    ForEach(0..<producer.level.maxCharges, id: \.self) { i in
+                    ForEach(0..<producer.totalCharges, id: \.self) { i in
                         Circle()
                             .fill(i < producer.chargesRemaining
                                   ? chargePipColor(producer.chargesRemaining)

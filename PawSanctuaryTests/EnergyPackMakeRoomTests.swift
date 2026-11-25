@@ -65,24 +65,27 @@ final class EnergyPackMakeRoomTests: XCTestCase {
         XCTAssertFalse(vm.hasRoomForSpawners(of: .energySmall))
     }
 
-    func testTheXLPackNeedsRoomForBothSpawners() {
-        // Level 1: the Foster Home's own storage slot is still locked (level 7),
-        // so only the overflow slots count. One free slot is not enough for two.
-        let one = makeViewModel(full: true, level: 1, freeOverflow: 1)
-        XCTAssertFalse(one.hasRoomForSpawners(of: .energyXL))
-        XCTAssertTrue(one.hasRoomForSpawners(of: .energyLarge), "the Large pack grants only one")
-
+    func testTheXLPackNeedsRoomForAllFourProducers() {
+        // Level 1: the Foster Home's own storage slot is still locked (level 7), so only
+        // the overflow slots count for the spawners; the Kibble Crate's own slot is open.
+        // The XL pack grants 2 spawners and 2 crates, so it needs 4 places.
         let two = makeViewModel(full: true, level: 1, freeOverflow: 2)
-        XCTAssertTrue(two.hasRoomForSpawners(of: .energyXL))
+        XCTAssertFalse(two.hasRoomForSpawners(of: .energyXL))
+        XCTAssertTrue(two.hasRoomForSpawners(of: .energyLarge), "the Large pack grants a spawner and a crate: 2")
+
+        let three = makeViewModel(full: true, level: 1, freeOverflow: 3)
+        XCTAssertTrue(three.hasRoomForSpawners(of: .energyXL))
     }
 
     func testTheRoomCountMatchesWhereSpawnersReallyGo() {
-        // Exactly as much room as the XL pack needs: buying it must keep both,
-        // with no 10-kibble fallback.
-        let vm = makeViewModel(full: true, level: 1, freeOverflow: 2)
+        // Exactly as much room as the XL pack needs: buying it must keep everything,
+        // with no kibble fallback.
+        let vm = makeViewModel(full: true, level: 1, freeOverflow: 3)
         XCTAssertTrue(vm.hasRoomForSpawners(of: .energyXL))
         XCTAssertEqual(vm.placeProducerReward(.fosterHome), .storage)
         XCTAssertEqual(vm.placeProducerReward(.fosterHome), .storage)
+        XCTAssertEqual(vm.placeProducerReward(ProducerTile(level: .kibbleCrate), fallbackKibble: 0), .storage)
+        XCTAssertEqual(vm.placeProducerReward(ProducerTile(level: .kibbleCrate), fallbackKibble: 0), .storage)
         XCTAssertFalse(vm.hasRoomForSpawners(of: .energyLarge), "and now there is none left")
     }
 
