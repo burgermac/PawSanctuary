@@ -2245,9 +2245,7 @@ class MergeBoardViewModel {
             for cell in row {
                 guard let tile = cell.producer, tile.level == .familySpawner, tile.isReady,
                       let species = tile.species else { continue }
-                let maxTier = ContentRegistry.shared.chain(ContentRegistry.animalChainID(species))?.maxTier ?? 0
-                let tier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
-                if kibbleEngine.kibble >= spawnerTapCost(forTier: tier, species: species) { return cell.position }
+                if kibbleEngine.kibble >= spawnerTapCost(species: species) { return cell.position }
             }
         }
         return nil
