@@ -717,6 +717,10 @@ class MergeBoardViewModel {
             if producer.level == .familySpawner, let sp = producer.species {
                 return ("\(sp.spawnerName) · Tap to rescue \(sp.name) · costs \(currentSpawnCost) kibble · 20% sub-object drop chance", nil)
             }
+            if producer.level == .kibbleCrate {
+                // Already paid for: no kibble per tap, just a count of what is left.
+                return ("\(producer.level.displayName) · Tap to open · free · \(producer.chargesRemaining) left", nil)
+            }
             return ("\(producer.level.displayName) · Tap to spawn · costs \(currentSpawnCost) kibble", nil)
         }
         if let item = boardState.item(at: pos), let def = item.def, let chain = item.chain {
@@ -1569,6 +1573,15 @@ class MergeBoardViewModel {
     }
 
     #if DEBUG
+    /// Places one full Kibble Crate on a random empty cell (cards and chests stage 3).
+    /// Nothing sells a crate yet, so this is the only way to get one for testing.
+    func debugGrantKibbleCrate() {
+        guard let target = emptyUnlockedCells.randomElement() else { triggerToast(.boardFull); return }
+        boardState.setProducer(ProducerTile(level: .kibbleCrate), at: target.position)
+        recalcBoardIsFull()
+        persist()
+    }
+
     func resetToFreshGame() {
         GameStore.clear()
         score = 0; rescueCount = 0; ambassadors = 0; mergeCount = 0; ambassadorQuestProgress = 0; pendingMaterialLots = []

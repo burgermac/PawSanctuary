@@ -270,7 +270,7 @@ struct InventoryScreenView: View {
                 }
             }
 
-            ForEach(ProducerLevel.allCases.filter(\.isShopProducer), id: \.rawValue) { level in
+            ForEach(ProducerLevel.allCases.filter { $0.isShopProducer || $0 == .kibbleCrate }, id: \.rawValue) { level in
                 designatedProducerRow(level: level)
             }
         }

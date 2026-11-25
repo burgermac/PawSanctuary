@@ -68,6 +68,10 @@ struct ProfileView: View {
 
             #if DEBUG
             playtestMetricsPanel
+            // Nothing sells a Kibble Crate until cards stage 4, so this is the only
+            // way to get one on a device or simulator.
+            Button("Grant Kibble Crate (Debug)") { viewModel.debugGrantKibbleCrate() }
+                .font(.system(size: 12, weight: .semibold))
             #endif
 
             Spacer(minLength: 0)

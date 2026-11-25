@@ -402,6 +402,11 @@ enum ProducerLevel: Int, CaseIterable, Codable {
     // InventoryStore.familySpawnerStorage, since every family shares this one rawValue.
     case familySpawner = 20
 
+    // Cards and chests stage 3 (specs/Spec_CardsAndChests.md §4.2) — a bought chest becomes
+    // a spawner: tap, one kibble piece lands on the board, a charge burns, the tile vanishes
+    // at zero. Free to tap, no cooldown. Nothing sells it yet (stage 4 adds the Dog Tag rungs).
+    case kibbleCrate = 30
+
     /// True only for supply producers sold in the Dog Tag shop.
     /// Rescue-tier producers (rescueCrate/shelterPod/fosterHome) are superseded by
     /// family spawners and are excluded; family spawners are earned via the map.
@@ -421,6 +426,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .feedBox:      return "Feed Station"
         case .shelterBox:   return "Supply Crate"
         case .familySpawner: return "Family Spawner"  // display name resolved per-species at call site
+        case .kibbleCrate:  return "Kibble Crate"
         }
     }
     var sfSymbol: String {
@@ -432,6 +438,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .feedBox:      return "bag.fill"
         case .shelterBox:   return "bed.double.fill"
         case .familySpawner: return "house.fill"      // overridden per-species at call site
+        case .kibbleCrate:  return "shippingbox.fill"
         }
     }
     var cooldown: Double {
@@ -439,6 +446,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .rescueCrate:  return 30; case .shelterPod: return 45; case .fosterHome: return 60
         case .groomingBox, .feedBox, .shelterBox: return 25
         case .familySpawner: return familySpawnerCooldownSeconds
+        case .kibbleCrate:   return 0
         }
     }
     /// The chain category this producer emits into.
@@ -446,6 +454,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         switch self {
         case .rescueCrate, .shelterPod, .fosterHome, .familySpawner: return .animal
         case .groomingBox, .feedBox, .shelterBox:                     return .supply
+        case .kibbleCrate:                                            return .currency
         }
     }
     /// When non-nil, the producer always emits from this specific chain (supply producers).
@@ -456,6 +465,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .groomingBox:  return ContentRegistry.groomingChainID
         case .feedBox:      return ContentRegistry.foodChainID
         case .shelterBox:   return ContentRegistry.shelterChainID
+        case .kibbleCrate:  return ContentRegistry.kibbleCurrencyChainID
         default:            return nil
         }
     }
@@ -464,6 +474,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         switch self {
         case .rescueCrate: return 0; case .shelterPod: return 1; case .fosterHome: return 2
         case .groomingBox, .feedBox, .shelterBox, .familySpawner: return 0
+        case .kibbleCrate: return kibbleCrateTier
         }
     }
     var tintColor: Color {
@@ -475,13 +486,14 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .feedBox:      return Color(red: 0.80, green: 0.55, blue: 0.18)
         case .shelterBox:   return Color(red: 0.65, green: 0.48, blue: 0.30)
         case .familySpawner: return Color(red: 0.50, green: 0.40, blue: 0.70)
+        case .kibbleCrate:  return Color(red: 0.88, green: 0.62, blue: 0.20)
         }
     }
     /// Cost in Dog Tags to buy this producer from the shop (supply/family producers: 0).
     var dogTagCost: Int {
         switch self {
         case .rescueCrate: return 5; case .shelterPod: return 15; case .fosterHome: return 30
-        case .groomingBox, .feedBox, .shelterBox, .familySpawner: return 0
+        case .groomingBox, .feedBox, .shelterBox, .familySpawner, .kibbleCrate: return 0
         }
     }
     /// Number of times this producer can fire before it disappears from the board.
@@ -490,6 +502,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .rescueCrate: return 5; case .shelterPod: return 8; case .fosterHome: return 12
         case .groomingBox, .feedBox, .shelterBox: return 6
         case .familySpawner: return 8
+        case .kibbleCrate: return kibbleCrateCharges
         }
     }
     /// Next tier in the merge chain, or nil if this producer cannot be merged up.
@@ -497,7 +510,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         switch self {
         case .rescueCrate: return .shelterPod
         case .shelterPod:  return .fosterHome
-        case .fosterHome, .groomingBox, .feedBox, .shelterBox, .familySpawner: return nil
+        case .fosterHome, .groomingBox, .feedBox, .shelterBox, .familySpawner, .kibbleCrate: return nil
         }
     }
 
@@ -511,6 +524,7 @@ enum ProducerLevel: Int, CaseIterable, Codable {
         case .feedBox:       return 20
         case .shelterBox:    return 25
         case .familySpawner: return 1   // familySpawnerStorage has no level gate — value unused
+        case .kibbleCrate:   return 1
         }
     }
 }
@@ -624,7 +638,10 @@ struct ProducerTile: Identifiable, Equatable, Codable {
     /// Seconds until ready, derived live from `readyAt` — never stale, never ticked by hand.
     var cooldownRemaining: Double { max(0, readyAt.timeIntervalSinceNow) }
     /// 0 = fully charged, 1 = just fired (used to drive the cooldown ring).
-    var cooldownFraction: Double { max(0, min(1, cooldownRemaining / level.cooldown)) }
+    var cooldownFraction: Double {
+        guard level.cooldown > 0 else { return 0 }   // a crate has no cooldown ring
+        return max(0, min(1, cooldownRemaining / level.cooldown))
+    }
     /// For family spawners: the animal chain this tile produces. Nil for other producer types.
     var animalChainID: ChainID? { species.map { ContentRegistry.animalChainID($0) } }
 
@@ -2720,3 +2737,11 @@ let remoteEventTrackTotalCeiling: [RewardKind: Int] = [
 /// Seconds a tutorial bubble waits after the previous one closes before the next
 /// can show. Suggested start value; not from a reference, there to be tuned.
 let tutorialMomentGapSeconds: Double = 20
+
+// MARK: - Kibble Crate (cards and chests stage 3)
+
+/// Charges in one Kibble Crate. 8 pieces × 15 kibble (tier 3) = 120 raw, the reference
+/// offer's "~120"; merged fully they come to 126 (specs/Spec_CardsAndChests.md §4.2).
+let kibbleCrateCharges = 8
+/// Tier (0-based) of the kibble piece each tap places: `kibbleCurrencyValue(tier: 3)` = 15.
+let kibbleCrateTier = 3

@@ -404,7 +404,10 @@ enum GameStore {
     ///      Non-Optional, so it has an `additiveDefaultsSinceV8` entry; a
     ///      migrating save starts with no collection prize claimed (owner Q4 a:
     ///      a save that already finished every set may still claim once).
-    static let currentVersion = 47
+    /// v48: `ProducerLevel.kibbleCrate` (raw value 30) added (`specs/Spec_CardsAndChests.md`
+    ///      §4.2). No new field and nothing non-Optional: no older save holds a crate, so
+    ///      the step only stamps the version, and an older build cannot decode level 30.
+    static let currentVersion = 48
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -730,6 +733,7 @@ enum GameStore {
         if version == 43 { return migrateByInjecting(from: 43, defaults: [:], into: data) }   // boardTheme / boardThemePrompted covered by additiveDefaultsSinceV8
         if version == 45 { return migrateByInjecting(from: 45, defaults: [:], into: data) }   // claimedCollectionPrizeIDs covered by additiveDefaultsSinceV8
         if version == 46 { return migrateByInjecting(from: 46, defaults: [:], into: data) }   // seenTutorialMoments: inference runs in finishMigration for every sourceVersion < 47
+        if version == 47 { return migrateByInjecting(from: 47, defaults: [:], into: data) }   // kibbleCrate is a new ProducerLevel case; no existing save holds it
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
