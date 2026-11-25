@@ -1711,8 +1711,8 @@ private struct BubblePopSheet: View {
 
 /// Cycles the global spawn multiplier (1X → 2X → 4X → 8X → 1X).
 /// Higher tiers unlock at player levels 5 / 10 / 20.
-/// The multiplier selects the tier produced (1/2/4/8 → tier 0/1/2/3); each tap
-/// costs `2^tier` kibble, which is energy-neutral against merging it by hand.
+/// The multiplier is the item level produced (1/2/4/8 → level 1/2/4/8, tiers
+/// 0/1/3/7) and each tap costs that many kibble.
 private struct SpawnMultiplierButton: View {
     let viewModel: MergeBoardViewModel
 
