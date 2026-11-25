@@ -1934,7 +1934,7 @@ class MergeBoardViewModel {
                 let empty = emptyUnlockedCells.filter { $0.position != pos }
                 if let target = empty.randomElement() {
                     let chainID = producer.level.targetChainID ?? ContentRegistry.animalChainID(.dog)
-                    boardState.setItem(BoardItem(chainID: chainID, tier: producer.level.startTier), at: target.position)
+                    boardState.setItem(BoardItem(chainID: chainID, tier: producer.emitTier), at: target.position)
                     producer.startCooldown()
                     producer.chargesRemaining -= 1
                     boardState.setProducer(producer.chargesRemaining > 0 ? producer : nil, at: pos)
@@ -2104,15 +2104,27 @@ class MergeBoardViewModel {
         return emptyUnlockedCells.count + designated + overflow
     }
 
-    /// True when a product grants no spawner, or there is room to keep every
-    /// spawner it grants (an XL pack grants 2). The shop shows "make room first"
+    /// True when a product grants no producers, or there is room to keep every one it
+    /// grants: an energy pack's spawner(s) plus its Kibble Crate(s) (an XL pack grants 2 and
+    /// 2). Room is free board cells, the free overflow slots, and each producer level's own
+    /// storage slot once unlocked and empty. The shop shows "make room first"
     /// instead of the price when this is false, and `StoreManager.purchase`
     /// refuses before StoreKit is asked to charge (owner, 22 Nov 2026: a paid
     /// item is never downgraded). Level-up supply producers are free and keep
     /// the storage, then 10-kibble, fallback instead of blocking the level-up.
     func hasRoomForSpawners(of product: IAPProduct) -> Bool {
-        guard let pack = product.energyPackContents, pack.spawnerCount > 0 else { return true }
-        return producerRoom(for: pack.spawnerLevel) >= pack.spawnerCount
+        guard let pack = product.energyPackContents else { return true }
+        let need = pack.spawnerCount + pack.crates.count
+        guard need > 0 else { return true }
+        // `producerRoom` already counts the board, the overflow slots and the spawner level's
+        // own slot; the crate's own slot is a separate place a crate can go.
+        var room = producerRoom(for: pack.spawnerLevel)
+        if !pack.crates.isEmpty,
+           progression.playerLevel >= ProducerLevel.kibbleCrate.storageUnlockLevel,
+           inventoryStore.producerStorage[ProducerLevel.kibbleCrate.rawValue] == nil {
+            room += 1
+        }
+        return room >= need
     }
 
     /// Where a granted producer (an energy pack's spawner, a level-up supply
@@ -2134,7 +2146,15 @@ class MergeBoardViewModel {
     /// fallback remain. The player is told whenever it does not land on the board.
     @discardableResult
     func placeProducerReward(_ level: ProducerLevel) -> ProducerRewardPlacement {
-        let tile = ProducerTile(level: level)
+        placeProducerReward(ProducerTile(level: level), fallbackKibble: 10)
+    }
+
+    /// The same placement for a ready-made tile. `fallbackKibble` is what the player gets
+    /// if the board and storage are both full: 10 for a spawner, the crate's whole raw
+    /// value for a Kibble Crate (never less than the credit it replaced).
+    @discardableResult
+    func placeProducerReward(_ tile: ProducerTile, fallbackKibble: Int) -> ProducerRewardPlacement {
+        let level = tile.level
         if let target = emptyUnlockedCells.randomElement() {
             boardState.setProducer(tile, at: target.position)
             recalcBoardIsFull()
@@ -2144,8 +2164,8 @@ class MergeBoardViewModel {
             enqueueToast(Toast(kind: .info("Board full: \(level.displayName) sent to Storage")))
             return .storage
         }
-        kibbleEngine.kibble += 10
-        enqueueToast(Toast(kind: .info("No room for \(level.displayName): +10 Kibble instead")))
+        kibbleEngine.kibble += fallbackKibble
+        enqueueToast(Toast(kind: .info("No room for \(level.displayName): +\(fallbackKibble) Kibble instead")))
         return .kibbleFallback
     }
 
@@ -5590,9 +5610,13 @@ class MergeBoardViewModel {
         if let k = product.kibbleAmount { kibbleEngine.kibble  += k }
         if let t = product.dogTagAmount { kibbleEngine.dogTags += t }
         if let ep = product.energyPackContents {
-            kibbleEngine.kibble  += ep.kibble
+            // The pack's kibble arrives as Kibble Crates, not a credit (cards and chests
+            // stage 5). A crate that has nowhere to go falls back to its whole raw value.
             kibbleEngine.dogTags += ep.dogTags
             for _ in 0..<ep.spawnerCount { placeProducerReward(ep.spawnerLevel) }
+            for size in ep.crates {
+                placeProducerReward(ProducerTile.kibbleCrate(size), fallbackKibble: size.kibbleValue)
+            }
             earnCardPack(ep.cardPack)
         }
         if product == .sanctuaryPass {

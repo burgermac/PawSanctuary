@@ -205,12 +205,20 @@ enum StarShopItem: String, CaseIterable {
 // ============================================================
 
 struct EnergyPackContents {
-    let kibble: Int
+    /// The pack's kibble, delivered as Kibble Crates rather than credited (stage 5).
+    let crates: [KibbleCrateSize]
     let dogTags: Int
     let spawnerLevel: ProducerLevel
     let spawnerCount: Int
     let cardPack: CardPackType
     let previewPrice: String   // display-only placeholder; real price from StoreKit
+
+    /// Kibble in the pack's crates if every piece is collected as it is.
+    var kibble: Int {
+        var total = 0
+        for crate in crates { total += crate.kibbleValue }
+        return total
+    }
 }
 
 // ============================================================

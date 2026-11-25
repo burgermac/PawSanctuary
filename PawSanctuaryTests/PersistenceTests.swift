@@ -2890,4 +2890,63 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(ProducerLevel.allCases.map(\.rawValue).sorted(), [1, 2, 3, 10, 11, 12, 20, 30],
                        "a renumbered or added level would silently corrupt saves")
     }
+
+    // MARK: v48 → v49 (per-tile Kibble Crate size, cards and chests stage 5)
+
+    func testV48toV49KeepsEveryProducerAsItWas() throws {
+        var state = makeSampleState()
+        let boardTile = ProducerTile(level: .rescueCrate, chargesRemaining: 3)
+        state.board[1][0].producer = boardTile
+        let plainCrate = ProducerTile(level: .kibbleCrate, chargesRemaining: 6)
+        state.producerStorage = [ProducerLevel.kibbleCrate.rawValue: plainCrate]
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj["version"] = 48
+        try writeMainFile(try JSONSerialization.data(withJSONObject: obj))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v48 save should migrate to v49")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.board[1][0].producer, boardTile)
+        XCTAssertEqual(loaded.producerStorage[ProducerLevel.kibbleCrate.rawValue], plainCrate)
+        XCTAssertEqual(loaded.producerStorage[ProducerLevel.kibbleCrate.rawValue]?.emitTier, 3,
+                       "an unsized v48 crate keeps the level's default piece tier")
+        XCTAssertEqual(loaded.producerStorage[ProducerLevel.kibbleCrate.rawValue]?.totalCharges, 8)
+    }
+
+    func testASizedKibbleCrateRoundTripsOnTheBoardAndInStorage() throws {
+        var state = makeSampleState()
+        var onBoard = ProducerTile.kibbleCrate(KibbleCrateSize(charges: 5, tier: 5))
+        onBoard.chargesRemaining = 3
+        let stored = ProducerTile.kibbleCrate(KibbleCrateSize(charges: 7, tier: 3))
+        state.board[1][0].producer = onBoard
+        state.overflowProducerStorage[0] = stored
+        GameStore.saveNow(state, sequence: 1)
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.board[1][0].producer, onBoard)
+        XCTAssertEqual(loaded.board[1][0].producer?.chargesRemaining, 3)
+        XCTAssertEqual(loaded.board[1][0].producer?.totalCharges, 5, "capacity survives a partly used crate")
+        XCTAssertEqual(loaded.board[1][0].producer?.emitTier, 5)
+        XCTAssertEqual(loaded.overflowProducerStorage[0], stored)
+    }
+
+    func testAProducerTileWithoutSizeFieldsDecodesWithTheLevelDefaults() throws {
+        let legacyJSON: [String: Any] = [
+            "id": UUID().uuidString,
+            "level": ProducerLevel.kibbleCrate.rawValue,
+            "chargesRemaining": 4,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: legacyJSON)
+        let decoded = try decoder.decode(ProducerTile.self, from: data)
+        XCTAssertEqual(decoded.emitTier, 3)
+        XCTAssertEqual(decoded.totalCharges, 8)
+        XCTAssertNil(decoded.pieceTier)
+        XCTAssertNil(decoded.capacity)
+    }
+
+    func testANormalProducerWritesNoSizeFields() throws {
+        let data = try encoder.encode(ProducerTile(level: .fosterHome))
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(obj["pieceTier"])
+        XCTAssertNil(obj["capacity"])
+    }
 }
