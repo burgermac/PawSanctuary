@@ -1,5 +1,7 @@
 # Spec — Cards bought with kibble; a bought chest becomes a spawner
 
+**Status update, 26 Nov 2026 (from git):** built. Stages 1 to 5 are merged (#160, #165, #167, #170, #172) and the stage 6 Simulator pass is done. The real StoreKit purchase and the Shop pack row have not been seen on screen (`TODO.md`). *The earlier status line follows as written.*
+
 **Status: Draft, 22 Nov 2026; owner answered Q1–Q14 on 23 Nov 2026 (§10), two of them against the recommendation (Q3, Q7); no code.** This is task **8.1** of `Revision_Plan_ModelOnReferences.md` (W8, triage rows 15 and 16). Every code citation is `file:line` on `origin/main` at **`de3e8b2`** ("Merge pull request #133", 22 Nov 2026). Line numbers drift; search by name if one no longer lands. §4 and §7 below still describe the original proposal; where an answer changes it, a note marked **Answered 23 Nov** says so. §10 is the record.
 
 **Read first:** `PawSanctuary_Alignment_Plan.md` D3, D7, D9, D13, D14; `Triage_ModelOnReferences.md` §1 rows 15 and 16; `Spec_AlbumGrandPrize.md` (the album's kibble faucet, just built); `Spec_HeldItemOrders.md` §6 (the D14 ratio table).

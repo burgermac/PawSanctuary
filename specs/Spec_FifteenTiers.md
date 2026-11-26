@@ -1,5 +1,7 @@
 # PawSanctuary — Fifteen tiers per family (revision task 5.1)
 
+**Status update, 26 Nov 2026 (from git):** tasks 1 and 2 are merged (#144, #145; no behaviour change). Tasks 3 and 4 still wait for the 45 images, and task 3 for the Q3 answer. *The earlier status line follows as written.*
+
 **Status: owner answers recorded 22 Nov 2026; Q3 pending a measurement (R11); build held for the art (owner task 5.2).** No code yet. Tasks 1 and 2 (§9) can be built now and change no behaviour; tasks 3 and 4 wait for all 45 images (Q7), and task 3 also waits for the Q3 answer. The answers are in §12; every section below has been rewritten to match them.
 
 **History.** Draft of 22 Nov 2026, written cold from a read of the code at `70a8f5d` (origin/main on 22 Nov 2026, schema v45) to carry out task **5.1** of `Revision_Plan_ModelOnReferences.md` (W5, triage row 3). Since then `main` has moved to `2ca1c2e`, which merged PR #130 and set `currentVersion = 46` (still 46 at `d50d476`, checked when the answers were recorded); `GameStore.swift` line numbers below are therefore about 7 lines low on current `main`. Search by name if a number no longer lands. The owner reviewed the migration plan (§5) and answered §12 on 22 Nov 2026. Task 5.2 (art) is the owner's; task 5.3 (build) is split into the session tasks in §9.

@@ -1,6 +1,6 @@
 # PawSanctuary — Project State (maintained by the project-manager agent)
 
-Last updated: 2026-11-25, late night (owner session: D18, flat 10% bonus chance, counted in the economy model). Previously: 2026-11-25, night (owner session: economy re-run against D16; owner chose D2 prices, recorded as D17). Previously: 2026-11-25, evening (owner session: #176 recorded, the two tutorial M3 gaps are closed). Previously: 2026-11-25, later (owner session: cards stage 5 recorded as merged (#172, schema v49) and the stage 6 Simulator pass recorded, so 8.1 stages 1–6 are all done). Earlier the same day: Q27 and Q28 answered and recorded (D16, allowance 320); 2026-11-25 scheduled PM run (ledger synced to `main` = `2fc8604`, PR #172 open); 2026-11-24, late evening (ledger synced for #164–#170: cards 8.1 stages 2–4, the spawn-multiplier change, schema v48). Previously: 2026-11-24 evening (#160–#163) and 2026-11-24 (PM run). The owner pages (Revision Tracker, To-Do) were updated in the same session.
+Last updated: 2026-11-26, morning (scheduled PM run: synced to `main` = `f637209`; PR #180 open). Previously: 2026-11-25, late night (owner session: D18, flat 10% bonus chance, counted in the economy model). Previously: 2026-11-25, night (owner session: economy re-run against D16; owner chose D2 prices, recorded as D17). Previously: 2026-11-25, evening (owner session: #176 recorded, the two tutorial M3 gaps are closed). Previously: 2026-11-25, later (owner session: cards stage 5 recorded as merged (#172, schema v49) and the stage 6 Simulator pass recorded, so 8.1 stages 1–6 are all done). Earlier the same day: Q27 and Q28 answered and recorded (D16, allowance 320); 2026-11-25 scheduled PM run (ledger synced to `main` = `2fc8604`, PR #172 open); 2026-11-24, late evening (ledger synced for #164–#170: cards 8.1 stages 2–4, the spawn-multiplier change, schema v48). Previously: 2026-11-24 evening (#160–#163) and 2026-11-24 (PM run). The owner pages (Revision Tracker, To-Do) were updated in the same session.
 
 ## Autonomy settings (owner edits these)
 
@@ -34,7 +34,7 @@ State as of 23 Nov 2026, evening:
 | 5.3 Fifteen-tier build tasks 3–4 | blocked on 5.2 (art) and Q3/R11 | — |
 | 6.1–6.2 Album grand prize + set ramp | done (merged 22 Nov) | #113, #130–#133 |
 | 7.1 `Spec_RemoteEventData.md` | done (merged) | #114 |
-| 7.2 Remote events build | 7.2.1 catalog seam merged (#150); 7.2.2 file model, decoder and validator merged (#151); 7.2.3 onward needs the schema bump (now v50) and, for the download, owner hands (GitHub Pages + signing key) | #150, #151 |
+| 7.2 Remote events build | 7.2.1 (#150) and 7.2.2 (#151) merged; **7.2.3 `eventPins`, schema v50, is PR #180: open, CI green, owner merges**; 7.2.4 and 7.2.5 can follow once #180 is in; 7.2.6 onward needs owner hands (GitHub Pages + signing key) | #150, #151, #180 |
 | 8.1 stage 1 (buy a rare card with 50 kibble, 3 offered per day, D7-gated) | **done (merged 24 Nov)**: 13 new tests, 1309/1309 local; no schema change; Simulator look at stage 6 (25 Nov): no price pill on a missing rare before the D7 gate, a 50-kibble pill and a "Buy for 50 kibble" confirmation after it (purchase cancelled, not completed). CI first failed on `CardSystem.swift:377` ("unable to type-check this expression in reasonable time", Xcode 16.4); the sum of three optionals was split into typed `Int` steps (`07060fe`, no behaviour change) and CI then passed | #160 |
 | 8.1 stage 2 (Star Shop stops selling the common Joker) | **done (merged 24 Nov, 00:56 UTC 25 Nov)**: `StarShopItem.jokerCard` deleted; a held common Joker still works; the album's Jokers pill shows only while a balance remains (a small step beyond the spec, easy to drop); 8 new tests, 1335/1335 local; no schema change; Simulator: shop shows three packs and the Rare Joker | #165 |
 | 8.1 stage 3 (the Kibble Crate producer) | **done (merged 24 Nov, 04:19 UTC 25 Nov), schema v48**: `ProducerLevel.kibbleCrate = 30`, 8 charges, tier-3 kibble piece per tap (120 raw), free, vanishes after the 8th; storage slot; debug grant only, nothing sells it yet; 12 `KibbleCrateTests` + 4 `PersistenceTests`; 1351/1351 local; Simulator on the owner's save (v47 migrated to v48, then restored) | #167 |
@@ -42,7 +42,7 @@ State as of 23 Nov 2026, evening:
 | 8.1 Cards for kibble, bought chest becomes a spawner | spec done (merged 23 Nov); **Q26 answered** (Q1–Q14; Q3 and Q7 against the recommendation). **Stages 1–5 merged (#160, #165, #167, #170, #172) and the stage 6 Simulator pass done 25 Nov: the 8.1 build is complete.** Only the real StoreKit purchase and the Shop pack row remain unseen (the `TODO.md` Xcode-Run item) | #136 |
 | 8.1 stage 5 (energy packs deliver Kibble Crates, schema v49) | **done (merged 25 Nov, 14:37 UTC; CI `PawSanctuaryTests` SUCCESS, merge state clean)**: Small 100 / Medium 300 / Large 480 / XL 1000 kibble as crates (each 0 to 5% over the owner's figures), `ProducerTile` gains Optional `pieceTier`/`capacity`, room check counts crates, Shop rows show "Crate N"; 13 `EnergyPackCrateTests` + 4 v49 `PersistenceTests`; author reports 1385/1385 local. **Revenue-negative on four live SKUs by the owner's choice (D9 note in the PR).** Not seen on screen: the real StoreKit purchase and the Shop pack rows. | #172 |
 | 8.1 stage 6 (Simulator pass) | **done (25 Nov, verification only, no code)**, iPhone 17 Pro, `main` `d1d3feb`: a debug-granted crate shows 8 charges and burns one per free tap (6 left after two); two tier-3 pieces merged to tier 4 and collected for +31 kibble (2^5−1); album price pill absent before the D7 gate and present after it, with a "Buy for 50 kibble" confirmation; Shop row "Kibble Crate ×8, 36 tags"; with a full board the crate went to producer storage (`producerStorage["30"]`, 8 charges) and 36 tags were charged. Save backed up and restored. **Not seen:** the real StoreKit purchase and the pack row (no StoreKit under `simctl`; still the `TODO.md` Xcode-Run item) | none |
-| Spawn multiplier pricing | **D17** (25 Nov, merged as #178): ×1/2/4/8 give levels 1/2/3/4 at 1/2/4/8 kibble. **D18** (25 Nov): flat 10% bonus chance on ×2/×4/×8, counted in the economy model; D14 L50 1.06; coin window 52–70. D18 built on `feat/flat-bonus-chance`, not yet merged | #178 |
+| Spawn multiplier pricing | **D17** (25 Nov, merged as #178): ×1/2/4/8 give levels 1/2/3/4 at 1/2/4/8 kibble. **D18** (25 Nov): flat 10% bonus chance on ×2/×4/×8, counted in the economy model; D14 L50 1.06; coin window 52–70. **D18 merged as #179** (26 Nov 05:54 UTC) | #178, #179 |
 | F.1 / F.2 D7 fixes (bubble pops, free chest) | done (merged 22 Nov) | #138, #139 |
 | F.3 Paid spawner on a full board | done (merged): storage fallback #141, "Make room first" #146 | #141, #146 |
 | 3.x, 7.3, 9.1–9.3 | blocked on recordings R3, R7, R5, R6, R8 | — |
@@ -77,7 +77,15 @@ Found by the workers, not yet acted on (each is a candidate code-health or follo
 - **Flaky main run (19 Nov):** one failed push run on #125's merge, not repeated since; every main push run on 22–23 Nov succeeded (two were cancelled by the concurrency group, not failures). Keep watching.
 - Stale citations in `Feature_Parity_Audit.md` (album rows) and Calendar 2/4 specs (schema v44/v45; code is **v46**, `GameStore.swift:401`). Low value; PR #147 notes the Calendar 4 one.
 
-## Where the project stands (verified 2026-11-24, late evening)
+## Where the project stands (verified 2026-11-26, morning)
+
+- `main` = `f637209` (#179, D18), schema **v49**. Push CI on `f637209` green: **1392 tests, 0 failures** (read from the CI log). Since the last full entry, #176 (tutorial M3 gaps), #177 (ledger), #178 (D17) and #179 (D18) merged.
+- One open PR: **#180** (remote events 7.2.3, `eventPins`, **schema v50**; from the owner's session "Build remote events 7.2.3", not running at the time of this check). PM read the whole diff: the field, `EventPin`, the `migrateByInjecting` line for v49, the `additiveDefaultsSinceV8` entry and three `PersistenceTests` cases are present; nothing writes pins, so nothing changes for a player. CI `PawSanctuaryTests` SUCCESS, **1395 tests, 0 failures** (CI log); merge state CLEAN. No manual play-through (the PR says so). For 7.2.4: `captureState()` must carry `eventPins` through once something writes them.
+- **Loose, uncommitted work in the main project folder (not the PM's; untouched).** The folder is on `docs/d16-economy-report` at `626109d`, 8 commits behind. Modified: `project.pbxproj`, `PlaytestMetrics.swift`, `PrivacyInfo.xcprivacy`, `ProfileView.swift`, `TODO.md`, `Revision_Plan_ModelOnReferences.md`, `Triage_ModelOnReferences.md`. Untracked: the "Send my play stats" Swift files and tests, `docs/privacy/`, `docs/superpowers/specs/2026-11-25-share-play-stats-design.md`, `D16_Economy_Report.md`, `PM_HANDOFF.md` (stale 11 Nov handoff). The local branch `feat/share-play-stats` exists but holds **no commit** (it points at `626109d`), so this work exists only as files on this Mac. Last edits 25 Nov about 21:40–22:10 local. None of those files changed on `main` since `626109d` (checked by name). See **Q29**.
+- The booted Simulator (iPhone 17 Pro) had the app still running when checked (about 10 hours of memory-log samples), apparently left over from the owner's evening session. The PM did not install, launch, stop or change anything on it, so no Simulator check was done this run.
+- Next content deadline: Calendar 4 must be merged before 2027-05-15 (4.4–4.6 left). The first batch-2 Kibble Drive window (`kibble_drive_20261204`, 4–7 Dec) is the first live chance to see the open Medium-quest claim (§6h) and the trigger for the energy-pack revisit **only if the game has launched by then** (Q4).
+
+### Snapshot 2026-11-25 (kept for history)
 
 - **Update 25 Nov, later:** `main` = `08d346d` (#174 merged on top of #173 and #172), schema **v49**. #172 (cards stage 5) merged at 14:37 UTC with CI `PawSanctuaryTests` SUCCESS and merge state CLEAN; the stage 6 Simulator pass is done (see the revision table). Cards 8.1 stages 1–6 are complete. The entry below was written before #172 merged and is kept for the other items it records. Next builds: remote events 7.2.3 (needs hosting, a signing key and schema **v50**), Calendar 4 §4.4.
 
@@ -165,6 +173,13 @@ Found by the workers, not yet acted on (each is a candidate code-health or follo
 
 ## Queue — autonomous (PM picks from the top)
 
+**Current queue (26 Nov). The numbered list below it is history; most of its "in review" items merged long ago.**
+
+- **R-A. Remote events 7.2.4** (merge, pins, tombstones, "an unknown id never destroys state"; `Spec_RemoteEventData.md` §10). Autonomous **after the owner merges #180**. Before starting, check that the owner's remote-events session has not already taken it (`list_sessions`, `gh pr list`, remote branches). Then **7.2.5** (cache loader). 7.2.6 onward waits for To-Do t59.
+- **R-B. On-screen look at tips M19 (bubble) and M22 with the gate shut** (unit-tested only so far; would shorten To-Do t54). Needs the Simulator to be free: it was running the owner's build on 26 Nov. Back up and restore the save.
+- **R-C. Calendar 4 §4.4** is ready but held for the owner's word (To-Do t58). Deadline 2027-05-15.
+- Nothing else is both unblocked and approved.
+
 Every item: own branch, one task per session, PR opened, no merge. Build to derived data outside the synced folder. Default DoD unless stated: build green, full test suite green in CI, schema bump + migration + `PersistenceTests` case if any persisted shape changes (none of the items below should change one).
 
 0. **[DONE 2026-11-10/11]** Items 1, 2, 3, 3a, 3b, 4, 5 below all merged (#54–#69). Kept for history.
@@ -201,6 +216,8 @@ Every item: own branch, one task per session, PR opened, no merge. Build to deri
 
 ## Needs owner hands (batched checklist)
 
+**Added or changed 26 Nov** (the To-Do page has the plain-language wording): GitHub Pages hosting and signing key (t59, needed from 7.2.6); "Send my play stats" switch-on after Developer enrollment (t63; decide Q23 first); try the card purchase and Golden Ball clean-up on the real save (t55); play the new tutorial on a fresh install (t54); record R11, and R10 if possible (t52); 45 pictures for fifteen tiers (t51); update the local project folder (t53, **now with a warning not to discard anything until Q29 is dealt with**). The App Store Connect list is 15 IDs (t06).
+
 _Mirrored in the owner's pinned **PawSanctuary To-Do** page: https://claude.ai/artifact/EDJnFMLpMyvv8HusYo1eUo — keep both in sync._
 
 - [ ] **StoreKit pass** (PR #94 merged 14 Nov, so the config now has the Kibble Drive product — ready to do), one Xcode Run with the `.storekit` configuration: Kibble Drive purchase, Reward Ladder rung 1, event Pass. Covers `grantIfNew`, `tx.finish()`, `listenForTransactions()`.
@@ -233,6 +250,20 @@ _Mirrored in the owner's pinned **PawSanctuary To-Do** page: https://claude.ai/a
 - **Q28 — cards stage 4 allowance: ANSWERED 25 Nov 2026 (owner): accept 320.** `specs/Spec_CardsAndChests.md` §4 and §7 now say 320 (100 + 100 + 120 for the crate), inside the 280–360 window and level with the reference's ~320. No price or code changed; #170's test already asserts 320. The sizing table for stage 5 can proceed on that figure.
 
 ## Decisions waiting on the owner
+
+**Open as of 26 Nov (details in the bullets below; every other bullet is answered or closed):**
+
+1. **Q29 (new) — Protect the uncommitted play-stats work.** The "Send my play stats" feature, the privacy documents and the D16 economy report exist only as unsaved files in the main project folder (see "Where the project stands"). Options: (a) have the "Paw Sanctuary telemetry and privacy" session, or the PM with your OK, commit them to `feat/share-play-stats` and push it with no PR to merge yet (the feature is switched off, but it adds app code and privacy-file changes, so it should not merge before Q23); (b) leave them as they are until Developer enrollment. **Recommend (a):** one wrong "discard" or a disk fault would lose it, and To-Do t53 used to say to discard local copies.
+2. **PR #180** — merge it (CI green, nothing changes for players). It unblocks 7.2.4.
+3. **Calendar 4 §4.4** (t58) — say "start 4.4", or tell the PM to run 4.4–4.6 without asking each time. **Recommend the latter.**
+4. **Q14** (t29) — may the PM merge Calendar 4 build steps itself on green CI? **Recommend yes.**
+5. **Q23** (t41) — card trading and the App Store privacy answers: (a) declare it, (b) launch with trading off. **Recommend (a) if trading is wanted at launch, otherwise (b).** Needed before the iCloud capability is added.
+6. **Q10** (t19) — event-ends-soon reminder: **recommend A+**, none for Kibble Drive.
+7. **Q16** (t34) — add the newer specs to the CLAUDE.md table and fix its two stale lines (decisions now run D1–D18): **recommend yes**.
+8. **Q11** (t11) — Tier B feel: **recommend accepting the defaults.**
+9. **Q13** (t13, low) — Kibble Drive ending with rewards uncollected: **recommend keep silent.**
+
+Q15 is closed: its album prize was built (#130–#133) and card purchase for kibble was built (#160).
 
 - **CV-1 — ANSWERED 22 Nov 2026 (owner: B): "See in store" opens the Dog Tag shop scrolled to the item; the player buys there.** Spec PR #137 and builds #148 ("See in store") and #149 ("Made by") merged 23 Nov. Optional recording R12 would confirm the reference. (To-Do t38.)
 - **Q25 — ANSWERED 23 Nov 2026 (owner): (a) on all seven.** × on each tip plus "Skip tips" on the first; never blocking; seven core-loop tips in session one; existing saves inferred; plain short tone; no shop pointer; a separate `TutorialCoordinator`. Spec PR #135 merged; task 4.3 (the build) shipped 23–24 Nov (#152–#155, #157, #159; see "Context tutorial (4.3), as built"). (To-Do t49.)
@@ -327,3 +358,4 @@ Default the PM will use unless you object: calendar batch 2 reuses the existing 
 - 2026-11-25 (evening) — Owner session: owner decided both #154 tutorial gaps (fix both); built as **#176**, merged as `4fd140c`. Local suite 1390/1390 before the PR; CI `PawSanctuaryTests` SUCCESS. Simulator look at the hand on a patched save, restored afterwards. Revision Tracker rows 4.3 and 4.3.3 and the To-Do item were updated. Docs only in this entry.
 - 2026-11-25 (night) — Owner session: re-ran the economy model against D16 with a throwaway kibble-pricing harness (not committed). The owner chose D2 prices. Restored tiers 0/1/2/3 and the earlier bonus-spawn chances on `feat/restore-d2-spawn-prices` and recorded **D17**. No schema change. The owner pages (Revision Tracker, To-Do) were not updated.
 - 2026-11-25 (late night) — Owner session: #178 (D17) merged. Owner chose a flat 10% bonus chance (**D18**); the economy model now counts bonus spawns and its bands are asserted on D14. Built on `feat/flat-bonus-chance`. No schema change. The owner pages (Revision Tracker, To-Do) were not updated.
+- 2026-11-26 — Scheduled PM run (owner absent). `main` = `f637209`, CI green (1392 tests, from the log). Ledger reconciled for #176–#179 (D18 had been recorded as unmerged). Reviewed **#180** (remote events 7.2.3, v50): diff read in full, CI 1395/0, left for the owner to merge. Doc drift: added a dated current-status line to seven spec headers that still said "no code" or "in review" (same PR as this entry). Found the "Send my play stats" work and the D16 report only as uncommitted files in the main folder → new **Q29**; changed To-Do t53 (its old "discard those copies" wording was now risky) and t63 (the named branch holds no commit); added merge items for #180 and this PR. Nothing built: Calendar 4 §4.4 is held for the owner's word, 7.2.4 waits on #180, and the Simulator was running the owner's build so it was left alone. No new ticks on the To-Do page needed action. No merges.
