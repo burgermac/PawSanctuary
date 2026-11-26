@@ -2242,14 +2242,15 @@ func spawnTierIndex(forMultiplier multiplier: Int) -> Int {
 
 /// Chance of a bonus extra spawn, keyed by the multiplier's tier index
 /// (0/1/2/3 for ×1/×2/×4/×8). Zero at ×1 by construction — that's the point.
+/// Flat across boosted taps (D18, 25 Nov 2026): the economy model counts the
+/// bonus, and a higher chance on ×4 or ×8 either removed the kibble wall or
+/// made the demand ratio dip when that multiplier unlocked.
 func bonusSpawnChance(forMultiplierTier tierIndex: Int) -> Double {
-    switch tierIndex {
-    case 0:  return 0.00
-    case 1:  return 0.10
-    case 2:  return 0.25
-    default: return 0.40
-    }
+    tierIndex == 0 ? 0.00 : boostedBonusSpawnChance
 }
+
+/// The bonus chance on every boosted tap (×2/×4/×8).
+let boostedBonusSpawnChance = 0.10
 
 /// Share of triggered bonuses that roll "Legendary!" (one tier richer) rather
 /// than the common "Lucky!" (matches the tap's own tier).

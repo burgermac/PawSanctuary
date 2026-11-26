@@ -7,9 +7,11 @@
 //  so an `#if DEBUG` guard here would compile to nothing instead.
 //
 //  Answers one question: at a given player level, how does the kibble the game
-//  ASKS FOR compare to the kibble it GIVES? Everything is denominated in kibble
-//  under Task 2.1's neutral pricing, where an item at 0-based tier `t` costs
-//  exactly `2^t` to build from scratch.
+//  ASKS FOR compare to the kibble it GIVES? An item at 0-based tier `t` is worth
+//  `2^t` merge units. Spawn prices are neutral (D17), but a boosted tap can also
+//  drop a bonus, so some items cost less kibble than that: the demand ratio
+//  prices every item with `kibblePrice` (D18). Quantities, and everything on the
+//  coin side, stay in merge units.
 //
 //  The ratio it reports is demand ÷ supply:
 //    < 1.00  the player can fill everything they're offered
@@ -104,6 +106,41 @@ struct EconomySimulation {
         return regen + ads + miscKibblePerDay
     }
 
+    // MARK: Kibble price of an item (D18)
+
+    /// An item's worth in merge inputs, `2^tier`. The default `value` of every
+    /// demand and recirculation helper, so quantities stay in merge units unless
+    /// a caller asks for the kibble price.
+    static func mergeUnits(_ tier: Int) -> Double { Double(spawnCost(forTier: tier)) }
+
+    /// Share of spawner taps that drop an animal (the rest are sub-objects and
+    /// currency). A bonus spawn is always an animal, so it counts in full.
+    static var animalDropShare: Double {
+        1.0 - SubObjectDropConfig.baseSubObjectChance - baseCurrencyChance
+    }
+
+    /// Merge units one tap at `multiplier` returns per kibble, bonus included,
+    /// relative to the same tap with no bonus and no price change.
+    static func unitsPerKibble(multiplier: Int) -> Double {
+        let tier  = spawnTierIndex(forMultiplier: multiplier)
+        let bonus = bonusSpawnChance(forMultiplierTier: tier) * (1.0 + legendaryBonusShare)
+        return mergeUnits(tier) * (1.0 + bonus / animalDropShare)
+            / Double(spawnTapCost(forMultiplier: multiplier))
+    }
+
+    /// Kibble needed for one item at `tier`, using the best multiplier unlocked
+    /// at `level` that spawns no higher than that tier. Best case for the player:
+    /// they always pick it, and a bonus always finds an empty cell.
+    static func kibblePrice(tier: Int, level: Int) -> Double {
+        let progression = PlayerProgression()
+        progression.playerLevel = level
+        let best = progression.unlockedMultipliers
+            .filter { spawnTierIndex(forMultiplier: $0) <= tier }
+            .map { unitsPerKibble(multiplier: $0) }
+            .max() ?? 1.0
+        return mergeUnits(tier) / max(1.0, best)
+    }
+
     // MARK: Demand
     //
     // Enumerates `AdoptionBoard`'s per-difficulty tier-weighting tables exactly
@@ -146,7 +183,8 @@ struct EconomySimulation {
     /// exactly one line, and only for tiers 0...5.
     static func expectedLineCost(difficulty: OrderDifficulty,
                                  level: Int,
-                                 applyCountRoll: Bool) -> Double {
+                                 applyCountRoll: Bool,
+                                 value: @MainActor (Int) -> Double = mergeUnits) -> Double {
         let maxTier = orderTierCap(level: level)
         var total = 0.0
         for (bandProbability, tiers) in orderDifficultyBands[difficulty] ?? [] {
@@ -155,7 +193,7 @@ struct EconomySimulation {
                 let tier = min(t, maxTier)
                 // count = 2 one time in three, but only for tiers 0...5
                 let expectedCount = (applyCountRoll && tier <= 5) ? (1.0 + 1.0 / 3.0) : 1.0
-                total += each * Double(spawnCost(forTier: tier)) * expectedCount
+                total += each * value(tier) * expectedCount
             }
         }
         return total
@@ -167,29 +205,30 @@ struct EconomySimulation {
     /// Mirrors `AdoptionBoard.generateOrder`: line 0 draws the slot's own band,
     /// any further lines draw `basketFillerDifficulty`, and the count roll
     /// applies only to single-line baskets. Keep in step with it.
-    static func expectedOrderCost(difficulty: OrderDifficulty, level: Int) -> Double {
+    static func expectedOrderCost(difficulty: OrderDifficulty, level: Int,
+                                  value: @MainActor (Int) -> Double = mergeUnits) -> Double {
         let sizes = Array(orderBasketLineCounts[difficulty] ?? 1...1)
         guard !sizes.isEmpty else { return 0 }
         let pEach = 1.0 / Double(sizes.count)
         let filler = expectedLineCost(difficulty: difficulty.basketFillerDifficulty,
-                                      level: level, applyCountRoll: false)
+                                      level: level, applyCountRoll: false, value: value)
         return sizes.reduce(0.0) { total, lineCount in
             let headline = expectedLineCost(difficulty: difficulty, level: level,
-                                            applyCountRoll: lineCount == 1)
+                                            applyCountRoll: lineCount == 1, value: value)
             return total + pEach * (headline + Double(lineCount - 1) * filler)
         }
     }
 
     /// Expected kibble cost of one generated order, averaged across every active
     /// persistent slot's fixed difficulty plus the urgent order (always `.medium`).
-    static func expectedOrderCost(level: Int) -> Double {
+    static func expectedOrderCost(level: Int, value: @MainActor (Int) -> Double = mergeUnits) -> Double {
         let persistentSlots = slotCount(level: level)
         var total = 0.0
         for slotIndex in 0..<persistentSlots {
             total += expectedOrderCost(difficulty: AdoptionBoard.difficulty(forSlot: slotIndex),
-                                       level: level)
+                                       level: level, value: value)
         }
-        total += expectedOrderCost(difficulty: .medium, level: level)   // the urgent order
+        total += expectedOrderCost(difficulty: .medium, level: level, value: value)   // the urgent order
         return total / Double(persistentSlots + 1)
     }
 
@@ -240,7 +279,8 @@ struct EconomySimulation {
     /// `basketFillerDifficulty` independently, and — unlike an order — there is
     /// **no** "bring me two of these" count roll. Keep in step with it.
     static func dailyTaskCostDistribution(difficulty: QuestDifficulty,
-                                          level: Int) -> [(cost: Double, p: Double)] {
+                                          level: Int,
+                                          value: @MainActor (Int) -> Double = mergeUnits) -> [(cost: Double, p: Double)] {
         let band    = difficulty.dailyTaskOrderBand
         let maxTier = orderTierCap(level: level)
 
@@ -250,7 +290,7 @@ struct EconomySimulation {
                 let each = bandProbability / Double(tiers.count)
                 for t in tiers { weights[min(t, maxTier), default: 0] += each }
             }
-            return weights.map { (cost: Double(spawnCost(forTier: $0.key)), p: $0.value) }
+            return weights.map { (cost: value($0.key), p: $0.value) }
         }
 
         let headline = tierOutcomes(band)
@@ -311,8 +351,9 @@ struct EconomySimulation {
         Double(slotCount(level: level) + 1) * Double(effectiveCyclesPerDay)   // + the urgent order
     }
 
-    /// Kibble the **orders alone** ask for per day: every order generated is
-    /// charged the full build cost `2^tier` of every item on every line.
+    /// Merge units the **orders alone** ask for per day: every order generated is
+    /// charged the full build cost `2^tier` of every item on every line. The
+    /// ratio rows use `kibbleDemand` instead.
     ///
     /// This is the D12 model's demand and is kept unchanged. See
     /// `grossDemandHeldItem` for the D14 (held-item) model, which adds the daily
@@ -325,6 +366,12 @@ struct EconomySimulation {
         ordersPerDay(level: level) * expectedOrderCost(level: level)
     }
 
+    /// Kibble the orders ask for per day: `grossDemand` at `kibblePrice`.
+    static func kibbleDemand(level: Int) -> Double {
+        ordersPerDay(level: level)
+            * expectedOrderCost(level: level) { kibblePrice(tier: $0, level: level) }
+    }
+
     // MARK: Demand under held-item delivery (D14, Spec_HeldItemOrders.md §6)
 
     /// Kibble per day the three daily hand-in tasks consume, on top of the
@@ -335,12 +382,16 @@ struct EconomySimulation {
     /// that is the upper-bound direction (a player who skips a task asks the
     /// economy for less), so the D14 ratio below is, if anything, slightly high.
     static func dailyTaskDemand(level: Int) -> Double {
-        dailyTaskKibbleHandedIn(level: level)
+        dailyTaskSlotDifficulties.reduce(0.0) { total, difficulty in
+            total + dailyTaskCostDistribution(difficulty: difficulty, level: level) {
+                kibblePrice(tier: $0, level: level)
+            }.reduce(0.0) { $0 + $1.p * $1.cost }
+        }
     }
 
     /// Kibble per day asked for under D14: orders plus daily tasks.
     static func grossDemandHeldItem(level: Int) -> Double {
-        grossDemand(level: level) + dailyTaskDemand(level: level)
+        kibbleDemand(level: level) + dailyTaskDemand(level: level)
     }
 
     /// The D14 counterpart of `Row`. Supply and recirculation are identical to
@@ -365,10 +416,9 @@ struct EconomySimulation {
     static func heldItemRow(level: Int) -> HeldItemRow {
         HeldItemRow(level: level,
                     supply: dailySupply(level: level),
-                    orderDemand: grossDemand(level: level),
+                    orderDemand: kibbleDemand(level: level),
                     dailyTaskDemand: dailyTaskDemand(level: level),
-                    recirculation: recirculation(level: level,
-                                                 deepestTier: assumedDeepestTier(level: level)))
+                    recirculation: kibbleRecirculation(level: level))
     }
 
     // MARK: How much did D12 overstate order demand? (a bound, not a correction)
@@ -456,19 +506,27 @@ struct EconomySimulation {
         return 1 - paidD12Best / paidD14
     }
 
+    /// The kibble an item handed back saves: `recirculation` at `kibblePrice`.
+    static func kibbleRecirculation(level: Int) -> Double {
+        recirculation(level: level, deepestTier: assumedDeepestTier(level: level)) {
+            kibblePrice(tier: $0, level: level)
+        }
+    }
+
     // MARK: Recirculation
     //
     // Kibble-equivalent value of the items handed back per day. This is what makes
     // the deep chain reachable: a Stage-15 item costs 16,384 kibble, roughly 22 days
     // of a player's entire income, so it cannot come from tapping.
 
-    static func recirculation(level: Int, deepestTier: Int) -> Double {
+    static func recirculation(level: Int, deepestTier: Int,
+                              value: @MainActor (Int) -> Double = mergeUnits) -> Double {
         let orders = ordersPerDay(level: level)
         let dist   = tierDistribution(level: level)
 
         // 3a — one order in `orderBoardItemFrequency` pays an item at wantedTier − offset.
         let perOrderItem = dist.reduce(0.0) { total, entry in
-            total + entry.p * Double(spawnCost(forTier: max(0, entry.tier - orderRewardTierOffset)))
+            total + entry.p * value(max(0, entry.tier - orderRewardTierOffset))
         }
         let fromOrders = orders / Double(orderBoardItemFrequency) * perOrderItem
 
@@ -479,8 +537,8 @@ struct EconomySimulation {
         // A 4-tier chain merged 2-to-1 needs 2^3 = 8 tier-0s per completed sub-object.
         let completedPerDay   = subObjectsPerDay / 8.0
         let grantsPerDay      = completedPerDay * (SubObjectRarity.boardItemGrant.weight / 100.0)
-        let fromGrants        = grantsPerDay * Double(spawnCost(forTier:
-            min(max(0, deepestTier - recirculationTierOffset), recirculationMaxItemTier)))
+        let fromGrants        = grantsPerDay * value(
+            min(max(0, deepestTier - recirculationTierOffset), recirculationMaxItemTier))
 
         // §2 — Smile point bundles. Every fulfilled order banks its Smile value
         // (1/2/3 by the deepest tier it asks for); each full bar scatters one
@@ -492,18 +550,17 @@ struct EconomySimulation {
         }
         let bundlesPerDay = orders * smilePerOrder / Double(smilePointsGoal)
         let perBundle = smileBundleTierOffsets.reduce(0.0) { total, offset in
-            total + Double(spawnCost(forTier:
-                min(max(0, deepestTier - offset), smileBundleMaxItemTier)))
+            total + value(min(max(0, deepestTier - offset), smileBundleMaxItemTier))
         }
         let fromSmiles = bundlesPerDay * perBundle
 
         // 3b — weekly and monthly chests, amortised per day.
         let weeklyChests = WeeklyGoalTier.allCases.reduce(0.0) { total, tier in
-            total + Double(tier.boardItemCount) * Double(spawnCost(forTier:
-                min(max(0, deepestTier - tier.boardItemTierOffset), recirculationMaxItemTier)))
+            total + Double(tier.boardItemCount) * value(
+                min(max(0, deepestTier - tier.boardItemTierOffset), recirculationMaxItemTier))
         } / 7.0
-        let monthlyChest = 2.0 * Double(spawnCost(forTier:
-            min(max(0, deepestTier - 1), recirculationMaxItemTier))) / 30.0
+        let monthlyChest = 2.0 * value(
+            min(max(0, deepestTier - 1), recirculationMaxItemTier)) / 30.0
 
         return fromOrders + fromGrants + fromSmiles + weeklyChests + monthlyChest
     }
@@ -872,11 +929,10 @@ struct EconomySimulation {
     }
 
     static func row(level: Int) -> Row {
-        let deepest = assumedDeepestTier(level: level)
-        return Row(level: level,
-                   supply: dailySupply(level: level),
-                   grossDemand: grossDemand(level: level),
-                   recirculation: recirculation(level: level, deepestTier: deepest))
+        Row(level: level,
+            supply: dailySupply(level: level),
+            grossDemand: kibbleDemand(level: level),
+            recirculation: kibbleRecirculation(level: level))
     }
 
     static let reportLevels = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
@@ -956,8 +1012,8 @@ struct EconomySimulation {
         }
     }
 
-    /// Kibble-equivalent per day that actually becomes completed orders: the
-    /// smaller of what orders ask for and what the player can field, discounted
+    /// Merge units per day that actually become completed orders: what orders ask
+    /// for, times the share of the kibble demand the player can fill, discounted
     /// by how much of that production really lands in an order.
     ///
     /// Note the `+ recirculation`: recirculated items fulfil orders too, so order
@@ -966,7 +1022,9 @@ struct EconomySimulation {
     /// projection lands faster than the 60-day target it came from.
     static func kibbleIntoOrders(level: Int) -> Double {
         let r = row(level: level)
-        return min(r.grossDemand, Double(r.supply) + r.recirculation) * orderFulfilmentEfficiency
+        let filled = r.netDemand <= Double(r.supply)
+            ? 1.0 : (Double(r.supply) + r.recirculation) / r.grossDemand
+        return grossDemand(level: level) * filled * orderFulfilmentEfficiency
     }
 
     /// Coins per day from the faucets that aren't the two main channels.
@@ -1012,12 +1070,12 @@ struct EconomySimulation {
 
     static func report() -> String {
         var out = "PawSanctuary economy model — Phases 2 / 2b / 2c\n"
-        out += "kibble target: <0.70 to L30 · 0.70-0.95 L31-40 · crosses 1.00 at L41-50 · 1.05-1.25 L51+\n\n"
+        out += "orders only (D12), for comparison; the target bands are asserted on the D14 rows (heldItemReport)\n\n"
         for level in reportLevels { out += row(level: level).description + "\n" }
 
         out += "\ncoins — map costs \(mapTotalCoinCost) across "
         out += "\(sanctuaryAreas.flatMap(\.upgrades).count) upgrades\n"
-        out += "target: 55-70 days selling \(Int(sellSurplusFraction * 100))% · no worse than ~75 never selling\n\n"
+        out += "target: 52-70 days selling \(Int(sellSurplusFraction * 100))% · no worse than ~75 never selling\n\n"
         for level in reportLevels {
             let never = coinRow(level: level, sells: false)
             let sell  = coinRow(level: level, sells: true)
@@ -1082,7 +1140,7 @@ struct EconomySimulation {
     /// Prints `report()`. Call from a debug menu or a breakpoint.
     static func printReport() { print(report()) }
 
-    // MARK: Target bands (the ones `testDemandSupplyRatioMatchesTheTargetCurve` pins)
+    // MARK: Target bands (the ones `testDemandSupplyRatioMatchesTheTargetCurve` pins on D14)
 
     /// Whether a ratio at `level` sits inside the target band for that level.
     /// Mirrors `EconomyTests.testDemandSupplyRatioMatchesTheTargetCurve`; keep in step.
