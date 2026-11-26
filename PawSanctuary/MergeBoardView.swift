@@ -124,9 +124,10 @@ struct MergeBoardView: View {
         case .firstQuestClaim:
             return [tutorialFrames[.questClaim] ?? tutorialTaskFrame]
         case .orderOnHold:
-            // The card, then the tiles it is holding: the hand slides from one to the other.
-            let card = viewModel.coachMarkOrderID(for: moment).flatMap { orderCardFrames[$0] } ?? tutorialTaskFrame
-            return [card] + viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
+            // The card's held slot, where the hand rests, then the tiles it is holding.
+            guard let id = viewModel.coachMarkOrderID(for: moment) else { return [tutorialTaskFrame] }
+            let slot = tutorialFrames[.orderHeldSlot(id)] ?? orderCardFrames[id] ?? tutorialTaskFrame
+            return [slot] + viewModel.coachMarkCells(for: moment).compactMap { tutorialFrames[.cell($0)] }
         case .firstDeliver:
             guard let id = viewModel.coachMarkOrderID(for: moment) else { return [tutorialTaskFrame] }
             return [tutorialFrames[.deliverPill(id)] ?? orderCardFrames[id] ?? tutorialTaskFrame]
@@ -353,6 +354,7 @@ struct MergeBoardView: View {
                 )
                 .id(moment)
                 .task(id: moment) {
+                    viewModel.noteCoachMarkShown(moment)
                     // The short tips close themselves and count as seen.
                     guard let seconds = moment.autoCloseSeconds else { return }
                     try? await Task.sleep(for: .seconds(seconds))
@@ -376,6 +378,9 @@ struct MergeBoardView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .onPreferenceChange(HUDFrameKey.self) { hudFrames = $0 }
         .onPreferenceChange(TutorialFrameKey.self) { tutorialFrames = $0 }
+        .onChange(of: viewModel.onHoldTipCardIsReady) { _, isReady in
+            if isReady { viewModel.finishOnHoldTipIfItsCardIsReady() }
+        }
         .environment(\.boardTheme, viewModel.boardTheme)
         .onChange(of: shouldOfferThemeChoice) { _, offer in
             guard offer else { return }

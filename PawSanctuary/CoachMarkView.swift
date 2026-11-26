@@ -20,6 +20,7 @@ enum TutorialFrameID: Hashable {
     case cell(GridPosition)
     case questClaim
     case deliverPill(UUID)
+    case orderHeldSlot(UUID)
     case basketButton
     // Stage 5 (feature tips)
     case chainInfoButton
@@ -52,8 +53,8 @@ extension View {
 struct CoachMarkOverlay: View {
     let moment: TutorialMoment
     let text: String
-    /// Global frames of what the tip points at, in order (the merge tip's hand
-    /// slides from the first to the second).
+    /// Global frames of what the tip points at, in order. Each gets a ring; the
+    /// hand rests on the first, except on the merge tip, where it slides.
     let targets: [CGRect]
     /// "Skip tips" is offered inside the first tip of a session only (owner Q1).
     let showsSkipAll: Bool
@@ -100,12 +101,12 @@ struct CoachMarkOverlay: View {
         }
     }
 
-    /// The hand sits on the single target, or slides from the first target to the
-    /// second (the merge tip). Under Reduce Motion it stays on the first.
+    /// The hand rests on the first target, or slides from it to the second (the
+    /// merge tip only). Under Reduce Motion it stays on the first.
     private func handPosition(_ local: [CGRect]) -> CGPoint? {
         guard let first = local.first else { return nil }
         let a = CGPoint(x: first.midX, y: first.midY)
-        guard local.count > 1, !reduceMotion else { return a }
+        guard moment.handSlides, local.count > 1, !reduceMotion else { return a }
         let b = CGPoint(x: local[1].midX, y: local[1].midY)
         let t: CGFloat = slide ? 1 : 0
         return CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)

@@ -134,6 +134,63 @@ final class OrderCoachMarkTests: XCTestCase {
         XCTAssertNil(next(vm))
     }
 
+    func testTheOnHoldTipIsDoneWhenItsCardBecomesReadyAndTheDeliverTipFollows() {
+        let vm = gameReadyForOrders()
+        let first = order(dog, tier: 1, count: 2)
+        let second = order(cat, tier: 1, count: 2)
+        vm.adoptionOrders = [first, second]
+        hold(vm, dog, tier: 1, copies: 1)
+        hold(vm, cat, tier: 1, copies: 1)
+        XCTAssertEqual(next(vm), .orderOnHold)
+        vm.noteCoachMarkShown(.orderOnHold)
+        XCTAssertFalse(vm.onHoldTipCardIsReady)
+        hold(vm, dog, tier: 1, copies: 1)
+        XCTAssertTrue(vm.onHoldTipCardIsReady)
+        vm.finishOnHoldTipIfItsCardIsReady()
+        XCTAssertTrue(vm.hasSeenTutorialMoment(.orderOnHold))
+        // The second card is still part-held, and must not keep the tip going.
+        XCTAssertEqual(next(vm), .firstDeliver)
+    }
+
+    func testAnotherCardBecomingReadyLeavesTheOnHoldTipAlone() {
+        let vm = gameReadyForOrders()
+        let first = order(dog, tier: 1, count: 2)
+        let second = order(cat, tier: 1, count: 2)
+        vm.adoptionOrders = [first, second]
+        hold(vm, dog, tier: 1, copies: 1)
+        vm.noteCoachMarkShown(.orderOnHold)
+        hold(vm, cat, tier: 1, copies: 2)
+        vm.finishOnHoldTipIfItsCardIsReady()
+        XCTAssertFalse(vm.hasSeenTutorialMoment(.orderOnHold))
+    }
+
+    func testACardThatBecomesReadyBeforeTheTipEverShowedDoesNotUseItUp() {
+        let vm = gameReadyForOrders()
+        vm.adoptionOrders = [order(dog, tier: 1, count: 2)]
+        hold(vm, dog, tier: 1, copies: 2)
+        XCTAssertFalse(vm.onHoldTipCardIsReady)
+        vm.finishOnHoldTipIfItsCardIsReady()
+        XCTAssertFalse(vm.hasSeenTutorialMoment(.orderOnHold))
+    }
+
+    // MARK: M3, where the hand rests
+
+    func testOnlyTheMergeTipsHandSlides() {
+        // A sliding hand means "drag this". The on-hold tip says to leave the animal where it is.
+        for moment in TutorialMoment.allCases {
+            XCTAssertEqual(moment.handSlides, moment == .firstMerge, "\(moment)")
+        }
+    }
+
+    func testTheOnHoldHandRestsOnTheCardsFirstHeldSlot() {
+        let vm = gameReadyForOrders()
+        let o = AdoptionOrder(familyIndex: 0, wantedChainID: dog, wantedTier: 1, wantedCount: 2)
+        XCTAssertNil(o.slots(census: vm.boardTaskCensus, canDeliver: true).firstHeldIndex, "nothing held")
+        hold(vm, dog, tier: 1, copies: 1)
+        let slots = o.slots(census: vm.boardTaskCensus, canDeliver: true)
+        XCTAssertEqual(slots.firstHeldIndex.map { slots[$0].state }, .held)
+    }
+
     // MARK: M4, the first Deliver
 
     func testTheDeliverTipAppearsOnceAnOrderIsReady() {
