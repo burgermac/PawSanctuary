@@ -13,7 +13,26 @@ final class EconomyTests: XCTestCase {
 
     // MARK: Task 2.1 — neutral spawn multiplier
 
-    /// Owner decision (24 Nov 2026): a tap costs exactly the multiplier in kibble.
+    /// No multiplier may buy an item at a discount to building it by hand
+    /// (D2, restored by D17).
+    func testEveryMultiplierIsEnergyNeutral() {
+        for multiplier in [1, 2, 4, 8] {
+            let tier = spawnTierIndex(forMultiplier: multiplier)
+            let cost = spawnTapCost(forMultiplier: multiplier)
+            XCTAssertEqual(cost, spawnCost(forTier: tier),
+                           "×\(multiplier) buys tier \(tier) for \(cost) kibble")
+        }
+    }
+
+    /// Each boosted multiplier keeps its own bonus chance, whatever tier it spawns.
+    func testBonusSpawnChanceRisesWithEachMultiplier() {
+        let chances = [1, 2, 4, 8].map {
+            bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: $0))
+        }
+        XCTAssertEqual(chances, [0.00, 0.10, 0.25, 0.40])
+    }
+
+    /// A tap costs exactly the multiplier in kibble.
     func testSpawnTapCostEqualsMultiplier() {
         for multiplier in [1, 2, 4, 8] {
             XCTAssertEqual(spawnTapCost(forMultiplier: multiplier), multiplier)
@@ -24,8 +43,8 @@ final class EconomyTests: XCTestCase {
     func testMultiplierMapsToExpectedTiers() {
         XCTAssertEqual(spawnTierIndex(forMultiplier: 1), 0)
         XCTAssertEqual(spawnTierIndex(forMultiplier: 2), 1)
-        XCTAssertEqual(spawnTierIndex(forMultiplier: 4), 3, "×4 spawns a level-4 item")
-        XCTAssertEqual(spawnTierIndex(forMultiplier: 8), 7, "×8 spawns a level-8 item")
+        XCTAssertEqual(spawnTierIndex(forMultiplier: 4), 2, "×4 spawns a level-3 item")
+        XCTAssertEqual(spawnTierIndex(forMultiplier: 8), 3, "×8 spawns a level-4 item")
         XCTAssertEqual(spawnTierIndex(forMultiplier: 99), 0, "unknown multipliers fall back to tier 0")
     }
 

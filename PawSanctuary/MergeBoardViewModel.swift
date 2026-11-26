@@ -1825,7 +1825,7 @@ class MergeBoardViewModel {
             // Family spawner — kibble-based, unlimited, species-specific animal chain
             let chainID = ContentRegistry.animalChainID(species)
             let maxTier = ContentRegistry.shared.chain(chainID)?.maxTier ?? 0
-            // The multiplier picks the tier (×1/2/4/8 → level 1/2/4/8) and the
+            // The multiplier picks the tier (×1/2/4/8 → level 1/2/3/4) and the
             // price is the multiplier itself in kibble.
             var spawnTier = min(spawnTierIndex(forMultiplier: progression.spawnMultiplier), maxTier)
             // Bask (Reptiles .turtle): half kibble cost — folded into spawnerTapCost
