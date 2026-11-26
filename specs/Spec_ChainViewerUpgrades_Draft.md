@@ -1,5 +1,7 @@
 # PawSanctuary — Chain Viewer Upgrades
 
+**Status update, 26 Nov 2026 (from git):** built. Owned-count badges merged (#115), "See in store" (#148) and "Made by" (#149). *The earlier status line follows as written.*
+
 **Status: DRAFT, updated 23 Nov 2026; not built. CV-1 answered B, 22 Nov 2026 (owner): "See in store" opens the shop scrolled to the item; it does not buy.** First written cold on 18 Nov 2026 to carry out the second half of decision **D13** (`PawSanctuary_Alignment_Plan.md`); revised on 22 Nov 2026 after D14 replaced D12's order rule and after the owner's R1 recordings (`Triage_ModelOnReferences.md` §2.10); revised again on 23 Nov 2026 to replace the direct-buy design with navigation, against `origin/main` at `1f7ec66`. Not yet reviewed by the design authority.
 
 | Task (revision plan) | What | Status |

@@ -1,5 +1,7 @@
 # PawSanctuary — Album Grand Prize and Set-Reward Ramp
 
+**Status update, 26 Nov 2026 (from git):** all four implementation tasks are merged (#130, #131, #132, #133). *The earlier status line follows as written.*
+
 **Status (22 Nov 2026): owner answers in §12. Task 1 (schema v46) is merged, PR #130. Task 2 (grand prize rule) is PR #132 and task 4 (set-reward ramp) is PR #131, both in review. Task 3 (banner) is not yet a PR.** Originally: Draft, 18 Nov 2026, not reviewed, no code. Written cold from a read of the code on `origin/main` (`6d5a409`) on 18 Nov 2026, to carry out task **6.1** of `Revision_Plan_ModelOnReferences.md` (W6, triage row 14). Four implementation tasks, one per session, in §11.
 
 **Self-contained brief.** Assumes no prior conversation. Every code claim is cited `file:line` as read on 18 Nov 2026; line numbers drift, so search by name if a number no longer lands.

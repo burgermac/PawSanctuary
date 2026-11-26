@@ -1,5 +1,7 @@
 # PawSanctuary — Remote event data (task 7.1)
 
+**Status update, 26 Nov 2026 (from git):** the owner answered §12 on 18 Nov. Tasks 7.2.1 (#150) and 7.2.2 (#151) are merged. 7.2.3 (schema v50) is PR #180, open when this was written. 7.2.4 to 7.2.8 are not started. *The earlier status line follows as written.*
+
 **Status: Draft, 18 Nov 2026, not reviewed, no code.** Written from a read of `origin/main` at `6d5a409`. Task 7.1 of `specs/Revision_Plan_ModelOnReferences.md` (W7, rows 10 and 11 of `specs/Triage_ModelOnReferences.md`). Task 7.2 (the build) is blocked on the owner reviewing this spec. Under `CLAUDE.md` rule 5 this is a structural change and runs as **its own sprint**: no code starts until the owner approves this spec and answers §12.
 
 **Self-contained brief.** Assumes no prior conversation. Every code claim cites `file:line` at `6d5a409`. Line numbers drift as calendar tasks land, so re-find by symbol name, not by line.

@@ -1,5 +1,7 @@
 # Spec — Orders filled from held items (D14, task W1)
 
+**Status update, 26 Nov 2026 (from git):** built. The owner accepted the open points on 18 Nov (Q18); tasks 1.2 to 1.6 are merged (#119, #123, #125). Task 1.8 (buy button on a missing slot) is still blocked on recording R1 (price). *The earlier status line follows as written.*
+
 **Status: Draft, 18 Nov 2026. Written cold, not yet reviewed by the owner. No code written.** This is task 1.1 of `Revision_Plan_ModelOnReferences.md`. The owner sees it before any W1 code is built; tasks 1.2 to 1.8 stay blocked until it is accepted. Citations are to `origin/main` at `6d5a409`.
 
 **Read first:** `PawSanctuary_Alignment_Plan.md` D14 (supersedes D12), `Triage_ModelOnReferences.md` §2.1 and §2.9, `Spec_DailyHandInTasks.md` (the board-census precedent).

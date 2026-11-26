@@ -1,5 +1,7 @@
 # Spec — Context-triggered tutorial (revision task 4.2)
 
+**Status update, 26 Nov 2026 (from git):** built. Task 4.3 stages 1 to 6 are merged (#152, #153, #154, #155, #157, #159), plus the two M3 gaps (#176). M19 and M22 with the monetization gate shut were checked by unit tests only. *The earlier status line follows as written.*
+
 **Status: Draft, 22 Nov 2026; owner answered Q1–Q7 on 23 Nov 2026 (all as recommended, §9); no code.** Task 4.2 of `Revision_Plan_ModelOnReferences.md` (W4, triage row 7). Task 4.3 (the build) is unblocked by the §9 answers. All code citations are to `origin/main` at `a03ef58` (schema v46). Line numbers drift; search by name if one no longer lands.
 
 **Read first:** `PawSanctuary_Alignment_Plan.md` D7, D9, D11, D14; `Triage_ModelOnReferences.md` row 7; `Spec_HeldItemOrders.md` §1 and §4 (the order rule this tutorial must teach).
