@@ -83,7 +83,7 @@ Currently ×8 costs 8 kibble and yields a tier-7 item worth 128 kibble — a 16�
 
 **Blocks:** Phase 2.
 
-**Superseded 25 Nov 2026 for the spawn multiplier by D16** (cost = multiplier, level = multiplier). The record above stays as history.
+**Superseded 25 Nov 2026 for the spawn multiplier by D16, then restored the same day by D17.** Neutral spawn cost is in force.
 
 ### D3 — Do Dog Tags buy board items?
 
@@ -290,7 +290,9 @@ Decided on the owner's instruction, answering the seven questions in `Spec_Fifte
 
 ---
 
-### D16 — Spawn multiplier: level and kibble cost equal the multiplier *(decided 25 Nov 2026)*
+### D16 — Spawn multiplier: level and kibble cost equal the multiplier *(decided 25 Nov 2026, superseded by D17)*
+
+**Superseded by D17.** The record below stays as history. Its "exposure is smaller than before" is wrong: the code before D2 gave tiers 0/1/3/7 for 1/2/4/8 kibble, the same as D16 at every multiplier (D2's "tier-7" is the 0-based index, level 8).
 
 Decided by the owner, answering Q27 in `PROJECT_STATE.md`. **D2 (neutral spawn cost, `cost = 2^tierIndex`) is superseded for the spawn multiplier.** PR #166 (merged 24 Nov) already built it: ×1/2/4/8 give items of level 1/2/4/8 at 1/2/4/8 kibble each (before: levels 1/2/3/4 at 2^tier). The owner keeps it and records it here; the code stands as merged.
 
@@ -299,6 +301,20 @@ Decided by the owner, answering Q27 in `PROJECT_STATE.md`. **D2 (neutral spawn c
 **Follow-up, not yet done.** Re-run the economy simulation against the new pricing and report whether ×8 is still an arbitrage worth closing. Until then D16 rests on matching the reference games, not on a measured result.
 
 **Applies to:** any spec touching spawn multiplier cost or yield. **Does not reopen** D3, D7, D9 or D13. D2's other content (its recirculation requirement) stands.
+
+---
+
+### D17 — Back to D2's neutral spawn pricing *(decided 25 Nov 2026)*
+
+Decided by the owner after the re-run D16 asked for. **D16 is superseded.** ×1/2/4/8 give items of level 1/2/3/4 at 1/2/4/8 kibble, so each tap costs `2^tierIndex`. The bonus-spawn chances go back to their values before PR #166: 0 / 10 / 25 / 40%.
+
+**Why.** The re-run (a throwaway harness over `EconomySimulation`, which does not itself read spawn prices) priced each item at the cheapest tap that could build it, assuming the best case for the player. Under D16, ×8 returned 16 times its price: L50 demand ÷ supply fell from 1.23 to 0.31, and selling spare kibble from L20 rates cut the map from 77.9 days to 17.1. No discounted ×4 or ×8 price that was tried kept the pinned target bands.
+
+**What is given up.** ×4 and ×8 no longer give level 4 and level 8 items, which was D16's match with the reference games.
+
+**Open gap, not fixed by this decision.** The model leaves out bonus spawns. Counted in the same harness, D17 gives L50 0.77 (target: above 1.00), misses the D14 bands from L35 to L60, and cuts the 77.9 days to 63.0. Adding the bonus layer to the model, then retuning the bonus chance or the order tiers, is separate work.
+
+**Applies to:** any spec touching spawn multiplier cost or yield. **Does not reopen** D3, D7, D9 or D13.
 
 ---
 
