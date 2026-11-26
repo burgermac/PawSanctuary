@@ -306,15 +306,33 @@ Decided by the owner, answering Q27 in `PROJECT_STATE.md`. **D2 (neutral spawn c
 
 ### D17 — Back to D2's neutral spawn pricing *(decided 25 Nov 2026)*
 
-Decided by the owner after the re-run D16 asked for. **D16 is superseded.** ×1/2/4/8 give items of level 1/2/3/4 at 1/2/4/8 kibble, so each tap costs `2^tierIndex`. The bonus-spawn chances go back to their values before PR #166: 0 / 10 / 25 / 40%.
+Decided by the owner after the re-run D16 asked for. **D16 is superseded.** ×1/2/4/8 give items of level 1/2/3/4 at 1/2/4/8 kibble, so each tap costs `2^tierIndex`. The bonus-spawn chances go back to their values before PR #166: 0 / 10 / 25 / 40% *(changed later the same day by D18)*.
 
 **Why.** The re-run (a throwaway harness over `EconomySimulation`, which does not itself read spawn prices) priced each item at the cheapest tap that could build it, assuming the best case for the player. Under D16, ×8 returned 16 times its price: L50 demand ÷ supply fell from 1.23 to 0.31, and selling spare kibble from L20 rates cut the map from 77.9 days to 17.1. No discounted ×4 or ×8 price that was tried kept the pinned target bands.
 
 **What is given up.** ×4 and ×8 no longer give level 4 and level 8 items, which was D16's match with the reference games.
 
-**Open gap, not fixed by this decision.** The model leaves out bonus spawns. Counted in the same harness, D17 gives L50 0.77 (target: above 1.00), misses the D14 bands from L35 to L60, and cuts the 77.9 days to 63.0. Adding the bonus layer to the model, then retuning the bonus chance or the order tiers, is separate work.
+**Open gap, not fixed by this decision.** The model leaves out bonus spawns. Counted in the same harness, D17 gives L50 0.77 (target: above 1.00), misses the D14 bands from L35 to L60, and cuts the 77.9 days to 63.0. Adding the bonus layer to the model, then retuning the bonus chance or the order tiers, is separate work. **Closed by D18.**
 
 **Applies to:** any spec touching spawn multiplier cost or yield. **Does not reopen** D3, D7, D9 or D13.
+
+---
+
+### D18 — One 10% bonus chance on boosted taps, counted in the economy model *(decided 25 Nov 2026)*
+
+Decided by the owner, closing D17's open gap. Design: `docs/superpowers/specs/2026-11-25-flat-bonus-spawn-chance-design.md`.
+
+**Rule.** ×2, ×4 and ×8 taps each have a 10% bonus chance; ×1 has none. The 85/15 Lucky/Legendary split is unchanged. This replaces 0 / 10 / 25 / 40% and Task 4.3's "scaling with multiplier"; bonuses stay gated to boosted taps.
+
+**The model now counts bonuses.** `EconomySimulation` prices demand and recirculation with `kibblePrice`, assuming the player always uses the cheapest unlocked tap and a bonus always finds a cell. At 10%, D14 demand ÷ supply is 0.56 at L20, 0.61 at L30, 0.73 at L35–40 and 1.06 at L50–60.
+
+**Targets changed.** The difficulty bands are now asserted on D14 at every pinned level. The orders-only (D12) band test is retired: that model gives 0.93 at L50. The coin window for a player selling 20% is 52–70 days (was 55–70); the model gives 52.8, and 48.3 never selling. The daily-task coin budget uses the same 52-day floor.
+
+**Why not other fixes.** Raising order tier caps from L21 up (42 combinations, caps to tier index 11) met neither set of bands. In each tested table where ×8's chance exceeded ×4's, the ratio dipped when ×8 unlocked at L20. 3 / 5 / 5% kept both sets of bands but made bonuses very rare.
+
+**Thin margins.** L50 is 0.06 above its floor and the selling projection 0.8 days above its floor.
+
+**Does not reopen** D3, D7, D9, D13, D14 or D17's prices.
 
 ---
 
@@ -388,7 +406,7 @@ Added 27 July. Phases 2 and 2b tuned kibble; coins were never modelled despite g
 
 - [x] **4.1** Kibble and Coin merge chains that spawn on the board (`ChainCategory.currency` from 1.3). Landed `d3c90f2`: 10% of family-spawner taps, 6 tiers each, tap-to-collect (2^(t+1)-1 value curve per the measured reference), drag-merge via the existing generic path. Side-fix: `triggerTopTierCelebration` was firing the animal-only Ambassador banner for any chain's top tier (including sub-objects already) — now guarded to `.animal`.
 - [x] **4.2** Pre-seed locked rows with visible, unreachable kibble caches released on unlock. Landed `0d6ee51`: every locked cell holds a Kibble cache (tier authored per row, richer for deeper unlocks) rendered dimmed with a lock badge; `checkLevelUnlock` needed zero changes since it only ever flipped `isUnlocked`. Verified rendering + locked-tap no-op on screen; the unlock-reveal transition itself is a code-review-level guarantee (unchanged unlock logic), not screen-verified — a stuck simulator system dialog blocked further interaction that session.
-- [x] **4.3** Bonus layer ("Lucky!"/"Legendary!") gated to boosted spawns, scaling with multiplier. Landed `30307f4`: 0/10/25/40% chance by multiplier tier (×1/×2/×4/×8), 85/15 Lucky/Legendary split, routed through the existing `finishSpawn` so a bonus still counts as a rescue and can fulfil an order. Not screen-verified this session — a stuck simulator notification-permission dialog blocked interaction; confidence is code-review-level (simple roll + tier bump, `finishSpawn` itself is exercised by every normal spawn).
+- [x] **4.3** Bonus layer ("Lucky!"/"Legendary!") gated to boosted spawns, scaling with multiplier. Landed `30307f4`: 0/10/25/40% chance by multiplier tier (×1/×2/×4/×8; **now 0/10/10/10, D18**), 85/15 Lucky/Legendary split, routed through the existing `finishSpawn` so a bonus still counts as a rescue and can fulfil an order. Not screen-verified this session — a stuck simulator notification-permission dialog blocked interaction; confidence is code-review-level (simple roll + tier bump, `finishSpawn` itself is exercised by every normal spawn).
 - [x] **4.4** Bubble mechanic: probability *p* on merge, opened by ad (capped) / gems / waiting, **decaying into a lesser reward — never nothing**. Landed `6986959`: 15% of below-top-tier animal merges bubble instead of landing normally (top tier keeps its own Ambassador celebration); tapping an active bubble opens a sheet to pop for full value via rewarded ad (shares the kibble sheet's daily cap — `KibbleEngine.watchRewardedAd` refactored to a generic `onEarned` closure to make that sharing possible) or Dog Tags (cost scales with tier); left for 10 minutes it decays to a 50%-floor coin payout, auto-collected on tap, never zero. `BoardItem.bubbledAt: Double?` is a new optional defaulted to `nil` — no migration needed. Verified on screen: bubble creation via merge, active-bubble tap → pop sheet, ad-pop, Dog Tags pop button's disabled-when-unaffordable state, and decay → auto-collect. 129/129 tests passing.
 
 **Phase 4 complete.**

@@ -24,12 +24,12 @@ final class EconomyTests: XCTestCase {
         }
     }
 
-    /// Each boosted multiplier keeps its own bonus chance, whatever tier it spawns.
-    func testBonusSpawnChanceRisesWithEachMultiplier() {
+    /// Every boosted tap has the same chance; x1 has none (D18).
+    func testBoostedTapsShareOneBonusSpawnChance() {
         let chances = [1, 2, 4, 8].map {
             bonusSpawnChance(forMultiplierTier: spawnTierIndex(forMultiplier: $0))
         }
-        XCTAssertEqual(chances, [0.00, 0.10, 0.25, 0.40])
+        XCTAssertEqual(chances, [0.00, 0.10, 0.10, 0.10])
     }
 
     /// A tap costs exactly the multiplier in kibble.
@@ -191,8 +191,8 @@ final class EconomyTests: XCTestCase {
     /// map at 52.9 days. Locking the corrected size in.
     func testTheDailyChannelFitsInsideItsCoinBudget() {
         // Budget = what the map projection can absorb at the anchor level
-        // before falling through the 55-day floor.
-        let ceiling = Double(EconomySimulation.mapTotalCoinCost) / 55.0
+        // before falling through the 52-day floor (D18).
+        let ceiling = Double(EconomySimulation.mapTotalCoinCost) / 52.0
         let withoutDailies = EconomySimulation.coinRow(level: EconomySimulation.projectionLevel,
                                                        sells: true).total
                            - EconomySimulation.dailyTaskCoinIncome(level: EconomySimulation.projectionLevel)
@@ -462,8 +462,8 @@ final class EconomyTests: XCTestCase {
         XCTAssertLessThanOrEqual(neverSells, 75.0,
                                  "a player who never discovers selling must not stall")
         XCTAssertGreaterThan(neverSells, 40.0, "and the map should not fall over in a month")
-        XCTAssertTrue((55.0...70.0).contains(sells),
-                      "selling player projected \(sells) days, target 55-70")
+        XCTAssertTrue((52.0...70.0).contains(sells),
+                      "selling player projected \(sells) days, target 52-70")
     }
 
     /// Under Phase 2c orders pay 2.4× what selling does, so diverting production
@@ -812,8 +812,21 @@ final class EconomyTests: XCTestCase {
 
     // MARK: Task 2.5 — the ratio curve
 
+    /// A bonus makes a boosted tap return more than it costs, so the model prices
+    /// an item below its merge worth only where such a tap is unlocked and
+    /// spawns no higher than the item (D18).
+    func testBonusSpawnsLowerTheKibblePriceOnlyWhereABoostedTapCanBuildTheItem() {
+        let discount = 1 + 0.10 * 1.15 / 0.70
+        XCTAssertEqual(EconomySimulation.kibblePrice(tier: 3, level: 1), 8, accuracy: 1e-9, "only x1 at L1")
+        XCTAssertEqual(EconomySimulation.kibblePrice(tier: 0, level: 20), 1, accuracy: 1e-9, "only x1 builds tier 0")
+        XCTAssertEqual(EconomySimulation.kibblePrice(tier: 1, level: 4), 2, accuracy: 1e-9, "x2 is locked at L4")
+        XCTAssertEqual(EconomySimulation.kibblePrice(tier: 1, level: 5), 2 / discount, accuracy: 1e-9)
+        XCTAssertEqual(EconomySimulation.kibblePrice(tier: 3, level: 20), 8 / discount, accuracy: 1e-9)
+    }
+
+    /// Asserted on the rule in force: orders plus daily tasks (D14).
     func testDemandSupplyRatioMatchesTheTargetCurve() {
-        func ratio(_ level: Int) -> Double { EconomySimulation.row(level: level).ratio }
+        func ratio(_ level: Int) -> Double { EconomySimulation.heldItemRow(level: level).ratio }
 
         for level in [1, 5, 10, 20, 30] {
             XCTAssertLessThan(ratio(level), 0.70,
@@ -858,11 +871,8 @@ final class EconomyTests: XCTestCase {
 
     // MARK: Task 1.2 — held-item delivery (D14, Spec_HeldItemOrders.md §6)
     //
-    // The D12 assertions above are untouched and still describe the D12 model.
-    // These pin the D14 model's own facts. They deliberately do NOT assert the
-    // D14 ratio at the levels where it leaves the target bands (L30, L35, L40,
-    // L55, L60): `testPrintHeldItemEconomyReport` prints that curve and the PR
-    // proposes a lever for it, which is the owner's call.
+    // The target bands are asserted on this model since D18; the D12 rows remain
+    // for comparison and for the monotonic check above.
 
     /// The per-order charge `grossDemand` uses is only a fair charge under D14 if
     /// the model's expected order cost matches what the generator really rolls.
@@ -911,22 +921,12 @@ final class EconomyTests: XCTestCase {
         let terms = EconomySimulation.reportLevels.map { EconomySimulation.dailyTaskDemand(level: $0) }
         for (level, term) in zip(EconomySimulation.reportLevels, terms) {
             XCTAssertGreaterThan(term, 0, "L\(level)")
-            XCTAssertEqual(term, EconomySimulation.dailyTaskKibbleHandedIn(level: level), accuracy: 0.0001)
+            XCTAssertLessThanOrEqual(term, EconomySimulation.dailyTaskKibbleHandedIn(level: level) + 0.0001,
+                                     "kibble asked never exceeds the merge worth handed in")
         }
         for (a, b) in zip(terms, terms.dropFirst()) {
             XCTAssertLessThanOrEqual(a, b + 0.001, "a deeper tier cap must not make the dailies cheaper")
         }
-    }
-
-    /// Wherever the D14 ratio is still inside the target band it is asserted
-    /// there; the levels that leave the bands are covered by the printed report.
-    func testTheD14RatioStillMeetsTheBandsWhereItDoes() {
-        for level in [1, 5, 10, 20] {
-            XCTAssertLessThan(EconomySimulation.heldItemRow(level: level).ratio, 0.70,
-                              "L\(level) must stay comfortable under D14")
-        }
-        XCTAssertGreaterThan(EconomySimulation.heldItemRow(level: 50).ratio, 1.00,
-                             "the first wall is still in L41-50 under D14")
     }
 
     func testTheD14RatioIsMonotonicallyNonDecreasing() {
@@ -934,14 +934,9 @@ final class EconomyTests: XCTestCase {
                       "difficulty must never fall as the player levels under D14 either")
     }
 
-    /// `heldItemBandBreaks` is the model's own record of where D14 leaves the
-    /// bands. It must agree with `targetBandAllows`, which mirrors the D12 test.
-    func testTheBandCheckMirrorsTheD12AssertionOnTheD12Model() {
-        for level in EconomySimulation.bandLevels {
-            XCTAssertEqual(EconomySimulation.targetBandAllows(
-                ratio: EconomySimulation.row(level: level).ratio, level: level), true,
-                           "L\(level): the D12 model satisfies its own band, which this helper mirrors")
-        }
+    /// The model's own record of band breaks must agree with the assertion above.
+    func testTheModelReportsNoBandBreaks() {
+        XCTAssertEqual(EconomySimulation.heldItemBandBreaks(), [])
     }
 
     /// The what-if harness must leave the real model alone: nothing leaks out of
