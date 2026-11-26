@@ -268,6 +268,28 @@ struct GameState: Codable {
     /// finished Drive's points must not carry into the next one. Nothing reads
     /// or writes this yet — §6 step 2 adds the first writer.
     var kibbleDrive: KibbleDriveState? = nil
+
+    /// Event definitions pinned when first seen active, keyed by event id
+    /// (v50, `Spec_RemoteEventData.md` §5.5). In the save so that pins follow
+    /// iCloud sync (Q3). Non-Optional, so it has an `additiveDefaultsSinceV8`
+    /// entry. Nothing reads or writes this yet — task 7.2.4 adds both, and
+    /// must also carry it through `captureState()`.
+    var eventPins: [String: EventPin] = [:]
+}
+
+// ============================================================
+// MARK: - EVENT PIN
+// ============================================================
+
+/// A started event's dates and track, frozen as first seen so that a later
+/// event file cannot change them (`Spec_RemoteEventData.md` §5.5).
+struct EventPin: Codable, Equatable, Sendable {
+    var id: String
+    var kind: RemoteEventKind
+    var start: Date
+    var end: Date
+    /// `nil` for a Kibble Drive, whose ladder stays code (V7).
+    var track: [TrackMilestone]?
 }
 
 // ============================================================
@@ -411,7 +433,10 @@ enum GameStore {
     ///      Kibble Crate can carry its own piece tier and charge count. Both Optional, so no
     ///      default is needed and an unsized tile decodes with the level's defaults; the step
     ///      only stamps the version (an older build would silently drop the sizes).
-    static let currentVersion = 49
+    /// v50: eventPins added (`specs/Spec_RemoteEventData.md` §7.3). Non-Optional, so it has
+    ///      an `additiveDefaultsSinceV8` entry; a migrating save starts with no pins.
+    ///      Nothing writes it yet.
+    static let currentVersion = 50
 
     /// Minimal "envelope" used to read just the version before committing to a
     /// full decode. This is the seam where future v1→v2 migrations will branch.
@@ -739,6 +764,7 @@ enum GameStore {
         if version == 46 { return migrateByInjecting(from: 46, defaults: [:], into: data) }   // seenTutorialMoments: inference runs in finishMigration for every sourceVersion < 47
         if version == 47 { return migrateByInjecting(from: 47, defaults: [:], into: data) }   // kibbleCrate is a new ProducerLevel case; no existing save holds it
         if version == 48 { return migrateByInjecting(from: 48, defaults: [:], into: data) }   // ProducerTile.pieceTier/capacity are Optional — no default needed
+        if version == 49 { return migrateByInjecting(from: 49, defaults: [:], into: data) }   // eventPins covered by additiveDefaultsSinceV8
         if version >= 1 && version < 8 {
             // Pre-Phase-0 saves — predate the generalized chain model entirely, so there's
             // no sensible migration path. Record why, rather than discarding silently (QA-08).
@@ -848,6 +874,8 @@ enum GameStore {
         // v47 — Context tutorial. Empty here; `finishMigration` then fills it
         // from what the save shows the player has already done.
         "seenTutorialMoments": [String](),
+        // v50 — Started-event pins. A migrating save starts with none.
+        "eventPins": [String: Any](),
     ] }
 
     /// Fills in every post-v8 default the blob is missing, applies any tier-space

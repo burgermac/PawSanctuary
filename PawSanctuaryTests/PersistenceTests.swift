@@ -2949,4 +2949,59 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(obj["pieceTier"])
         XCTAssertNil(obj["capacity"])
     }
+
+    // MARK: v49 → v50 (event pins, Spec_RemoteEventData.md §7.3, task 7.2.3)
+
+    /// A current sample save rewritten to look like v49: no `eventPins` key.
+    private func makeV49Blob(_ state: GameState) throws -> Data {
+        let data = try JSONEncoder().encode(state)
+        var obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        obj.removeValue(forKey: "eventPins")
+        obj["version"] = 49
+        return try JSONSerialization.data(withJSONObject: obj)
+    }
+
+    func testV49toV50StartsWithNoEventPins() throws {
+        try writeMainFile(try makeV49Blob(makeSampleState()))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v49 save should migrate to v50")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.eventPins, [:])
+    }
+
+    func testEventPinsRoundTripOnAFreshSave() throws {
+        let withTrack = EventPin(
+            id: "pinned_pass", kind: .pass,
+            start: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            end: Date(timeIntervalSinceReferenceDate: 801_000_000),
+            track: [TrackMilestone(index: 0, threshold: 10,
+                                   freeRewards: [OrderReward(kind: .kibble, amount: 25)],
+                                   paidRewards: [OrderReward(kind: .cardPack, amount: 1,
+                                                             payloadID: "standard")])])
+        let withoutTrack = EventPin(
+            id: "pinned_drive", kind: .kibbleDrive,
+            start: Date(timeIntervalSinceReferenceDate: 802_000_000),
+            end: Date(timeIntervalSinceReferenceDate: 802_259_200),
+            track: nil)
+        var state = makeSampleState()
+        XCTAssertEqual(state.eventPins, [:], "a new save starts with no pins")
+        state.eventPins = [withTrack.id: withTrack, withoutTrack.id: withoutTrack]
+        GameStore.saveNow(state, sequence: 1)
+
+        let loaded = try XCTUnwrap(GameStore.load())
+        XCTAssertEqual(loaded.eventPins, [withTrack.id: withTrack, withoutTrack.id: withoutTrack])
+    }
+
+    func testAPreV50SaveWithARunningKibbleDriveStillLoadsItsDrive() throws {
+        var state = makeSampleState()
+        let drive = KibbleDriveState(eventID: "kibble_drive_test", points: 147,
+                                     claimedRungs: [0, 1], purchased: true)
+        state.kibbleDrive = drive
+        try writeMainFile(try makeV49Blob(state))
+
+        let loaded = try XCTUnwrap(GameStore.load(), "v49 save should migrate to v50")
+        XCTAssertEqual(loaded.version, GameStore.currentVersion)
+        XCTAssertEqual(loaded.kibbleDrive, drive, "a purchased running Drive survives the bump")
+        XCTAssertEqual(loaded.eventPins, [:], "migration does not invent a pin")
+    }
 }
