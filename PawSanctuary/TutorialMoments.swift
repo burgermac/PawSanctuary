@@ -143,6 +143,10 @@ enum TutorialMoment: String, CaseIterable, Codable {
         }
     }
 
+    /// A sliding hand means "drag from here to there", which only the merge tip
+    /// teaches. Every other tip's hand rests on its first target.
+    var handSlides: Bool { self == .firstMerge }
+
     /// Seconds a short tip stays up before it closes itself and counts as seen
     /// (the spec's "Done when: shown 4 s / seen for 6 s"). Nil for a tip that
     /// waits for its action or the x.

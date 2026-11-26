@@ -2259,6 +2259,8 @@ class MergeBoardViewModel {
     private var lastDeliveredOrderID: UUID?
     private var pendingAfterDeliverTip = false
     private var splitOrderID: UUID?
+    /// The card the on-hold tip (M3) was last shown on.
+    private var shownOnHoldOrderID: UUID?
 
     /// The friction lesson's session-only state (stage 4). A friction event (the
     /// board-full toast, a first store, a tap on a resting spawner) sets
@@ -2469,6 +2471,25 @@ class MergeBoardViewModel {
     func nextCoachMark(isCoveredByOtherUI: Bool, now: Date = Date()) -> TutorialMoment? {
         nextTutorialMoment(snapshot: tutorialSnapshot(isCoveredByOtherUI: isCoveredByOtherUI, now: now),
                            seen: TutorialMoment.seenSet(from: seenTutorialMoments))
+    }
+
+    /// The view drew a tip. M3 remembers which card it was about, so that this
+    /// card becoming ready can finish it (spec §4.2 M3).
+    func noteCoachMarkShown(_ moment: TutorialMoment) {
+        guard moment == .orderOnHold else { return }
+        shownOnHoldOrderID = coachMarkOrderID(for: moment)
+    }
+
+    /// The card the on-hold tip was shown on now has everything it wants.
+    var onHoldTipCardIsReady: Bool {
+        guard let id = shownOnHoldOrderID, !hasSeenTutorialMoment(.orderOnHold) else { return false }
+        let census = boardTaskCensus
+        return openOrdersForTutorial.contains { $0.id == id && $0.isReady(census: census) }
+    }
+
+    /// M3 is done once its card is ready; M4 (Deliver) follows.
+    func finishOnHoldTipIfItsCardIsReady() {
+        if onHoldTipCardIsReady { closeCoachMark(.orderOnHold) }
     }
 
     /// The board cells a tip points at, in order (the merge tip's hand slides from the first to the second).

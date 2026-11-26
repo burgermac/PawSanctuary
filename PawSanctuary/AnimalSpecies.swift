@@ -1027,6 +1027,11 @@ struct OrderReward: Codable, Equatable {
     var payloadTier: Int? = nil
 }
 
+extension Array where Element == OrderSlot {
+    /// The slot the on-hold tip's hand rests on: the first one the board is holding.
+    var firstHeldIndex: Int? { firstIndex { $0.state == .held } }
+}
+
 /// A specific adoption request from a named family for a particular animal type.
 ///
 /// Carries no timer of its own (Phase 5, Task 5.2) — the 4 board slots this

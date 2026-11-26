@@ -274,6 +274,8 @@ struct OrderLaneCard: View {
                 ForEach(slots.indices, id: \.self) { i in
                     CompactOrderSlot(line: order.lines[slots[i].lineIndex],
                                      state: slots[i].state)
+                        .reportTutorialFrame(.orderHeldSlot(order.id),
+                                             enabled: i == slots.firstHeldIndex)
                 }
                 Spacer(minLength: 0)
             }
