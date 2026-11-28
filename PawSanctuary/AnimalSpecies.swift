@@ -2792,6 +2792,9 @@ let remoteEventTrackTotalCeiling: [RewardKind: Int] = [
     .boardItem: 0,
 ]
 
+/// Days a started event's pin is kept after the event ends (Spec_RemoteEventData.md §5.5).
+let eventPinRetentionDays = 7
+
 // MARK: - Context tutorial (Spec_ContextTutorial.md §4.1, task 4.3)
 
 /// Seconds a tutorial bubble waits after the previous one closes before the next
