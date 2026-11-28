@@ -9,7 +9,7 @@
 //  ParallelBoardEventsTests, ParallelBoardEnergyTests) — but the actual
 //  integration wiring in MergeBoardViewModel.checkEventLifecycle() (coordinator
 //  creation, progressTrack sharing, idempotence, teardown, and the
-//  relaunch-restore path through apply(_:)/pendingParallelBoardRestore) had
+//  relaunch-restore path through apply(_:)/heldParallelBoardState) had
 //  zero coverage anywhere. This file closes that gap, exercising the real,
 //  shipped checkEventLifecycle() against the real "Second Chances" calendar
 //  window (second_chances_20260911, 2026-09-11...09-14) — a fixed, permanent
@@ -93,7 +93,7 @@ final class ParallelBoardLifecycleTests: XCTestCase {
     }
 
     /// The actual production path: loadGame() -> apply(saved) stages
-    /// pendingParallelBoardRestore -> checkEventLifecycle(at:) consumes it.
+    /// heldParallelBoardState -> checkEventLifecycle(at:) consumes it.
     /// Proven here via loadGame(at:)'s injectable date (added during this
     /// review) rather than waiting for 2026-09-11 to arrive in real time or
     /// exercising ParallelBoardCoordinator.restore(from:) in isolation, which

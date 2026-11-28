@@ -27,7 +27,8 @@ import UIKit
 
 /// The event kinds a file may schedule. A kind not in this list skips that
 /// event only (§4.1): an older build meeting a newer kind.
-enum RemoteEventKind: String, CaseIterable, Sendable {
+/// Also persisted, in `EventPin.kind`: never rename a case.
+enum RemoteEventKind: String, Codable, CaseIterable, Sendable {
     case milestoneTrack
     case pass
     case parallelBoard

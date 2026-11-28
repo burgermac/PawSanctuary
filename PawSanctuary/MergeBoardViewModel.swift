@@ -136,10 +136,21 @@ class MergeBoardViewModel {
     /// board/energy are separately persisted and restored.
     var activeParallelBoardEvent: ParallelBoardCoordinator?
 
-    /// Staged by `apply(_:)` from a loaded save's `parallelBoardState`,
-    /// consumed and cleared by `checkEventLifecycle()` on the same launch.
-    /// Not kept in sync afterward — a one-shot restore seed, not live state.
-    @ObservationIgnored private var pendingParallelBoardRestore: ParallelBoardSaveState?
+    /// A saved Parallel Board that no coordinator is running. `apply(_:)`
+    /// stages a loaded save's `parallelBoardState` here, and
+    /// `checkEventLifecycle()` either restores it into the matching event's
+    /// coordinator or, while its id is unknown or not over, keeps it so the
+    /// next save still carries it (Spec_RemoteEventData.md §5.5).
+    @ObservationIgnored private var heldParallelBoardState: ParallelBoardSaveState?
+
+    /// A saved Kibble Drive that is not running but may not be dropped yet
+    /// (§5.5). Kept apart from `kibbleDrive`, which being non-nil means a
+    /// Drive is running: a held one earns, shows and sells nothing.
+    @ObservationIgnored private var heldKibbleDrive: KibbleDriveState?
+
+    /// Started events' frozen definitions, by event id (§5.5), kept by
+    /// `checkEventLifecycle()` and persisted in `GameState.eventPins`.
+    @ObservationIgnored private(set) var eventPins: [String: EventPin] = [:]
 
     // MARK: Board state
 
@@ -1046,7 +1057,7 @@ class MergeBoardViewModel {
     /// itself is (found reviewing Parallel Board, 18 Aug 2026): its own
     /// production call below always used real `Date()`, so no test could
     /// exercise the parallel-board relaunch-restore path (`apply(_:)` →
-    /// `pendingParallelBoardRestore` → `checkEventLifecycle` picking it up)
+    /// `heldParallelBoardState` → `checkEventLifecycle` picking it up)
     /// without waiting for a real active event's actual calendar window —
     /// see `ParallelBoardLifecycleTests.swift`. Only threaded to
     /// `checkEventLifecycle` below; every other date-sensitive call this
@@ -1405,8 +1416,9 @@ class MergeBoardViewModel {
         s.claimedTradeIDs           = claimedTradeIDs
         s.piggyBankCoins            = piggyBankCoins
         s.freeChestReadyAt          = freeChestReadyAt
-        s.parallelBoardState        = activeParallelBoardEvent?.makeSaveState()
-        s.kibbleDrive               = kibbleDrive
+        s.parallelBoardState        = activeParallelBoardEvent?.makeSaveState() ?? heldParallelBoardState
+        s.kibbleDrive               = kibbleDrive ?? heldKibbleDrive
+        s.eventPins                 = eventPins
         kibbleEngine.capture(into: &s)
         inventoryStore.capture(into: &s)
         quests.capture(into: &s)
@@ -1489,8 +1501,10 @@ class MergeBoardViewModel {
         claimedTradeIDs           = s.claimedTradeIDs
         piggyBankCoins            = s.piggyBankCoins
         freeChestReadyAt          = s.freeChestReadyAt
-        pendingParallelBoardRestore = s.parallelBoardState
+        heldParallelBoardState      = s.parallelBoardState
         kibbleDrive                 = s.kibbleDrive
+        heldKibbleDrive             = nil
+        eventPins                   = s.eventPins
         kibbleEngine.restore(from: s)
         inventoryStore.restore(from: s)
         quests.restore(from: s)
@@ -1610,6 +1624,8 @@ class MergeBoardViewModel {
         monthlyGoalClaimed = false; lastMonthlyGoalReset = nil
         carePointsThisWeek = 0; claimedCarePointTiers = []; smilePointsBanked = 0; pendingMilestone = nil
         kibbleDrive = nil
+        heldKibbleDrive = nil
+        eventPins = [:]
         cachedActiveBonuses = UpgradeBonus()
         selectedCell = nil; draggingFrom = nil
         quests.dailyChallengeStreak = 0; quests.dailyChallengeBonusClaimed = false
@@ -1630,7 +1646,7 @@ class MergeBoardViewModel {
         // coordinator is recreated the same launch-only way every other
         // event type already is, next time checkEventLifecycle() runs.
         activeParallelBoardEvent = nil
-        pendingParallelBoardRestore = nil
+        heldParallelBoardState = nil
         unlockedSuperpowerSpecies = []; superpowerCooldownEnds = [:]
         lagomorphMergeCount = 0; lastMergeTimestamp = 0; lastMergedSpeciesRaw = nil
         equineSprintRemaining = 0; pouchItems = [nil, nil]; pouchExpiryTimestamp = 0
@@ -5138,6 +5154,15 @@ class MergeBoardViewModel {
             activeEventRiderProviders[newID] = provider
         }
 
+        // Pins (Spec_RemoteEventData.md §5.5). Worked out first, but old pins
+        // are only dropped at the end: the two blocks below still need the end
+        // date of an event whose pin is about to expire.
+        let catalog = EventCatalog.effective
+        var pinsInForce = eventPins
+        for pin in catalog.pins(activeAt: date) where pinsInForce[pin.id] == nil {
+            pinsInForce[pin.id] = pin
+        }
+
         // Parallel Board (Phase 6b, Task 3.7) — entirely separate from the
         // milestone-lane bookkeeping above, per §0.5's own registry. Same
         // launch-only posture as the rider providers: a new coordinator is
@@ -5146,13 +5171,22 @@ class MergeBoardViewModel {
             if activeParallelBoardEvent?.eventID != event.id {
                 let coordinator = ParallelBoardCoordinator(
                     eventID: event.id, chainID: event.chainID, progressTrack: progressTrack)
-                if let saved = pendingParallelBoardRestore, saved.eventID == event.id {
+                if let saved = heldParallelBoardState, saved.eventID == event.id {
                     coordinator.restore(from: saved)
                 }
                 activeParallelBoardEvent = coordinator
             }
+            // The running event takes the save's one Parallel Board slot.
+            heldParallelBoardState = nil
         } else {
+            let saved = activeParallelBoardEvent?.makeSaveState() ?? heldParallelBoardState
             activeParallelBoardEvent = nil
+            // Dropped only when this build knows the event is over (§5.5). An
+            // unknown id keeps its board: a pulled file, a lost cache or an
+            // older build must not erase it.
+            heldParallelBoardState = saved.flatMap {
+                catalog.hasEnded($0.eventID, pins: pinsInForce, at: date) ? nil : $0
+            }
         }
         // Kibble Drive (specs/Spec_KibbleDrive_Draft.md §6 step 3a) — its own
         // registry again, for the same reason Parallel Board has one: a Drive
@@ -5160,15 +5194,15 @@ class MergeBoardViewModel {
         // launch-only posture as both blocks before it; a Drive that ends
         // while the app is open is torn down on the next launch, not by a
         // mid-session poll.
+        let savedDrive = kibbleDrive ?? heldKibbleDrive
         if let drive = KibbleDriveRegistry.activeEvent(at: date) {
-            // Only when the ID differs, so a relaunch *inside* a running
-            // window keeps the points already banked. `apply(_:)` has already
-            // restored `kibbleDrive` from the save by the time this runs
-            // (loadGame: apply -> ... -> checkEventLifecycle), so the
+            // A new state only when the ID differs, so a relaunch *inside* a
+            // running window keeps the points already banked. `apply(_:)` has
+            // already restored `kibbleDrive` from the save by the time this
+            // runs (loadGame: apply -> ... -> checkEventLifecycle), so the
             // comparison is against real restored state, not a blank.
-            if kibbleDrive?.eventID != drive.id {
-                kibbleDrive = KibbleDriveState(eventID: drive.id)
-            }
+            kibbleDrive = savedDrive?.eventID == drive.id ? savedDrive : KibbleDriveState(eventID: drive.id)
+            heldKibbleDrive = nil
         } else {
             // **Forfeit on close** (§2, and §7's open question 4, decided
             // 12 Sep 2026). Unclaimed rungs are lost and points do not roll
@@ -5180,25 +5214,17 @@ class MergeBoardViewModel {
             // which to earn them, and a window that does not close is not a
             // window. Deliberate divergence, not an inconsistency.
             //
-            // This is also what makes the ID comparison above sufficient
-            // rather than merely convenient: stale state from a finished Drive
-            // can never reach a later one, because it does not survive the gap
-            // between them.
+            // "Close" means a window this build knows has ended
+            // (Spec_RemoteEventData.md §5.5). Anything else is held, so that a
+            // data mistake cannot erase a purchase. A held state has its own
+            // ID, so it still never reaches a different Drive.
             kibbleDrive = nil
+            heldKibbleDrive = savedDrive.flatMap {
+                catalog.hasEnded($0.eventID, pins: pinsInForce, at: date) ? nil : $0
+            }
         }
 
-        // Unconditional, not just on the branch that used it: this is a
-        // one-shot seed for whichever coordinator gets created on THIS call,
-        // not state kept valid across calls. Safe today because production
-        // only ever calls this function once per launch (loadGame()'s own
-        // `didLoadGame` guard) — but a second call at an earlier/different
-        // date before the real one (e.g. from a future test or debug tool)
-        // would silently discard a still-unconsumed restore before it ever
-        // reaches the call that should use it. Found reviewing Parallel
-        // Board, 18 Aug 2026 — see ParallelBoardLifecycleTests.swift, which
-        // works around exactly this by calling loadGame(at:) once with the
-        // right date rather than calling this function twice.
-        pendingParallelBoardRestore = nil
+        eventPins = catalog.updatingPins(eventPins, at: date)
     }
 
     /// Claims a track-milestone reward, free or paid lane (Phase 6b, Pass —
